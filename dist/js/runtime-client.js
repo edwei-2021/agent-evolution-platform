@@ -38,7 +38,22 @@ export function validateRuntime(data){
     if(r.events.some(e=>!validTime(e.at)||typeof e.text!=='string'||e.text.length>2000)||r.artifacts.some(name=>typeof name!=='string'||!/^[-A-Za-z0-9_]+\.(json|log|md)$/.test(name)))throw Error('執行紀錄格式不正確');
   }
   if(data.skills!==undefined)validateSkills(data.skills);
+  if(data.llm!==undefined)validateLlmWorkspace(data.llm);
   return data;
+}
+const validPrompt=v=>v&&v.name==='normalize-support-title'&&typeof v.description==='string'&&typeof v.body==='string'&&v.body.length>0&&v.body.length<=3000&&/^[a-f0-9]{64}$/.test(v.hash);
+export function validateLlmRun(run){
+  validateRuntime({schemaVersion:1,mode:'native-tools',serviceId:'validation',serverTime:new Date().toISOString(),runs:[],latestRun:run});
+  if(run.task!=='llm-evolution'||!run.llmConfig||!validPrompt(run.llmConfig.baseline?.skill)||!['smoke','full'].includes(run.llmConfig.profile)||![15,101].includes(run.llmConfig.callBudget)||typeof run.llmConfig.provider?.config?.model!=='string')throw Error('模型技能實驗設定不正確');
+  const p=run.llmProgress;
+  if(p&&(p.engine!=='ollama-prompt-reflection-v1'||!Number.isInteger(p.calls)||p.calls<0||p.calls>run.llmConfig.callBudget||!Array.isArray(p.candidates)||p.candidates.length>2||p.candidates.some((c,i)=>c.id!==`C${i}`||!validPrompt(c.skill)||(c.training&&!validMetric(c.training))||(c.validation&&!validMetric(c.validation)))||!Array.isArray(p.trainingFailures)||p.trainingFailures.length>8))throw Error('模型技能進度不正確');
+  if(run.llmResult&&(typeof run.llmResult.eligible!=='boolean'||!validPrompt(run.llmResult.selectedSkill)||!validMetric(run.llmResult.selectedValidation)||!validMetric(run.llmResult.heldout?.baseline)||!validMetric(run.llmResult.heldout?.selected)))throw Error('模型技能證據不正確');
+  return run;
+}
+export function validateLlmWorkspace(w){
+ if(!w||w.schemaVersion!==1||w.engine!=='ollama-prompt-reflection-v1'||!Number.isInteger(w.revision)||w.revision<1||!Array.isArray(w.versions)||!w.versions.length||w.versions.length>100||w.versions.some(v=>!/^LSV-[A-Za-z0-9-]+$/.test(v.id)||!validPrompt(v.skill))||new Set(w.versions.map(v=>v.id)).size!==w.versions.length||!w.versions.some(v=>v.id===w.activeVersionId)||w.active?.id!==w.activeVersionId||!validPrompt(w.active?.skill)||!Array.isArray(w.runs)||w.runs.length>10)throw Error('模型技能工作台格式不正確');
+ if(w.latestRun)validateLlmRun(w.latestRun);
+ return w;
 }
 export function telemetryFor(runtime,id){return runtime?.data?.latestRun?.agents.find(a=>a.id===id)||null;}
 export function telemetryLabel(runtime,id){
@@ -47,8 +62,8 @@ export function telemetryLabel(runtime,id){
 }
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
-  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;}
-  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  '};}
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.selectedLlmRun=null;this.pendingLlmSubmission=null;}
+  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,selectedLlmRun:this.selectedLlmRun};}
   async request(path,{method='GET',body}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
     try{
@@ -69,11 +84,13 @@ export class RuntimeClient{
       }
       const data=validateRuntime(await this.request('/api/v1/runtime'));
       if(data.serviceId!==this.capabilities.serviceId){this.capabilities=null;throw Error('服務已重新啟動；下次 polling 會重新取得連線資訊');}
-      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId)this.selectedSkillRun=null;
+      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;}
       if(this.selectedSkillRun){
         if(this.selectedSkillRun.id===data.skills?.latestRun?.id)this.selectedSkillRun=data.skills.latestRun;
         else if(['queued','running'].includes(this.selectedSkillRun.status))this.selectedSkillRun=null;
       }
+      if(this.selectedLlmRun&&this.selectedLlmRun.id===data.llm?.latestRun?.id)this.selectedLlmRun=data.llm.latestRun;
+      if(this.pendingLlmSubmission?.requestId===data.latestRun?.requestId)this.pendingLlmSubmission=null;
       this.data=data;this.error=null;this.lastSuccess=new Date().toISOString();
       if(this.pendingRequestId===data.latestRun?.requestId)this.pendingRequestId=null;
       return true;
@@ -91,12 +108,12 @@ export class RuntimeClient{
     this.pendingRequestId=null;await this.refresh();
   }
   async cancel(id){await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}/cancel`,{method:'POST',body:{}});await this.refresh();}
-  async skillMutation(operation){
+  async skillMutation(operation,workspace='skills'){
     if(this.actionBusy)throw Error('技能操作正在處理，請稍候');
     this.actionBusy=true;this.onUpdate(this.snapshot());
     try{
       if(!this.capabilities||this.error)await this.refresh();
-      if(!this.capabilities||this.error||!this.data?.skills)throw Error('技能服務尚未連線，請更新並啟動 WSL 本機服務');
+      if(!this.capabilities||this.error||!this.data?.[workspace])throw Error('技能服務尚未連線，請更新並啟動 WSL 本機服務');
       await operation();
       await this.refresh();
     }catch(error){await this.refresh();throw error;}
@@ -120,6 +137,21 @@ export class RuntimeClient{
       this.skillTrial=result;
     });
   }
+  async startLlm(registry){
+    return this.skillMutation(async()=>{
+      if(!this.data.llm)throw Error('請更新模型技能後端');
+      if(!this.pendingLlmSubmission){
+        const provider=await this.request('/api/v1/llm/ollama');
+        this.pendingLlmSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.llmProfile,maxSeconds:this.llmSeconds,expectedRevision:this.data.llm.revision,providerRevision:provider.revision};
+      }
+      try{await this.request('/api/v1/llm/skills/runs',{method:'POST',body:this.pendingLlmSubmission});}
+      catch(error){if(error.status>=400&&error.status<500)this.pendingLlmSubmission=null;throw error;}
+      this.pendingLlmSubmission=null;this.selectedLlmRun=null;
+    },'llm');
+  }
+  async approveLlm(id){return this.skillMutation(()=>this.request(`/api/v1/llm/skills/runs/${encodeURIComponent(id)}/approve`,{method:'POST',body:{expectedRevision:this.data.llm.revision}}),'llm');}
+  async activateLlm(id){return this.skillMutation(()=>this.request(`/api/v1/llm/skills/versions/${encodeURIComponent(id)}/activate`,{method:'POST',body:{expectedRevision:this.data.llm.revision}}),'llm');}
+  async selectLlmRun(id){this.selectedLlmRun=id?validateLlmRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.onUpdate(this.snapshot());}
   async selectSkillRun(id){
     this.selectedSkillRun=id?validateSkillRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;
     this.onUpdate(this.snapshot());

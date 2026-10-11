@@ -1,6 +1,6 @@
 # Windows Ollama Bridge (Windows Ollama 橋接)
 
-Version 0.4.1 incorporates the user's working Windows 10 / WSL2 connection approach. It does not repeat host setup or automatically retest the Windows service. The provider transport is available for explicit single requests; integration into the Worker/Reflector evolution workflow is the next milestone.
+Version 0.4.1 incorporates the user's working Windows 10 / WSL2 connection approach. It does not repeat host setup or automatically retest the Windows service. The provider transport is available for explicit single requests. Version 0.5.0 also connects it to [LLM Skill evolution](llm-skill-evolution.md); the older rule workflow remains independent.
 
 ## Recorded target evidence (實機驗證紀錄)
 
@@ -57,7 +57,7 @@ Settings are saved to `.local/ollama/settings.json` inside the D-drive checkout.
 | Save settings | None; revision-checked local JSON update |
 | Update model list | Explicit GET `/api/version`, `/api/tags`, `/v1/models` |
 | Send one inference | Explicit POST `/v1/chat/completions` with the saved model and entered prompt |
-| Existing Skill evolution / trial | None; continues to execute `local-rule-search-v1` |
+| Existing rule Skill evolution / trial | None; continues to execute `local-rule-search-v1` |
 
 There is no automatic metadata polling, inference preflight, model pull, retry, Windows server launch or firewall modification. All provider requests bypass proxy environment variables through `ProxyHandler({})`, matching the successful attachment.
 
@@ -83,8 +83,10 @@ For a deliberate model test, choose an exact installed local model with `--model
 
 ## Next integration boundary (下一階段介面)
 
-The current bridge exposes reusable `OllamaBridge.request` transport and frozen configuration per request. Worker execution should consume the Skill body as model instructions, store actual task traces and evaluate outputs using trusted rules. Reflector candidate generation should use training feedback only. Pin provider/model/config and Skill/data/evaluator hashes for each experiment, keep validation and held-out data separate, and preserve human approval/rollback gates.
+The bridge exposes reusable `OllamaBridge.request` transport and frozen configuration per request. Worker execution should consume the Skill body as model instructions, store actual task traces and evaluate outputs using trusted rules. Reflector candidate generation should use training feedback only. Pin provider/model/config and Skill/data/evaluator hashes for each experiment, keep validation and held-out data separate, and preserve human approval/rollback gates.
 
 No nanobot or GEPA execution adapter is implemented by this bridge. Agent framework connection counts remain unchanged. Current rule-based scores are not LLM results.
 
 References: [Microsoft WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking), [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility), [Ollama FAQ](https://docs.ollama.com/faq). The implementation reuses the supplied proven client approach without changing the target Windows setup.
+
+Version 0.5.0 implements the bounded Worker/Reflector execution path described above. It uses `ollama-prompt-reflection-v1`; GEPA/nanobot SDK adapters remain planned. See [LLM Skill evolution](llm-skill-evolution.md) for current controls, model protocol and evidence limits.

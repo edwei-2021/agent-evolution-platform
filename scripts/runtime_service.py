@@ -79,6 +79,10 @@ class RuntimeService:
                     db.execute('UPDATE runs SET data=? WHERE id=?', (json.dumps(run), identifier))
         from skill_store import SkillStore
         self.skills = SkillStore(self)
+        from ollama_bridge import OllamaBridge
+        from llm_store import LlmStore
+        self.ollama = OllamaBridge(self.root)
+        self.llm = LlmStore(self)
 
     @staticmethod
     def timestamp():
@@ -86,7 +90,7 @@ class RuntimeService:
 
     @staticmethod
     def native_command(role, path):
-        filename = 'skill_agents.py' if (path / 'skill-config.json').is_file() else 'native_agents.py'
+        filename = 'llm_agents.py' if (path / 'llm-config.json').is_file() else 'skill_agents.py' if (path / 'skill-config.json').is_file() else 'native_agents.py'
         return [sys.executable, str(ROOT / 'scripts' / filename), '--role', role, '--run-dir', str(path)]
 
     @contextmanager
@@ -122,6 +126,13 @@ class RuntimeService:
                     run['skillProgress'] = json.loads(path.read_text())
                 except (ValueError, OSError):
                     pass
+        if run.get('task') == 'llm-evolution':
+            path = self.local / 'runs' / run['id'] / 'llm-progress.json'
+            if path.is_file():
+                try:
+                    run['llmProgress'] = json.loads(path.read_text())
+                except (ValueError, OSError):
+                    pass
         return run
 
     def snapshot(self):
@@ -138,13 +149,17 @@ class RuntimeService:
             workspace = self.skills.snapshot()
             workspace.update(latestRun=self.decorate(skill_runs[0]) if skill_runs else None,
                              runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt'], 'baselineVersionId': r['skillConfig']['baseline']['id'], 'selectedId': r.get('skillResult', {}).get('selectedId'), 'eligible': r.get('skillResult', {}).get('eligible')} for r in skill_runs])
-        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace}
+        with self.lock, self.connect() as db:
+            llm_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'llm-evolution'][:10]
+            llm_workspace = self.llm.snapshot()
+            llm_workspace.update(latestRun=self.decorate(llm_runs[0]) if llm_runs else None, runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in llm_runs])
+        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace}
 
     def start(self, registry, request_id, task='project-health', options=None):
         agents = validate_bindings(registry)
         if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', request_id):
             raise ValueError('Invalid idempotency request ID')
-        if task not in ('project-health', 'skill-evolution') or (task == 'project-health' and options is not None):
+        if task not in ('project-health', 'skill-evolution', 'llm-evolution') or (task == 'project-health' and options is not None):
             raise ValueError('Unsupported fixed workflow')
         submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
         with self.lock:
@@ -159,25 +174,35 @@ class RuntimeService:
                 return self.decorate(existing)
             if self.current and self.current['status'] not in TERMINAL:
                 raise RuntimeError('A workflow is already running; cancel or wait before starting another')
-            config = self.skills.freeze(options) if task == 'skill-evolution' else None
+            config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else None
             from skill_agents import TASKS as SKILL_TASKS
-            tasks = SKILL_TASKS if config else TASKS
-            identifier = 'RUN-' + str(uuid.uuid4())
-            directory = self.local / 'runs' / identifier
-            directory.mkdir(parents=True)
-            (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
-            if config:
-                (directory / 'skill-config.json').write_text(json.dumps(config, indent=2, ensure_ascii=False))
-            timestamp = now()
-            self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
-            if config:
-                self.current['skillConfig'] = config
-            self.event(None, f'Queued actual {task} workflow; no LLM or GEPA calls')
-            self.persist()
-            self.cancel_event.clear()
-            self.thread = threading.Thread(target=self.execute, args=(directory,), daemon=True)
-            self.thread.start()
-            return copy.deepcopy(self.current)
+            from llm_engine import TASKS as LLM_TASKS
+            tasks = LLM_TASKS if task == 'llm-evolution' else SKILL_TASKS if config else TASKS
+            if task == 'llm-evolution':
+                if not self.ollama.operation.acquire(blocking=False):
+                    raise RuntimeError('An Ollama request is already running; wait first')
+                agents.sort(key=lambda a: ('coordinator', 'worker', 'reflector', 'evaluator', 'reviewer').index(a['role']))
+            try:
+                identifier = 'RUN-' + str(uuid.uuid4())
+                directory = self.local / 'runs' / identifier
+                directory.mkdir(parents=True)
+                (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
+                if config:
+                    (directory / ('llm-config.json' if task == 'llm-evolution' else 'skill-config.json')).write_text(json.dumps(config, indent=2, ensure_ascii=False))
+                timestamp = now()
+                self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'ollama-skill-role' if task == 'llm-evolution' else 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
+                if config:
+                    self.current['llmConfig' if task == 'llm-evolution' else 'skillConfig'] = config
+                self.event(None, f'Queued actual {task} workflow; ' + ('explicit model calls, no GEPA adapter' if task == 'llm-evolution' else 'no LLM or GEPA calls'))
+                self.persist()
+                self.cancel_event.clear()
+                self.thread = threading.Thread(target=self.execute, args=(directory,), daemon=True)
+                self.thread.start()
+                return copy.deepcopy(self.current)
+            except Exception:
+                if task == 'llm-evolution':
+                    self.ollama.operation.release()
+                raise
 
     def stop_process(self):
         process = self.process
@@ -208,6 +233,8 @@ class RuntimeService:
             return copy.deepcopy(self.current)
 
     def execute(self, directory):
+        provider_leased = self.current.get('task') == 'llm-evolution'
+        workflow_started = time.monotonic()
         try:
             with self.lock:
                 self.current['status'] = 'running'
@@ -233,7 +260,7 @@ class RuntimeService:
                         while self.process.poll() is None:
                             if self.cancel_event.wait(0.25):
                                 self.stop_process()
-                            elif time.monotonic() - started > self.stage_timeout:
+                            elif (self.current.get('task') == 'llm-evolution' and time.monotonic() - workflow_started > self.current['llmConfig']['maxSeconds']) or (self.current.get('task') != 'llm-evolution' and time.monotonic() - started > self.stage_timeout):
                                 timed_out = True
                                 self.stop_process()
                             with self.lock:
@@ -264,8 +291,8 @@ class RuntimeService:
                 if review.exists():
                     result = json.loads(review.read_text())
                     self.current['checksPassed'] = result['checksPassed']
-                    if self.current.get('task') == 'skill-evolution':
-                        self.current['skillResult'] = result
+                    if self.current.get('task') in ('skill-evolution', 'llm-evolution'):
+                        self.current['llmResult' if self.current['task'] == 'llm-evolution' else 'skillResult'] = result
                     if not self.current['checksPassed'] and self.current['status'] == 'completed':
                         self.current['status'] = 'failed'
                         self.event(None, 'Workflow finished but trusted checks failed')
@@ -281,6 +308,10 @@ class RuntimeService:
                         agent.update(status='failed' if agent['status'] == 'running' else 'skipped', processAlive=False, endedAt=now(), updatedAt=now(), error='Supervisor failed')
                 self.event(None, 'Supervisor error: ' + str(exc))
                 self.persist()
+
+        finally:
+            if provider_leased:
+                self.ollama.operation.release()
 
     @staticmethod
     def tail(path):

@@ -21,7 +21,7 @@ export function ollamaView(state){
  </div><datalist id="ollama-model-ids">${ids.map(id=>`<option value="${esc(id)}"></option>`).join('')}</datalist>
  <p class="body-copy">目前解析的 API：<code>${esc(data.openaiBaseUrl||data.discoveryError)}</code><br>Proxy：所有橋接請求皆略過。GUI port 預設 8765，與 Ollama port 分開設定。</p>
  <div class="actions card-actions"><button class="button primary" ${disabled}>儲存設定</button><button type="button" class="button secondary" data-ollama="reload" ${disabled}>重新讀取設定</button><button type="button" class="button secondary" data-ollama="metadata" ${disabled}>手動更新模型清單</button></div></form>
- <div class="small-notice">更新模型清單與試跑使用已儲存設定。名稱含 cloud 的模型可能使用遠端服務；請自行選擇已安裝模型。技能演化目前仍使用規則引擎，尚未串接此模型。</div>
+ <div class="small-notice">更新模型清單與試跑使用已儲存設定。名稱含 cloud 的模型可能使用遠端服務；請自行選擇已安裝模型。「LLM 技能實驗」會使用此模型；本機規則技能保持獨立。</div>
  <form id="ollama-chat-form" class="ollama-form"><label>單次模型試跑（按下才送出）<textarea name="prompt" required maxlength="4000" rows="3" ${disabled}>${esc(prompt)}</textarea></label><div class="actions card-actions"><button class="button secondary" ${busy||!c.model?'disabled':''}>送出一次推論</button><span>${busy?'操作處理中；請勿重複送出':'不會自動測試或重試'}</span></div></form>
  ${r?`<div class="small-notice">最近請求：${esc(r.status)} · ${esc(r.finishedAt)} · ${r.elapsedMs} ms · ${current?'目前已儲存設定':'先前設定，請勿視為目前連線狀態'}<br><code>${esc(r.reportPath)}</code></div><pre class="ollama-output">${esc(r.error||r.content||JSON.stringify(r.modelIds,null,2))}</pre>`:''}</section>`;
 }

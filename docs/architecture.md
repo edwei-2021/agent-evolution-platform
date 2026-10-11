@@ -24,7 +24,13 @@ The target is a small `normalize-support-title` fixture, with 20/10/20 distinct 
 
 The provider is separate from the existing rule-based Skill workflow. Worker/Reflector model execution, nanobot orchestration and GEPA candidate optimization are still planned. See [the integrated Ollama guide](ollama-wsl.md).
 
-## Phase 2b: Real single-worker model evaluation (planned)
+## Phase 2b: Bounded model Skill evaluation (implemented in v0.5.0)
+
+`llm_engine.py` runs actual Ollama chat completions with fresh messages and strict JSON output, records raw calls and reconstructs trusted task scores. `llm_agents.py` executes Coordinator, Worker, Reflector, Evaluator and Reviewer as supervised subprocesses. One training-only reflection generates a candidate; validation selects it before held-out evaluation. `llm_store.py` persists immutable prompt Skills separately from rule versions, with evidence recomputation, revision guards and explicit approval/rollback. `llm-view.js` uses existing polling for progress, comparisons, history and version controls. Settings are pinned per run; no startup probe or automatic retry occurs.
+
+Smoke/Full use 3/2/2 and 20/10/20 fixed splits, at most 15/101 calls, and a configurable whole-run deadline. The provider slot and workflow slot prevent local concurrent model work. This self-contained reflection engine is not a GEPA implementation; no external SDK is imported. See [the model Skill guide](llm-skill-evolution.md).
+
+## Phase 2c: nanobot SDK task execution (planned)
 
 Add a separately deployed FastAPI service, SQLite experiments/artifacts, and a durable worker. Sites hosts the browser GUI; it does not execute Python agents. Run the worker on a user-controlled server/VM with isolated task workspaces. Keep provider credentials server-side.
 

@@ -1,6 +1,6 @@
 # Runtime API and proposed evolution service contract
 
-v0.4.1 adds explicit Ollama provider endpoints; v0.4.0 implements local runtime and measured declarative-skill endpoints. Simulation experiments/releases and registry editing remain browser-local; model-agent/GEPA endpoints below remain future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
+v0.5.0 implements actual Ollama model Skill workflows plus the existing provider, runtime and declarative-skill endpoints. Simulation experiments/releases and registry editing remain browser-local; external nanobot/GEPA adapter contracts remain future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
 
 ## Implemented local runtime API (已實作的本機執行 API)
 
@@ -89,4 +89,21 @@ All routes use the existing loopback Host/Origin policy. POST requires JSON and 
 
 Config fields: `host` (empty for WSL NAT discovery or an IPv4 override), `port` (11435), `model` (empty until selected), `metadataTimeout` (10), `inferenceTimeout` (600), `maxTokens` (256). Numeric settings are bounded integers. Invalid input returns 400; an outdated revision or simultaneous provider operation returns 409 without dispatch. A dispatched provider failure returns a persisted operation record with `status: FAIL` and `error`; this is not a successful inference. Records pin config/revision/endpoint and include timestamps, elapsed time, report path and actual output/usage when present. No automatic retry occurs.
 
-Provider status is separate from agent-framework connectivity. `modelConnected` remains false in runtime capabilities because the Skill/agent workflow does not execute models yet; `workerIntegrated` is false in the provider snapshot. Historical `METADATA_ONLY_PASS` does not become a live connection badge. The saved configuration is authoritative; imported browser registry/demo backups do not overwrite it.
+Provider status is separate from agent-framework connectivity. `modelConnected` remains the legacy external-framework flag. Version 0.5.0 exposes `llmWorkerAvailable` and sets provider `workerIntegrated` to true for the actual model Skill workflow; neither is a live reachability probe. Historical `METADATA_ONLY_PASS` does not become a live connection badge. The saved configuration is authoritative; imported browser registry/demo backups do not overwrite it.
+
+## Actual LLM Skill workflow (v0.5.0)
+
+`/api/v1/runtime` additionally returns `llm`, a separate prompt workspace with revision, immutable `LSV-...` versions, active version, latest run and recent runs. A model run has `task: llm-evolution`, `llmConfig`, live `llmProgress` and verified `llmResult`. It reuses the process-status envelope and generic cancellation/artifact routes.
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/v1/llm/skills` | Prompt workspace and current progress, without model requests |
+| POST | `/api/v1/llm/skills/runs` | `{registry, requestId, profile, maxSeconds, expectedRevision, providerRevision}`; returns 202 |
+| POST | `/api/v1/llm/skills/runs/{runId}/approve` | `{expectedRevision}`; recompute evidence and create/activate an immutable prompt version |
+| POST | `/api/v1/llm/skills/versions/{versionId}/activate` | `{expectedRevision}`; rollback/reactivate without deleting evidence |
+
+`profile` is `smoke` or `full`; `maxSeconds` is an integer 60–7200 (GUI default 900). Provider revision binds saved settings. The server resolves/pins the endpoint without a connectivity test; an exact model ID must already be saved. The call budget is fixed at 15/101, including reflection. Strict validation improvement and no held-out regression gate release. HTTP failure/timeout/invalid candidate fails the workflow; task-format errors are scored as failed tasks. There is no automatic model retry or fallback to rule execution.
+
+Model and rule runs share the workflow slot. Model runs additionally reserve the server's provider operation slot. Request IDs bind immutable submissions; a replay cannot change profile, budgets or role bindings. Mutations use the existing Host/Origin/CSRF policy; stale revisions return 409. Provider settings may change during a run but cannot alter its frozen calls. `modelConnected` is the legacy external-framework flag, not a reachability probe; capabilities adds `llmWorkerAvailable: true` and `llmSkillEngine`. Provider snapshots now report `workerIntegrated: true`; no claim of installed nanobot/GEPA is made.
+
+Artifact previews additionally expose `truncated` and `totalChars` when content exceeds 200,000 characters. Complete evidence remains under `.local/runs/`.

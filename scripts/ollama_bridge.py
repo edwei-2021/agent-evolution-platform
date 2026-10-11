@@ -98,7 +98,7 @@ class OllamaBridge:
                     'discoveryError': error, 'proxyBypass': True,
                     'historicalEvidence': json.loads(self.evidence_path.read_text()),
                     'latest': json.loads(latest.read_text()) if latest.exists() else None,
-                    'busy': self.operation.locked(), 'workerIntegrated': False}
+                    'busy': self.operation.locked(), 'workerIntegrated': True}
 
     def save(self, config, revision):
         config = validate_config(config)

@@ -64,3 +64,7 @@ Then use `http://localhost:9000`.
 ## Next implementation boundary (後續實作邊界)
 
 Keep the registry view and replace its browser adapter with an authenticated agent service. Add server-owned config revisions, real Runtime discovery/heartbeat evidence, Skill artifact hashes and task handoff traces. Tie an experiment to an immutable configuration snapshot before real nanobot/GEPA execution. The existing relationship graph can then present configuration alongside measured execution evidence without treating the two as interchangeable.
+
+## Actual model roles (v0.5.0)
+
+A submitted LLM Skill experiment pins the configured role IDs/names, then runs Coordinator, Worker, Reflector, Evaluator and Reviewer in that order. Details show its frozen model, baseline prompt Skill and fixed model protocol separately from browser-local configuration. Nodes retain actual process-status overlays. Configured graph arrows do not schedule this fixed workflow; tool names, memory/steps/temperature in registry records do not alter it. The model runner has no tools and uses fresh messages at temperature 0. See [LLM Skill evolution](llm-skill-evolution.md).

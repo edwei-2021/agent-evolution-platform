@@ -8,7 +8,7 @@ test('initialization and reading settings never request metadata or inference',a
  const calls=[];const ui=new OllamaUI({fetcher:async(path,options)=>{calls.push({path,options});return response(data());}});
  assert.equal(calls.length,0);await ui.operate('reload');
  assert.deepEqual(calls.map(c=>c.path),['/api/v1/llm/ollama']);assert.equal(calls[0].options.method,'GET');
- assert.match(ui.view(),/API 連通成功，推論尚未測試/);assert.match(ui.view(),/11435/);assert.match(ui.view(),/規則引擎/);
+ assert.match(ui.view(),/API 連通成功，推論尚未測試/);assert.match(ui.view(),/11435/);assert.match(ui.view(),/本機規則技能/);
 });
 test('explicit chat pins revision and model config with a long inference wait and no automatic retry',async()=>{
  const calls=[];const ui=new OllamaUI({token:()=> 'test-token',fetcher:async(path,options)=>{calls.push({path,options});return response(path.endsWith('/chat')?{status:'INFERENCE_PASS'}:data());}});

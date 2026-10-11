@@ -65,13 +65,15 @@ class GuiHandler(SimpleHTTPRequestHandler):
         try:
             if path == '/api/v1/runtime/capabilities':
                 from setup_wsl import find_node
-                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': bool(shutil.which('nanobot')), 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False})
+                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': bool(shutil.which('nanobot')), 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())
             elif path == '/api/v1/skills':
                 self.json_response(200, runtime.snapshot()['skills'])
             elif path == '/api/v1/llm/ollama':
                 self.json_response(200, ollama_bridge(runtime).snapshot())
+            elif path == '/api/v1/llm/skills':
+                self.json_response(200, runtime.snapshot()['llm'])
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)', path):
                 self.json_response(200, runtime.get_run(match[1]))
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md))', path):
@@ -79,7 +81,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 target = (runtime.local / 'runs' / match[1] / match[2]).resolve()
                 if match[2] not in run['artifacts'] or not target.is_relative_to((runtime.local / 'runs').resolve()) or not target.is_file():
                     raise KeyError('Artifact not found')
-                self.json_response(200, {'name': match[2], 'content': target.read_text(errors='replace')[:200000]})
+                content = target.read_text(errors='replace')
+                self.json_response(200, {'name': match[2], 'content': content[:200000], 'truncated': len(content) > 200000, 'totalChars': len(content)})
             else:
                 self.json_response(404, {'error': 'API route not found'})
         except KeyError as exc:
@@ -103,6 +106,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
             elif path == '/api/v1/llm/ollama/settings':
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
+            elif path == '/api/v1/llm/skills/runs':
+                options = {key: body.get(key) for key in ('profile', 'maxSeconds', 'expectedRevision', 'providerRevision')}
+                self.json_response(202, runtime.start(body.get('registry'), body.get('requestId'), 'llm-evolution', options))
+            elif match := re.fullmatch(r'/api/v1/llm/skills/runs/(RUN-[A-Za-z0-9-]+)/approve', path):
+                self.json_response(200, runtime.llm.approve(match[1], body.get('expectedRevision')))
+            elif match := re.fullmatch(r'/api/v1/llm/skills/versions/(LSV-[A-Za-z0-9-]+)/activate', path):
+                self.json_response(200, runtime.llm.activate(match[1], body.get('expectedRevision')))
             elif path in ('/api/v1/llm/ollama/metadata', '/api/v1/llm/ollama/chat'):
                 result = ollama_bridge(runtime).run(path.rsplit('/', 1)[-1], body.get('expectedRevision'), body.get('prompt'))
                 self.json_response(200, result)
@@ -177,7 +187,7 @@ def main(argv=None):
             server.server_close()
             print(f'Cannot start local runtime: {exc}', file=sys.stderr)
             return 1
-    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. Skill evolution remains rule-based; no automatic LLM or GEPA calls.', flush=True)
+    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. LLM Skill runs call the saved model only after explicit submission; no startup probes or GEPA adapter.', flush=True)
     with server:
         try:
             server.serve_forever()

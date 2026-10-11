@@ -71,7 +71,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(snapshot['historicalEvidence']['status'], 'METADATA_ONLY_PASS')
         self.assertFalse(snapshot['historicalEvidence']['inferenceTested'])
         self.assertEqual(len(snapshot['historicalEvidence']['modelIds']), 15)
-        self.assertFalse(snapshot['workerIntegrated'])
+        self.assertTrue(snapshot['workerIntegrated'])
         restarted = bridge.OllamaBridge(self.temp.name)
         self.assertEqual(restarted.state(), self.bridge.state())
         self.config['model'] = "test-model:local' ; $(printf must-not-run)"

@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.4.1 adds an explicit Windows Ollama bridge (default 11435), server-owned settings, reusable OpenAI-compatible transport and optional single-request Web trials. Startup and configuration do not probe Windows; the supplied metadata evidence is preserved. Version 0.4.0 introduced **measured local skill evolution**: training-only rule search, actual task-output evaluation, candidate curves/diffs, human approval, immutable SQLite versions, rollback and live skill trials. Its engine is `local-rule-search-v1`, implemented here; nanobot/GEPA evolution adapters remain planned. The earlier `python-fix-and-verify` simulation remains separately labeled. Port 8765 is the default with `--port` overrides; the WSL checkout and processing/temp/cache paths stay on D. This independent project does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.5.0 adds **actual Ollama Skill execution and training-based reflection**: fresh model calls, one candidate, trusted output scoring, polling process visibility, human approval and immutable prompt versions. Its engine is `ollama-prompt-reflection-v1`, implemented here; nanobot/GEPA SDK adapters remain planned. The earlier rule engine and synthetic demo remain separate. Windows Ollama defaults to 11435, GUI to 8765, both configurable. The WSL checkout and processing/temp/cache paths remain on D. No startup model calls or redundant Windows connection diagnostics are performed. This independent project does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
@@ -54,13 +54,23 @@ source .local/ollama/client.env
 bash scripts/start-gui.sh
 ```
 
-Open `http://localhost:8765/#integrations` to select an exact model ID and save settings. Reading/saving settings makes no Windows HTTP request. Model-list refresh and a single chat completion require explicit clicks. Provider records and settings stay under `.local/ollama/` on D; no extra Python packages are required. Existing rule-based Skill evolution is separate and does not yet call this provider. Full usage and preserved attachment tools: [Windows Ollama guide](docs/ollama-wsl.md).
+Open `http://localhost:8765/#integrations` to select an exact model ID and save settings. Reading/saving settings makes no Windows HTTP request. Model-list refresh and a single chat completion require explicit clicks. Provider records and settings stay under `.local/ollama/` on D; no extra Python packages are required. Rule-based Skill evolution remains separate; the LLM Skill page uses this provider. Full usage and preserved attachment tools: [Windows Ollama guide](docs/ollama-wsl.md).
+
+## Actual LLM Skill evolution (LLM 技能演化)
+
+After saving a model in **Integrations**, open `http://localhost:8765/#llm`. Start with Smoke (3/2/2 tasks, at most 15 model calls), or choose Full (20/10/20, at most 101 calls). The whole-run deadline defaults to 900 seconds. Coordinator freezes settings, Worker executes the baseline, Reflector uses training failures only, Evaluator runs and selects the candidate before held-out tests, and Reviewer recomputes scores from raw responses. Existing polling displays actual PIDs/status/logs; the LLM page shows calls, scores, body diffs, failures and immutable prompt versions.
+
+Approve only a verified validation improvement with no held-out regression. A model release affects future model experiments; rule versions remain independent. Calls are not automatically retried. No nanobot/GEPA SDK adapter or model-quality claim is implied. Full workflow, limits and setup: [LLM Skill guide](docs/llm-skill-evolution.md).
 
 ## Measured local skill evolution (本機技能演化)
 
 Open `http://localhost:8765/#skills` after starting the local server. Select up to four candidates, run search, review the actual validation/held-out evidence, then approve/activate or roll back a local version. Try your own text against the active Skill and export its `SKILL.md`. This phase requires no model key or new packages. The bounded target is `normalize-support-title`, with fixed Unicode/case/whitespace rules and a 20/10/20 handwritten dataset. Scores are measured task outputs; they do not represent LLM or GEPA performance. See the [skill evolution guide](docs/skill-evolution.md).
 
 ## Implemented
+
+- Real Ollama Worker/Reflector prompt evolution, trusted task-output scores and 15/101-call profiles.
+- Whole-run deadlines, cancellation, shared provider/workflow slots and raw request/response evidence.
+- Separate immutable model Skills, human approval, rollback, history and Markdown export.
 
 - Windows Ollama bridge: persisted endpoint/model/timeouts, WSL gateway discovery and proxy bypass.
 - Manual Web metadata update and single inference, pinned request reports and historical target evidence.
@@ -94,7 +104,7 @@ Open `http://localhost:8765/#skills` after starting the local server. Select up 
 
 Agent records are editable browser-local role configurations. Their latest real native-tool run state appears as a separate telemetry overlay. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Framework-connected count remains zero; native tool processes are tracked separately in the execution monitor. GEPA is a planned optimizer adapter, not a runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
 
-Scores, tasks and events in **演化展示** are synthetic fixtures. **本機技能實驗** executes the bounded rule-search engine and stores actual outputs/evidence in SQLite and run artifacts. **執行監控** reads real process evidence for both workflow types. An explicit Ollama provider bridge is implemented; no nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw execution adapter has been implemented. Local measured Skill activation changes the server's active policy for future runs/trials; demo activation changes browser-only state. Neither operation publishes Git code or installs an external-agent Skill.
+Scores, tasks and events in **演化展示** are synthetic fixtures. **本機技能實驗** executes the bounded rule-search engine and stores actual outputs/evidence in SQLite and run artifacts. **執行監控** reads real process evidence for both workflow types. An Ollama provider and actual model Skill workflow are implemented; no nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw execution adapter has been implemented. Local measured Skill activation changes the server's active policy for future runs/trials; demo activation changes browser-only state. Neither operation publishes Git code or installs an external-agent Skill.
 
 ## Source structure
 
@@ -110,6 +120,10 @@ dist/js/agent-ui.js       Agent workspace interactions
 dist/js/runtime-client.js Live HTTP/polling client and stale-state handling
 dist/js/runtime-view.js   Live process/evidence monitor
 dist/js/skill-view.js     Measured candidates, review, versions and trials
+scripts/llm_engine.py    Model runner, prompt protocol and trusted evidence verification
+scripts/llm_agents.py    Five supervised model-workflow roles
+scripts/llm_store.py     Separate immutable prompt versions and approval
+dist/js/llm-view.js      Actual model experiments, comparisons and version controls
 scripts/ollama_bridge.py Windows Ollama transport and server-owned settings
 scripts/configure_ollama.py Offline endpoint settings and shell exports
 scripts/test_windows_ollama.py Preserved attachment diagnostic
@@ -149,8 +163,8 @@ The hosted URL can be accessed from a remote browser, subject to the owner's pri
 
 ## Next milestone
 
-Local process monitoring, measured declarative skill evolution and an explicit Ollama provider bridge are implemented. Use the bridge for isolated nanobot model-task execution and GEPA reflective search behind the frozen skill/evaluation contracts, followed by authenticated remote access. The local rule engine is a dependency-free integration foundation, not a GEPA implementation. Keep model secrets server-side and preserve trusted release/rollback gates.
+Local process monitoring, rule-based and actual model Skill evolution are implemented. Add the nanobot SDK runner and real GEPA adapter against the frozen execution/evidence contracts, followed by authenticated remote access. The local rule engine is a dependency-free integration foundation, not a GEPA implementation. Keep model secrets server-side and preserve trusted release/rollback gates.
 
 ## Verification
 
-`npm test` verifies demo/registry behavior, polling transport, measured skill controls and stale-state boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer/HTTP behavior, real role processes, skill execution, evidence gates and immutable version persistence. See [Ollama bridge verification](docs/verification/ollama-bridge-validation.md), [measured skill verification](docs/verification/skill-evolution-validation.md), [prior runtime verification](docs/verification/live-runtime-validation.md) and [installation verification](docs/verification/wsl-install-validation.md). Browser visual/full DOM QA and the user's WSL host were not directly tested. The fixture results support only the specified text-normalization contract; no LLM/GEPA performance claim is made.
+`npm test` verifies demo/registry behavior, polling transport, measured skill controls and stale-state boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer/HTTP behavior, real role processes, skill execution, evidence gates and immutable version persistence. See [LLM Skill verification](docs/verification/llm-skill-validation.md), [Ollama bridge verification](docs/verification/ollama-bridge-validation.md), [measured skill verification](docs/verification/skill-evolution-validation.md), [prior runtime verification](docs/verification/live-runtime-validation.md) and [installation verification](docs/verification/wsl-install-validation.md). Browser visual/full DOM QA and the user's WSL host were not directly tested. The fixture results support only the specified text-normalization contract; no LLM/GEPA performance claim is made.
