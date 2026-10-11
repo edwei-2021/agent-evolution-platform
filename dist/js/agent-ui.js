@@ -1,6 +1,6 @@
 import {agentsView,agentForm,relationshipForm} from './agent-view.js';
 
-export function createAgentUI({api,render,toast}){
+export function createAgentUI({api,render,toast,runtimeSnapshot=()=>null}){
   const view={selectedId:null,query:'',role:'all',pickedSkill:null};
   let editingId=null;
   const dialog=()=>document.querySelector('#agent-config');
@@ -36,7 +36,7 @@ export function createAgentUI({api,render,toast}){
     }catch(error){event.target.querySelector('.form-error').textContent=error.message;}
   });
   return {
-    view(state){return agentsView(state,view);},
+    view(state){return agentsView(state,{...view,runtime:runtimeSnapshot()});},
     handleClick(button){
       const s=api.snapshot();
       if(button.dataset.agentSelect){view.selectedId=button.dataset.agentSelect;view.pickedSkill=null;render(true);return true;}

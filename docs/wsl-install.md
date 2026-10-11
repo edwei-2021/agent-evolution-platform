@@ -1,6 +1,6 @@
 # WSL2 Ubuntu 24.04 installation（安裝與啟動）
 
-This installs the current GUI demo and its development checks. It does not install or execute nanobot, GEPA, a model server or a real evolution backend. The GUI has no Python third-party dependencies, npm packages, build step or model API key requirement.
+This installs the GUI, local native-tool runtime supervisor and development checks. It does not install or execute nanobot, GEPA, a model server or a real Skill evolution optimizer. The GUI has no Python third-party dependencies, npm packages, build step or model API key requirement.
 
 ## 1. Verify WSL2 in Windows
 
@@ -114,7 +114,9 @@ The default port is **8765**. You can choose another port at startup, including 
 bash scripts/start-gui.sh --port 8766
 ```
 
-Then open http://localhost:8766. The current local server is for development and has no login, API worker or LAN exposure. For remote access now, use the private hosted GUI linked in README. This installer does not change Windows firewall or WSL network settings.
+Then open http://localhost:8766. The current local server is for development, binds to loopback and has no account login or LAN exposure. It provides a same-origin native-tool API protected by a local mutation token. The private hosted GUI can display configuration/demo pages, but cannot run or reach the WSL Python supervisor automatically. This installer does not change Windows firewall or WSL network settings.
+
+Open **執行監控** and choose **執行專案檢查** to launch the fixed real tool workflow. Status polling defaults to 2 seconds. Logs and SQLite history stay under the project `.local/` directory on D. See [live runtime operation](live-runtime.md). No new third-party dependencies are needed; the doctor checks Python `sqlite3`/`fcntl` support and runtime source files.
 
 ## Update and repeat checks
 

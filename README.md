@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.2.0 adds an editable agent registry, role/property/Skill inspection and a directed work relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.3.0 adds a local SQLite/subprocess supervisor and polling-based live agent telemetry, alongside the editable registry and relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. The evolution workflow remains an interactive **demo**. The local execution monitor runs real project-health tool tasks without model calls or a real evolution optimizer. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
@@ -45,6 +45,11 @@ Open `http://localhost:8766` when using that port.
 
 ## Implemented
 
+- Live execution monitor: default 2-second polling, interval selection, refresh, pause/resume polling and workflow cancellation.
+- Actual local tool-agent processes: asset hashes, JavaScript/Python tests, evidence analysis and review artifacts.
+- PID, process liveness, start/end times, exit codes, output tails, events and SQLite run history.
+- Live status overlays on agent lists, details and graph nodes; stale snapshots are explicitly marked.
+
 - Agent workspace: configured/connected counts, five starter roles, search and role filtering.
 - Agent details: Runtime/model, memory/isolation, step/temperature limits, tool names and assigned Skills.
 - Browser-local agent creation/editing/deletion and directed relationship creation/deletion.
@@ -62,9 +67,9 @@ Open `http://localhost:8766` when using that port.
 - Validated JSON import/export; import replaces the local workspace and pauses active runs.
 - Responsive layouts, keyboard navigation, modal forms, explicit demo labeling.
 
-Agent records are editable browser-local role configurations, not discovered or running agents. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Connected count is zero. GEPA is a planned optimizer adapter, not a runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
+Agent records are editable browser-local role configurations. Their latest real native-tool run state appears as a separate telemetry overlay. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Framework-connected count remains zero; native tool processes are tracked separately in the execution monitor. GEPA is a planned optimizer adapter, not a runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
 
-All scores, tasks and execution events are synthetic fixtures. `S0` and `S1` are fixed example skill bodies. No nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw integration has been implemented. A GUI release changes only the browser's active version pointer, not a Git repository or agent installation.
+Scores, tasks and events in the evolution tab are synthetic fixtures. The execution monitor reads real process evidence from the local service; see the [live runtime guide](docs/live-runtime.md). `S0` and `S1` are fixed example skill bodies. No nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw execution integration has been implemented. The native tool workflow does not perform LLM reasoning, optimize Skills or publish releases. A GUI release changes only the browser's active version pointer, not a Git repository or agent installation.
 
 ## Source structure
 
@@ -77,6 +82,12 @@ dist/js/adapter.js       Browser-local persistence adapter
 dist/js/agents.js         Registry model, assignments and directed relationships
 dist/js/agent-view.js     Agent details, graph and configuration form views
 dist/js/agent-ui.js       Agent workspace interactions
+dist/js/runtime-client.js Live HTTP/polling client and stale-state handling
+dist/js/runtime-view.js   Live process/evidence monitor
+scripts/runtime_service.py SQLite history and process supervisor
+scripts/native_agents.py Fixed native tool-agent tasks
+tests/runtime_test.py     Actual processes, API policy and workflow integration
+tests/runtime-client.test.js Polling, live mutations and stale snapshots
 tests/agents.test.js      Registry, migration, persistence and rendering boundaries
 tests/domain.test.js     Lifecycle, release gate, import, persistence tests
 tests/setup_test.py      Offline installer and real HTTP server tests
@@ -95,12 +106,14 @@ The tracked `dist/` folder is the canonical frontend source in this buildless MV
 
 ## Persistence and remote use
 
-The hosted URL can be accessed from a remote browser, subject to the owner's private sign-in. Records remain browser-local and do not sync across devices. Use JSON export/import to move demo records. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
+The hosted URL can be accessed from a remote browser, subject to the owner's private sign-in. Sites serves static assets and does not execute this Python supervisor: use the WSL localhost interface for live execution. A hosted browser does not automatically connect to your WSL machine. Records remain browser-local and do not sync across devices. Use JSON export/import to move demo records. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
 
 ## Next milestone
+
+A standard-library local supervisor and SQLite history are implemented. Next, add authenticated remote access and real nanobot/GEPA execution adapters. The existing fixed project-health pipeline is separate from Skill evolution.
 
 Implement FastAPI + SQLite with a job worker, nanobot execution adapter, trusted evaluator and GEPA optimizer. Replace DemoAdapter through the contract in `docs/api-contract.md`. Preserve this GUI and add explicit real/demo mode separation. Treat real publication and rollback as server-owned Git operations.
 
 ## Verification
 
-`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. The v0.2.0 delivery has 28 JavaScript and 15 Python passing tests; see [agent workspace verification](docs/verification/agent-workspace-validation.md). WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.
+`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. The v0.3.0 delivery has 35 JavaScript and 25 Python passing tests, including real process/API/launcher validation; see [live runtime verification](docs/verification/live-runtime-validation.md). WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.

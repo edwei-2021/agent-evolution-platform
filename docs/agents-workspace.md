@@ -4,7 +4,7 @@ Open the **代理人** page after updating the project. It is now the default la
 
 ## Counts and initial roles (數量與初始角色)
 
-The registry starts with five editable role configurations. **已設定代理人** counts registry records; **實際連線** is zero because Runtime adapters are not installed or connected. Configured agents can be enabled or disabled without launching or stopping a process. Skills count distinct assigned Skill IDs across agents. Relationships count directed handoff definitions.
+The registry starts with five editable role configurations. **已設定代理人** counts registry records; **實際連線** counts framework connections and remains zero. In v0.3.0, a separate native-tool supervisor supplies real PID/state overlays and the execution monitor; nanobot/GEPA adapters are still not connected. Configured agents can be enabled or disabled without launching or stopping a process. Skills count distinct assigned Skill IDs across agents. Relationships count directed handoff definitions.
 
 | Record | Role (角色) | Assigned Skill | Planned integration |
 | --- | --- | --- | --- |
@@ -32,11 +32,11 @@ Arrow direction is **source → recipient**. Click a node to highlight its incom
 
 Four relationship types are available: task delegation (任務委派), evaluation evidence (評估證據), reflection feedback (反思回饋), and release review (版本檢閱). A feedback loop is allowed. The initial loop sends training evidence from Evaluator to Skill Reflector and a candidate Skill back to Worker; held-out tasks are excluded from reflection by the proposed design. This is a design annotation, not an implemented evaluator boundary.
 
-Choose **新增關係**, select source/recipient/type, and describe the deliverable. Self-links, duplicate source/recipient/type tuples and absent endpoints are rejected. A relationship can be deleted from the table. The registry supports at most 30 agents and 120 relationships. Work relationship edits describe intended collaboration; they do not dispatch tasks or create execution traces.
+Choose **新增關係**, select source/recipient/type, and describe the deliverable. Self-links, duplicate source/recipient/type tuples and absent endpoints are rejected. A relationship can be deleted from the table. The registry supports at most 30 agents and 120 relationships. Work relationship edits describe intended collaboration; they do not dispatch tasks or create execution traces. v0.3.0 overlays the latest native-tool process state on list/detail/graph nodes, matched by agent ID. The fixed project-health workflow does not execute the configured graph; consult [live runtime operation](live-runtime.md) for its actual stage order.
 
 ## Storage and upgrades (儲存與升級)
 
-Agent configurations and relationships share the existing browser-local workspace with experiments and releases. Export JSON to back up the entire workspace, preferably under `D:\nanobot-gepa-mvp`. Import replaces the current workspace after confirmation and pauses running demo experiments.
+Agent configurations and relationships share the existing browser-local workspace with experiments and releases. Export JSON to back up configuration, demo experiments and demo releases (not server execution history), preferably under `D:\nanobot-gepa-mvp`. Import replaces the current workspace after confirmation and pauses running demo experiments.
 
 Existing schemaVersion 1 data is migrated in memory to version 2 with the five starter roles. Experiments, release bodies and active version are preserved. New exports use schemaVersion 2. Invalid registry data is rejected before replacement; demo imports cannot assert a connected Runtime. The existing storage key is retained so a code update on the same origin can load old data.
 

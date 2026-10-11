@@ -100,9 +100,17 @@ def check_environment(root=ROOT, allow_non_wsl=False):
     except RuntimeError as exc:
         arch = None
         errors.append(str(exc))
-    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js']:
+    for module in ['sqlite3', 'fcntl']:
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            errors.append(f'Python {module} support is unavailable; repair the selected interpreter through its provider.')
+    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js', 'js/runtime-client.js', 'js/runtime-view.js']:
         if not (root / 'dist' / name).is_file():
             errors.append(f'Missing frontend asset: dist/{name}. Use a complete repository checkout.')
+    for name in ['serve_gui.py', 'runtime_service.py', 'native_agents.py']:
+        if not (root / 'scripts' / name).is_file():
+            errors.append(f'Missing runtime source: scripts/{name}. Use a complete repository checkout.')
     venv_path = root / '.venv' / 'bin/python'
     venv_ready = False
     if (root / '.venv').exists():
@@ -122,7 +130,7 @@ def check_environment(root=ROOT, allow_non_wsl=False):
         else:
             errors.append(f'Python venv module is missing and {package} has no configured APT candidate. Repair venv using the provider of this Python installation; no PPA will be added automatically.')
     node = find_node(root)
-    return {'schema_version': 1, 'mode': 'gui-demo', 'checked_at': datetime.now(timezone.utc).isoformat(),
+    return {'schema_version': 1, 'mode': 'gui-native-runtime', 'checked_at': datetime.now(timezone.utc).isoformat(),
             'os': os_info.get('PRETTY_NAME', 'unknown'), 'kernel': platform.release(),
             'wsl2_detected': is_wsl2(platform.release()), 'allow_non_wsl': allow_non_wsl,
             'architecture': arch, 'python': {'path': sys.executable, 'version': platform.python_version()},

@@ -1,3 +1,5 @@
+import {RuntimeClient} from './runtime-client.js';
+import {runtimeView} from './runtime-view.js';
 import {DemoAdapter} from './adapter.js';
 import {BASE_SKILL,CANDIDATE_SKILL,canRelease} from './domain.js';
 import {createAgentUI} from './agent-ui.js';
@@ -5,9 +7,14 @@ import {registryStats} from './agents.js';
 let storage;
 try { storage=window.localStorage; } catch {}
 const api=new DemoAdapter(storage);
-let page=['overview','agents','evolution','evaluations','releases','integrations'].includes(location.hash.slice(1))?location.hash.slice(1):'agents';
-const labels={overview:'總覽',agents:'代理人',evolution:'技能演化',evaluations:'評估紀錄',releases:'版本管理',integrations:'框架整合'};
-const agentUI=createAgentUI({api,render,toast});
+let page=['overview','agents','runtime','evolution','evaluations','releases','integrations'].includes(location.hash.slice(1))?location.hash.slice(1):'agents';
+const labels={overview:'總覽',agents:'代理人',runtime:'執行監控',evolution:'技能演化',evaluations:'評估紀錄',releases:'版本管理',integrations:'框架整合'};
+const live=new RuntimeClient({onUpdate(){
+  const focus=document.activeElement;
+  if(document.querySelector('dialog[open]')||focus?.matches('#main input, #main select, #main textarea'))return;
+  if(['agents','runtime'].includes(page))render(true);
+}});
+const agentUI=createAgentUI({api,render,toast,runtimeSnapshot:()=>live.snapshot()});
 const statusLabels={queued:'等待啟動',running:'模擬執行中',paused:'已暫停',cancelled:'已取消',completed:'已完成'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const percent=n=>n===null||n===undefined?'—':`${Math.round(n*100)}%`;
@@ -48,12 +55,16 @@ function evaluation(state,e){
 function releases(state){return `${heading('版本管理','建立技能版本、檢閱變更與切回基準；目前僅影響本機展示狀態。',button('export','↓ 匯出紀錄'))}${notice()}<section class="card"><div class="card-heading"><div><h2>使用中的展示版本</h2><p>切換不會寫入任何代理人或 GitHub。</p></div><span class="soft-tag">${esc(state.activeReleaseId==='baseline'?'S0 · baseline':state.releases.find(r=>r.id===state.activeReleaseId)?.label)}</span></div><div class="release-row"><span class="version-icon">◇</span><div><h3>S0 · baseline</h3><p>初始技能本文 · 可隨時切回</p></div><button class="button secondary" data-activate="baseline" ${state.activeReleaseId==='baseline'?'disabled':''}>${state.activeReleaseId==='baseline'?'使用中':'切回基準'}</button></div>${state.releases.map(r=>`<div class="release-row"><span class="version-icon">↗</span><div><h3>${esc(r.label)}</h3><p>${esc(r.experimentId)} · ${date(r.createdAt)} · 展示版本</p></div><button class="button secondary" data-activate="${esc(r.id)}" ${state.activeReleaseId===r.id?'disabled':''}>${state.activeReleaseId===r.id?'使用中':'切換展示版本'}</button></div>`).join('')}${state.releases.length?'':'<div class="empty">尚未建立候選版本。前往技能演化，完成候選改善情境後檢閱。</div>'}</section>`;}
 function integrations(){const rows=[['nanobot','單一技能執行 Worker','下一階段','Runner adapter、隔離工作區、真實 trace'],['GEPA','技能本文演化','下一階段','反思、候選產生、評估預算'],['Hermes','第二個代理人 Runtime','後續擴充','技能匯入與記憶快照'],['OpenClaw','代理人與 Gateway','後續擴充','後端 HTTP adapter、版本發布'],['Herdr','互動執行監督','後續擴充','程序狀態與 terminal 連接'],['OpenEvolve','外層工作流程演化','第二輪','固定技能後調整角色與工作順序'],['NanoClaw','隔離執行選項','後續評估','容器與執行環境整合']];return `${heading('框架整合','保留同一個 GUI，逐步換上實際執行、評估與版本服務。')}${notice()}<section class="card"><div class="card-heading"><div><h2>整合路線圖</h2><p>框架尚未安裝或連線；此表為實作計畫。</p></div><span class="soft-tag">ADAPTER FIRST</span></div><div class="table-wrap"><table><thead><tr><th>專案</th><th>角色</th><th>階段</th><th>接入範圍</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map((s,i)=>`<td>${i===0?'<strong>':''}${s}${i===0?'</strong>':''}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section><div class="two-col spaced"><section class="card"><div class="card-heading"><h2>目前已實作</h2></div><ul class="feature-list"><li>實驗建立與開始／暫停／取消</li><li>技能本文與評估曲線檢閱</li><li>展示版本建立與回復</li><li>瀏覽器儲存、JSON 匯入／匯出</li><li>代理人角色、屬性、Skill 與工作關係設定</li><li>可獨立版本控管的程式與文件</li></ul></section><section class="card"><div class="card-heading"><h2>下一個可執行切片</h2></div><ol class="feature-list"><li>FastAPI + SQLite 實驗服務</li><li>nanobot 修復任務 Runner</li><li>可信測試與 trace 評估</li><li>GEPA 候選搜尋與保留測試</li><li>Git 技能版本與 Runtime 發布</li></ol></section></div><section class="card spaced"><div class="card-heading"><h2>資料備份</h2></div><p class="body-copy">紀錄保留於目前瀏覽器，尚未跨裝置同步。匯出 JSON 可移至另一個瀏覽器；匯入會取代本機工作區，執行中的展示實驗將轉為暫停。請勿在備份中加入 API 金鑰。</p><div class="actions card-actions">${button('export','↓ 匯出 JSON')}${button('import','↑ 匯入 JSON')}</div></section>`;}
 function overview(state,e){const team=registryStats(state.registry);return `${heading('實驗總覽','技能演化的第一個可操作切片；逐步建立評估與發布流程。',button('new','＋ 建立實驗','primary'))}${notice()}<section class="card team-summary"><div><p class="eyebrow">AGENT WORKSPACE</p><h2>${team.total} 個代理人設定 · ${team.connected} 個實際連線</h2><p>${team.skills} 個 Skills · ${team.relationships} 個工作關係</p></div><button class="button secondary" data-page="agents">查看代理人 →</button></section><div class="metrics">${metric('展示實驗',state.experiments.length,'保留於目前瀏覽器')}${metric('執行中',state.experiments.filter(e=>e.status==='running').length,'僅在分頁開啟時推進')}${metric('完成實驗',state.experiments.filter(e=>e.status==='completed').length,'包含改善與沒有改善情境')}${metric('展示版本',state.releases.length,'可檢閱與切換')}</div><div class="two-col"><section class="card"><div class="card-heading"><div><h2>第一輪：技能本文演化</h2><p>固定 Runtime、模型、工具與工作流程</p></div></div><div class="phase-flow"><span class="phase-number">01</span><div><h3>建立基準</h3><p>固定設定與資料分割</p></div><span class="phase-number">02</span><div><h3>評估候選</h3><p>檢閱曲線、差異與失敗案例</p></div><span class="phase-number">03</span><div><h3>版本檢閱</h3><p>改善才建立候選版本，隨時回復</p></div></div><div class="card-actions">${button('go-evolution','開啟技能演化 →','primary')}</div></section>${experiments(state)}</div>`;}
-function render(keepFocus=false){const focused=keepFocus&&document.activeElement?.closest('#main button');const focusData=focused?{...focused.dataset}:null;const s=api.snapshot(),e=s.experiments.find(v=>v.id===s.selectedId);document.querySelector('#breadcrumb').textContent=labels[page];document.querySelector('#agent-nav-count').textContent=s.registry.agents.length;document.querySelectorAll('[data-page]').forEach(b=>{b.classList.toggle('active',b.dataset.page===page);b.setAttribute('aria-current',b.dataset.page===page?'page':'false');});document.querySelector('#main').innerHTML=page==='agents'?agentUI.view(s)+(api.persistenceError?'<div class="error-banner spaced">無法儲存至瀏覽器；請匯出工作區備份。</div>':''):page==='evolution'?evolution(s,e):page==='evaluations'?evaluation(s,e):page==='releases'?releases(s):page==='integrations'?integrations():overview(s,e);if(focusData){const next=[...document.querySelectorAll('#main button')].find(b=>Object.entries(focusData).every(([k,v])=>b.dataset[k]===v));next?.focus({preventScroll:true});}}
+function render(keepFocus=false){const focused=keepFocus&&document.activeElement?.closest('#main button');const focusData=focused?{...focused.dataset}:null;const s=api.snapshot(),e=s.experiments.find(v=>v.id===s.selectedId);document.querySelector('#breadcrumb').textContent=labels[page];document.querySelector('.mode-pill').textContent=page==='runtime'?'本機實際執行':'配置／展示模式';document.querySelector('#agent-nav-count').textContent=s.registry.agents.length;document.querySelectorAll('[data-page]').forEach(b=>{b.classList.toggle('active',b.dataset.page===page);b.setAttribute('aria-current',b.dataset.page===page?'page':'false');});document.querySelector('#main').innerHTML=page==='runtime'?runtimeView(live.snapshot()):page==='agents'?agentUI.view(s)+(api.persistenceError?'<div class="error-banner spaced">無法儲存至瀏覽器；請匯出工作區備份。</div>':''):page==='evolution'?evolution(s,e):page==='evaluations'?evaluation(s,e):page==='releases'?releases(s):page==='integrations'?integrations():overview(s,e);if(focusData){const next=[...document.querySelectorAll('#main button')].find(b=>Object.entries(focusData).every(([k,v])=>b.dataset[k]===v));next?.focus({preventScroll:true});}}
 function navigate(next){page=next;history.replaceState(null,'',`#${next}`);render();}
 document.addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
  try{
  if(b.dataset.page) return navigate(b.dataset.page);
+ if(b.hasAttribute('data-live-refresh')){await live.refresh();return;}
+ if(b.hasAttribute('data-live-run')){await live.run(api.snapshot().registry);toast('已提交實際專案檢查工作');return;}
+ if(b.dataset.liveCancel){await live.cancel(b.dataset.liveCancel);toast('已請求取消；程序狀態由 polling 確認');return;}
+ if(b.hasAttribute('data-live-toggle')){if(live.enabled)live.stop();else await live.start();return;}
  if(agentUI.handleClick(b))return;
  if(b.hasAttribute('data-close'))return b.closest('dialog')?.close();
  if(b.dataset.select){api.select(b.dataset.select);navigate('evolution');return;}
@@ -70,7 +81,11 @@ document.addEventListener('click',async event=>{
 });
 document.querySelector('#experiment-form').addEventListener('submit',event=>{event.preventDefault();try{const fields=new FormData(event.target);api.create({name:fields.get('name'),budget:Number(fields.get('budget')),scenario:fields.get('scenario')});document.querySelector('dialog').close();navigate('evolution');toast('已建立實驗，按「啟動展示」開始');}catch(error){toast(error.message);}});
 document.querySelector('#import-file').addEventListener('change',async event=>{const file=event.target.files[0];try{if(!file)return;if(file.size>2000000)throw Error('資料檔案上限為 2 MB');const data=JSON.parse(await file.text());if(!window.confirm('匯入會取代目前瀏覽器的實驗、代理人與工作關係設定，是否繼續？'))return;api.import(data);render();toast('已匯入工作區；執行中的展示實驗已暫停');}catch(error){toast(`匯入失敗：${error.message}`);}finally{event.target.value='';}});
+document.addEventListener('change',event=>{if(event.target.matches('[data-live-interval]'))live.setInterval(event.target.value);});
 window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(labels[next]){page=next;render();}});
-setInterval(()=>{try{if(api.tick()&&page!=='agents')render(true);}catch(error){toast(error.message);}},1200);
+setInterval(()=>{try{if(api.tick()&&!['agents','runtime'].includes(page))render(true);}catch(error){toast(error.message);}},1200);
 render();
+live.start();
+window.addEventListener('pagehide',()=>live.stop());
+window.addEventListener('pageshow',event=>{if(event.persisted)live.start();});
 if(api.recoveryWarning)toast('原有本機資料無法讀取，已載入初始示例；請從備份重新匯入。');

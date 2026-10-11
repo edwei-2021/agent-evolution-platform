@@ -246,3 +246,37 @@
 @media(max-width:1180px){.agent-workspace{grid-template-columns:minmax(0,1fr) 300px;gap:16px}.agent-filters{grid-template-columns:1fr}.agent-row{padding:15px}.agent-detail .card-heading{align-items:flex-start;flex-wrap:wrap}}
 @media(max-width:1000px){.agent-workspace{grid-template-columns:1fr}.agent-detail{display:block}.agent-filters{grid-template-columns:1fr 180px}.agent-list{max-height:320px}.agent-properties{grid-template-columns:150px 1fr}.agent-properties dd{text-align:left}.skill-picker{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.agent-filters{grid-template-columns:1fr;padding:0 17px 17px}.agent-row{padding:14px 17px}.agent-row .soft-tag{font-size:8px}.agent-properties{padding:0 17px 20px;grid-template-columns:110px 1fr}.agent-section{padding:17px}.skill-picker{grid-template-columns:1fr}.team-summary{align-items:flex-start;flex-direction:column}.agent-detail .card-heading{padding:17px}.relation-legend{padding-left:17px}.agent-workspace{gap:18px}}
+
+/* Real local telemetry. These classes never advance the synthetic demo clock. */
+.polling-bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:20px 21px;margin-bottom:22px}
+.polling-bar>div{flex:1;min-width:230px}
+.polling-bar strong{font-size:13px;color:#465b70}
+.polling-bar p{font-size:11px;color:#68758c;line-height:1.8;margin-top:8px}
+.polling-bar label{margin:0;font-size:10px;min-width:95px}
+.polling-bar select{padding:7px 10px;margin-top:5px}
+.live-agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.live-agent{min-width:0}
+.live-agent .card-heading{align-items:flex-start}
+.live-agent-body{padding:0 21px 21px}
+.live-task{font-size:12px;color:#57677e;line-height:1.8;margin-bottom:18px}
+.live-agent .agent-properties{padding:0;margin-bottom:18px;font-size:11px;grid-template-columns:92px minmax(0,1fr)}
+.live-output{background:#20283a;color:#d9e5f3;border-radius:7px;font:11px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;min-height:90px;max-height:250px;overflow:auto;padding:14px}
+.live-status{display:inline-flex;align-items:center;font-size:10px;padding:5px 8px;border-radius:5px;white-space:nowrap;background:#eff2f7;color:#6b778d}
+.live-status.running{background:#e7f6ef;color:#247558}
+.live-status.completed{background:#eaf1ff;color:#4668a5}
+.live-status.failed,.live-status.interrupted{background:#ffedf0;color:#a14355}
+.live-status.cancelled,.live-status.skipped{background:#f3f1f7;color:#796683}
+.live-status.stale{background:#fff4dc;color:#946b22}
+.live-event-list{list-style:none;margin:0;padding:0 21px 21px;max-height:430px;overflow:auto}
+.live-event-list li{display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;padding:13px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.8}
+.live-event-list time{font-size:10px;color:#7c889a;min-width:140px}
+.live-event-list code{color:#62718a}
+.live-event-list span{flex:1;min-width:200px;overflow-wrap:anywhere}
+.artifact-links{padding:0 21px 21px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px}
+.runtime-metric{font-size:25px!important;overflow-wrap:anywhere;letter-spacing:0!important}
+.graph-node.live-node-running{background:#edf9f2;border-color:#4a9b78}
+.graph-node.live-node-completed{background:#f1f5ff;border-color:#94add6}
+.graph-node.live-node-failed{background:#fff1f3;border-color:#c6818f}
+.graph-node.live-node-stale{background:#fff8ea;border-color:#c5a46b}
+@media(max-width:1050px){.live-agent-grid{grid-template-columns:1fr}.polling-bar{gap:12px}}
+@media(max-width:760px){.polling-bar{padding:17px}.polling-bar>div{flex-basis:100%;min-width:0}.live-agent-body{padding:0 17px 17px}.live-event-list li{display:block}.live-event-list time,.live-event-list code{display:block}.runtime-metric{font-size:22px!important}}

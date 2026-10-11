@@ -1,8 +1,25 @@
-# Proposed backend contract (not implemented)
+# Runtime API and proposed evolution service contract
 
-This document defines a future integration seam. There is no HTTP adapter or backend in v0.2.0. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
+v0.3.0 implements only the local runtime endpoints below. Experiments, demo releases and registry editing remain browser-local; the broader evolution service endpoints are future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
 
-## Service resources
+## Implemented local runtime API (已實作的本機執行 API)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | /api/v1/runtime/capabilities | Service identity, local mutation token and detected tool availability |
+| GET | /api/v1/runtime | Server timestamp, latest full run snapshot and ten recent summaries |
+| POST | /api/v1/runtime/runs | Submit the fixed project-health task with role bindings and an idempotency request ID |
+| GET | /api/v1/runtime/runs/{id} | Read a persisted run snapshot |
+| POST | /api/v1/runtime/runs/{id}/cancel | Request termination of the active process group |
+| GET | /api/v1/runtime/runs/{id}/artifacts/{name} | Inspect an allowlisted JSON/log artifact, bounded to 200,000 characters |
+
+Requests are same-origin on the loopback server. Mutations require `X-Lab-Token` from capabilities, JSON content type and a body at most 128 KB. Unknown endpoints/artifacts return 404, invalid input 400, invalid token/origin/Host 403 and concurrent workflows 409. There is no CORS endpoint setting or browser credential entry.
+
+Submission body: `{registry, requestId}`. The server validates and projects enabled agent identities to exactly one of each fixed role. It never executes browser-supplied commands, Runtime strings, tool identifiers, model settings, Skill bodies or custom graph edges. Idempotency preserves the prior run ID for repeated request IDs. Run evidence is authoritative server data and is never imported into the demo registry as a connection claim.
+
+Snapshot fields include `serviceId`, `serverTime`, `latestRun`, and `runs`. Per-agent telemetry includes identity/role, adapter, status, task, PID, observed process liveness, start/end/update times, exit code, error and an 8 KB output tail. PID is execution evidence, not an LLM session ID. A completed role means its script exited successfully; the trusted test exit codes and final review determine `checksPassed`. A workflow can end failed when tests fail even if every stage process exited normally. Persisted running work becomes interrupted after supervisor restart.
+
+## Proposed evolution service resources
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -37,7 +54,7 @@ Replace `DemoAdapter` with an asynchronous HTTP implementation and update event 
 
 ## Agent registry boundary (代理人設定邊界)
 
-The v0.2.0 `DemoAdapter` owns synchronous browser-local `saveAgent`, `removeAgent`, `addRelationship` and `removeRelationship` operations. These are not HTTP calls or Runtime commands. An agent record is configuration; `enabled` does not mean running. `connection` is always `disconnected` in demo data. The registry is limited to 30 agents and 120 directed relationships. Skill IDs refer to a fixed local catalog, and the Worker target Skill body follows the active demo release.
+The v0.3.0 `DemoAdapter` owns synchronous browser-local `saveAgent`, `removeAgent`, `addRelationship` and `removeRelationship` operations. These are not HTTP calls or Runtime commands. An agent record is configuration; `enabled` does not mean running. `connection` is always `disconnected` in demo data. The registry is limited to 30 agents and 120 directed relationships. Skill IDs refer to a fixed local catalog, and the Worker target Skill body follows the active demo release.
 
 A real service must distinguish config revision from live execution telemetry. Connection state requires authenticated adapter evidence and timestamps, never a browser edit. Credentials belong to a server-side secret store; agent responses may carry a credential reference, not the secret. Tools are identifiers until an authorized runner validates an allowlist. GEPA belongs to the optimizer integration rather than the Runtime list. A graph expresses intended handoff relationships, while real task traces record actual handoffs and failures.
 
