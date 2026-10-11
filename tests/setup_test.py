@@ -21,6 +21,27 @@ from serve_gui import GuiHandler
 
 
 class InstallerTests(unittest.TestCase):
+    def test_subprocess_workspace_temp_and_cache_follow_project_directory(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(setup.subprocess, 'run') as run:
+            project = Path(tmp) / 'project with spaces'
+            project.mkdir()
+            setup.run(['tool', 'argument'], cwd=project)
+            kwargs = run.call_args.kwargs
+            self.assertEqual(kwargs['cwd'], project.resolve())
+            env = kwargs['env']
+            for key in ['TMPDIR', 'TMP', 'TEMP']:
+                self.assertEqual(env[key], str(project / '.local/tmp'))
+            self.assertEqual(env['PIP_CACHE_DIR'], str(project / '.local/cache/pip'))
+            self.assertEqual(env['NPM_CONFIG_CACHE'], str(project / '.local/cache/npm'))
+            self.assertTrue((project / '.local/tmp').is_dir())
+
+    def test_new_venv_copies_interpreter_into_project_directory(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(setup, 'run') as run:
+            project = Path(tmp)
+            setup.create_venv(project)
+            self.assertEqual(run.call_args.args[0], [sys.executable, '-m', 'venv', '--copies', '--without-pip', project / '.venv'])
+            self.assertEqual(run.call_args.kwargs['cwd'], project)
+
     def test_wsl2_not_confused_with_wsl1_or_plain_linux(self):
         self.assertTrue(setup.is_wsl2('6.6.87.2-microsoft-standard-WSL2'))
         self.assertFalse(setup.is_wsl2('4.4.0-19041-Microsoft'))

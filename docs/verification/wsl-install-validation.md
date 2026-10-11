@@ -13,3 +13,7 @@ Verified:
 - Actual creation of a project `.venv` without pip and launch through `start-gui.sh` are smoke-tested locally; the GUI entry and module assets return HTTP 200.
 
 Not executed: a real WSL2 host, Python 3.11, ARM64 binaries, Windows-to-WSL localhost forwarding, sudo/APT mutations, external Node artifact downloads, or browser visual QA. Package/download behavior is covered with offline tests, not reported as a completed installation on the user's computer. The WSL installer runs its own environment check and both test suites before recording installation success on the target host.
+
+## v0.1.2 — D-drive workspace update
+
+The documented clone root is `/mnt/d/nanobot-gepa-mvp`. Installer child-process working directories, temporary paths and cache paths follow the actual checkout, including paths with spaces. Two additional tests verify that behavior and copied-interpreter virtual environment creation (15 Python tests total). The GUI launcher is smoke-tested from outside the checkout to verify that it selects the project working directory. An actual Windows D / DrvFS mount is unavailable in the validation container; this update does not claim target-drive execution has been tested.

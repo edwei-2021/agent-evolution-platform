@@ -14,22 +14,38 @@ Confirm that the Ubuntu 24.04 distribution has `VERSION` = `2`. Open that Ubuntu
 
 ## 2. Obtain the independent project
 
-Keep the checkout in the Ubuntu filesystem, for example under `~/projects`. If Git is missing, install the clone prerequisites first:
+Use `/mnt/d/nanobot-gepa-mvp` as the project root (Windows `D:\nanobot-gepa-mvp`). Confirm `/mnt/d` is mounted and writable. If Git is missing, install the clone prerequisites first:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends git ca-certificates
-mkdir -p ~/projects
-cd ~/projects
-git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git
-cd nanobot-gepa-mvp
+cd /mnt/d
+git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git nanobot-gepa-mvp
+cd /mnt/d/nanobot-gepa-mvp
 ```
 
-The repository is private. The connected GitHub account in ChatGPT does not sign in Git inside WSL. Use your existing Git HTTPS credential manager or configured GitHub SSH authentication. For SSH, replace the clone URL with `git@github.com:edwei-2021/nanobot-gepa-mvp.git`. Do not put access tokens into the clone URL, scripts or logs. If Git access is not configured, download the repository ZIP through your signed-in GitHub browser and extract it inside Ubuntu; version metadata in the local installation report will then be null until a Git checkout is used.
+The repository is private. The connected GitHub account in ChatGPT does not sign in Git inside WSL. Use your existing Git HTTPS credential manager or configured GitHub SSH authentication. For SSH, replace the clone URL with `git@github.com:edwei-2021/nanobot-gepa-mvp.git`. Do not put access tokens into the clone URL, scripts or logs. If Git access is not configured, download the repository ZIP through your signed-in GitHub browser and extract it into `/mnt/d/nanobot-gepa-mvp`; version metadata in the local installation report will then be null until a Git checkout is used.
+
+Project paths follow the checkout location:
+
+| Data or processing | Default location |
+| --- | --- |
+| Git checkout and public assets | `/mnt/d/nanobot-gepa-mvp` and `dist/` |
+| Project Python environment | `/mnt/d/nanobot-gepa-mvp/.venv/` |
+| Downloaded Node runtime and staging | `/mnt/d/nanobot-gepa-mvp/.tools/` |
+| Installer/test/GUI temporary files | `/mnt/d/nanobot-gepa-mvp/.local/tmp/` |
+| Subprocess cache locations | `/mnt/d/nanobot-gepa-mvp/.local/cache/` |
+| Environment report | `/mnt/d/nanobot-gepa-mvp/.local/environment.json` |
+| GUI launch working directory | `/mnt/d/nanobot-gepa-mvp` |
+
+Installer subprocesses receive project-local TMPDIR/TMP/TEMP and cache settings. APT packages and the existing base Python remain managed by Ubuntu; the installer does not relocate the operating system. GUI demo records still use browser localStorage; export JSON to a directory under `D:\nanobot-gepa-mvp` when a file backup on D is needed. Runtime directories are excluded from Git.
+
+To migrate an older checkout, first commit/push any source changes you want to preserve. Clone afresh into the D location and rerun installation there; create a new `.venv` in the destination. Python virtual environments are tied to their creation paths. Keep the old checkout until the new one works. An existing D checkout can be updated in place:
 
 For an existing checkout, save/commit your own changes, then update:
 
 ```bash
+cd /mnt/d/nanobot-gepa-mvp
 git pull --ff-only
 ```
 
@@ -66,7 +82,7 @@ The installer:
 1. Confirms Ubuntu 24.04, WSL2, x86_64/aarch64, Python 3.11+ and frontend assets.
 2. Checks installed APT package status and executables. Installs only missing `git`, `curl`, `ca-certificates`, `xz-utils` and `tar`; asks for sudo only when needed. It does not run a full system upgrade.
 3. Reuses a supported Linux Node runtime (major 22, 24 or 26). If missing/unsupported, downloads pinned Node **22.23.3** from nodejs.org into `.tools/`, checks the official SHA-256 manifest before extraction, and verifies the executable version. Windows `node.exe` is not accepted. The checksum checks downloaded-file integrity; it is not separate GPG verification. Global Node and shell startup files are untouched.
-4. Creates `.venv` with the selected Python using `--without-pip`. No Python packages are required in this GUI phase. If the venv module is missing, installs the corresponding versioned venv package only if an APT candidate already exists; it does not add PPAs. A custom Python with no such package must be repaired through its original provider.
+4. Creates `.venv` with the selected Python using `--copies --without-pip`. No Python packages are required in this GUI phase. If the venv module is missing, installs the corresponding versioned venv package only if an APT candidate already exists; it does not add PPAs. A custom Python with no such package must be repaired through its original provider.
 5. Rechecks readiness, runs JavaScript and Python tests, and writes `.local/environment.json` after all checks pass. The report contains versions, paths and current Git commit, not credentials. Runtime directories are ignored by Git.
 
 Repeat the same command safely: supported existing tools and a compatible `.venv` are reused. An incompatible/incomplete `.venv` or incomplete pinned Node installation is reported, not deleted. Move the indicated directory aside yourself after inspection, then retry. Python version 3.11 is supported by the source; delivery validation was performed on Python 3.12 because no 3.11 interpreter was available in the build environment.
@@ -74,6 +90,7 @@ Repeat the same command safely: supported existing tools and a compatible `.venv
 ## 5. Start the GUI
 
 ```bash
+cd /mnt/d/nanobot-gepa-mvp
 bash scripts/start-gui.sh
 ```
 
@@ -90,6 +107,7 @@ Then open http://localhost:8081. The current local server is for development and
 ## Update and repeat checks
 
 ```bash
+cd /mnt/d/nanobot-gepa-mvp
 git pull --ff-only
 bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh

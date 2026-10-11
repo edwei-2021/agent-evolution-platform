@@ -4,19 +4,22 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.1 adds WSL2 environment inspection, installation and startup around the interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.2 places the documented WSL workspace on Windows drive D and keeps project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
-From a complete checkout in Ubuntu, inspect first, install missing prerequisites, then start:
+In the WSL2 Ubuntu terminal, clone into `/mnt/d/nanobot-gepa-mvp` (Windows `D:\nanobot-gepa-mvp`), inspect first, install missing prerequisites, then start:
 
 ```bash
+cd /mnt/d
+git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git nanobot-gepa-mvp
+cd /mnt/d/nanobot-gepa-mvp
 bash scripts/install-wsl.sh --check --python python3.11
 bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh
 ```
 
-The first command is read-only and returns exit code 1 when prerequisites or `.venv` are missing. Inspect its output before installing. Open `http://localhost:8080` in Windows. Installation reuses Python, fills missing APT tools, downloads verified project-local Node only when necessary, creates `.venv` without pip, and runs tests. Full instructions, private GitHub clone authentication and troubleshooting: [WSL installation guide](docs/wsl-install.md).
+The `--check` command is read-only and returns exit code 1 when prerequisites or `.venv` are missing. Inspect its output before installing. Open `http://localhost:8080` in Windows. Installation reuses Python, fills missing APT tools, downloads verified project-local Node only when necessary, creates `.venv` without pip, and runs tests. Source, `.venv`, `.tools`, reports and subprocess temp/cache directories stay inside the checkout on D. Full instructions, private GitHub clone authentication, migration and troubleshooting: [WSL installation guide](docs/wsl-install.md).
 
 ## Run locally
 

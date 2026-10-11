@@ -143,8 +143,17 @@ def print_report(report):
 
 
 def run(argv, cwd=ROOT):
+    project = Path(cwd).resolve()
+    temp = project / '.local' / 'tmp'
+    cache = project / '.local' / 'cache'
+    temp.mkdir(parents=True, exist_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.update({'TMPDIR': str(temp), 'TMP': str(temp), 'TEMP': str(temp),
+                'XDG_CACHE_HOME': str(cache), 'PIP_CACHE_DIR': str(cache / 'pip'),
+                'NPM_CONFIG_CACHE': str(cache / 'npm')})
     print('Running: ' + ' '.join(map(str, argv)), flush=True)
-    subprocess.run(list(map(str, argv)), cwd=cwd, check=True)
+    subprocess.run(list(map(str, argv)), cwd=project, env=env, check=True)
 
 
 def install_apt(packages):
@@ -209,7 +218,7 @@ def create_venv(root=ROOT):
     destination = root / '.venv'
     if not destination.exists():
         try:
-            run([sys.executable, '-m', 'venv', '--without-pip', destination], cwd=root)
+            run([sys.executable, '-m', 'venv', '--copies', '--without-pip', destination], cwd=root)
         except subprocess.CalledProcessError as exc:
             raise RuntimeError('Python venv creation failed. Check that your Python distribution provides the venv module. This GUI does not require pip or third-party Python packages. An incomplete .venv is kept for inspection; move it aside before retrying.') from exc
 

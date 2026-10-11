@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import argparse
 import sys
+import tempfile
 
 DIST = Path(__file__).resolve().parents[1] / 'dist'
 
@@ -44,7 +45,7 @@ def main(argv=None):
     except OSError as exc:
         print(f'Cannot start GUI on port {args.port}: {exc}. Try --port 8081.', file=sys.stderr)
         return 1
-    print(f'nanobot GEPA MVP — GUI demo\nOpen http://localhost:{args.port}\nPress Ctrl+C to stop. No model calls; records are browser-local.', flush=True)
+    print(f'nanobot GEPA MVP — GUI demo\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nPress Ctrl+C to stop. No model calls; records are browser-local.', flush=True)
     with server:
         try:
             server.serve_forever()
