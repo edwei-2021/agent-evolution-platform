@@ -1,11 +1,18 @@
 # Proposed backend contract (not implemented)
 
-This document defines a future integration seam. There is no HTTP adapter or backend in v0.1.0. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
+This document defines a future integration seam. There is no HTTP adapter or backend in v0.2.0. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
 
 ## Service resources
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| GET | /api/v1/agents | Server-owned agent configurations and separately measured connection state |
+| POST | /api/v1/agents | Create a validated agent configuration |
+| PATCH | /api/v1/agents/{id} | Update configuration with a revision check |
+| DELETE | /api/v1/agents/{id} | Remove configuration and its relationships under a server policy |
+| GET | /api/v1/relationships | Directed source/recipient relationships and deliverables |
+| POST | /api/v1/relationships | Validate endpoints and create a directed relationship |
+| DELETE | /api/v1/relationships/{id} | Remove a relationship |
 | GET | /api/v1/capabilities | Runtime/optimizer availability and real-mode readiness |
 | GET | /api/v1/experiments | Workspace-scoped experiment list |
 | POST | /api/v1/experiments | Validate configuration and create queued experiment |
@@ -27,3 +34,11 @@ Every evaluation record includes task ID, split, skill version/hash, objective s
 ## Adapter migration
 
 Replace `DemoAdapter` with an asynchronous HTTP implementation and update event handlers to await requests. Move ticking to the worker; subscribe to SSE for authoritative state, reconnect with Last-Event-ID and poll if streaming is unavailable. Validate response data and display connection errors without silently falling back to demo. Separate demo and real workspace stores. Real release gating must run server-side; the browser gate is presentation only.
+
+## Agent registry boundary (代理人設定邊界)
+
+The v0.2.0 `DemoAdapter` owns synchronous browser-local `saveAgent`, `removeAgent`, `addRelationship` and `removeRelationship` operations. These are not HTTP calls or Runtime commands. An agent record is configuration; `enabled` does not mean running. `connection` is always `disconnected` in demo data. The registry is limited to 30 agents and 120 directed relationships. Skill IDs refer to a fixed local catalog, and the Worker target Skill body follows the active demo release.
+
+A real service must distinguish config revision from live execution telemetry. Connection state requires authenticated adapter evidence and timestamps, never a browser edit. Credentials belong to a server-side secret store; agent responses may carry a credential reference, not the secret. Tools are identifiers until an authorized runner validates an allowlist. GEPA belongs to the optimizer integration rather than the Runtime list. A graph expresses intended handoff relationships, while real task traces record actual handoffs and failures.
+
+Legacy workspace backups (schemaVersion 1) gain the starter registry when imported. Version 2 exports include the registry, experiments and releases together. The browser storage key remains unchanged for migration; demo and future real workspaces must remain separate.

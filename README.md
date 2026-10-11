@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.3 uses port 8765 by default and accepts a custom port through `--port`. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.2.0 adds an editable agent registry, role/property/Skill inspection and a directed work relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
@@ -45,6 +45,13 @@ Open `http://localhost:8766` when using that port.
 
 ## Implemented
 
+- Agent workspace: configured/connected counts, five starter roles, search and role filtering.
+- Agent details: Runtime/model, memory/isolation, step/temperature limits, tool names and assigned Skills.
+- Browser-local agent creation/editing/deletion and directed relationship creation/deletion.
+- Clickable relationship graph plus a table of sources, recipients, relationship types and deliverables.
+- Skill body inspection follows the active Worker demo release; supporting Skills remain fixed examples.
+- Existing schemaVersion 1 backups migrate to version 2 without losing experiments or releases.
+
 - Traditional Chinese GUI: overview, skill evolution, evaluation records, demo releases, integration roadmap.
 - Create experiments with evaluation budgets 40 / 80 / 120 and improvement / no-gain scenarios.
 - Start, pause, resume, cancel; deterministic synthetic curves stop at their budget.
@@ -54,6 +61,8 @@ Open `http://localhost:8766` when using that port.
 - Browser localStorage persistence; refresh pauses unfinished runs.
 - Validated JSON import/export; import replaces the local workspace and pauses active runs.
 - Responsive layouts, keyboard navigation, modal forms, explicit demo labeling.
+
+Agent records are editable browser-local role configurations, not discovered or running agents. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Connected count is zero. GEPA is a planned optimizer adapter, not a runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
 
 All scores, tasks and execution events are synthetic fixtures. `S0` and `S1` are fixed example skill bodies. No nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw integration has been implemented. A GUI release changes only the browser's active version pointer, not a Git repository or agent installation.
 
@@ -65,6 +74,10 @@ dist/styles.css          Responsive dashboard styling
 dist/js/app.js           Views and UI events
 dist/js/domain.js        Pure demo state machine and validation
 dist/js/adapter.js       Browser-local persistence adapter
+dist/js/agents.js         Registry model, assignments and directed relationships
+dist/js/agent-view.js     Agent details, graph and configuration form views
+dist/js/agent-ui.js       Agent workspace interactions
+tests/agents.test.js      Registry, migration, persistence and rendering boundaries
 tests/domain.test.js     Lifecycle, release gate, import, persistence tests
 tests/setup_test.py      Offline installer and real HTTP server tests
 scripts/install-wsl.sh  Python selection and installer entry
@@ -72,6 +85,7 @@ scripts/setup_wsl.py    Environment check, missing tools and verification
 scripts/start-gui.sh    Start with the project virtual environment
 scripts/serve_gui.py    Loopback HTTP server for public assets only
 docs/wsl-install.md     WSL2 installation and troubleshooting
+docs/agents-workspace.md Agent workspace usage and data semantics
 docs/architecture.md     Incremental implementation plan
 docs/api-contract.md     Proposed backend contract (not implemented)
 .openai/hosting.json     Private Site deployment identity
@@ -89,4 +103,4 @@ Implement FastAPI + SQLite with a job worker, nanobot execution adapter, trusted
 
 ## Verification
 
-`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.
+`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. The v0.2.0 delivery has 28 JavaScript and 15 Python passing tests; see [agent workspace verification](docs/verification/agent-workspace-validation.md). WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.

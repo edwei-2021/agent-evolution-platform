@@ -1,4 +1,5 @@
 // Pure demo state machine. All evaluation values are synthetic, not model evidence.
+import {initialRegistry,validateRegistry} from './agents.js';
 export const BASE_SKILL = '# Python fix and verify\n\n1. Read the failing test and relevant code.\n2. Make the smallest repair.\n3. Run the tests and summarize the change.';
 export const CANDIDATE_SKILL = '# Python fix and verify\n\n1. Reproduce the failure before editing.\n2. Read the relevant code and identify the root cause.\n3. Make the smallest repair; preserve public interfaces.\n4. Run targeted tests, then the full regression suite.\n5. Verify edge cases and report commands and results.';
 export function newExperiment({name,budget=80,scenario='improve'}, id, now) {
@@ -32,10 +33,12 @@ export function activate(state,id){if(id!=='baseline'&&!state.releases.some(r=>r
 export function initialState(){
   const e=newExperiment({name:'Python 修復技能 · 基準示例',budget:80},'DEMO-001','2026-10-11T06:00:00Z');
   let done=transition(e,'start',e.createdAt);while(done.status==='running') done=tick(done,e.createdAt);
-  return {schemaVersion:1,mode:'demo',selectedId:e.id,experiments:[done],releases:[],activeReleaseId:'baseline'};
+  return {schemaVersion:2,mode:'demo',registry:initialRegistry(),selectedId:e.id,experiments:[done],releases:[],activeReleaseId:'baseline'};
 }
 export function validateState(s){
-  if(!s||s.schemaVersion!==1||s.mode!=='demo'||!Array.isArray(s.experiments)||s.experiments.length>100||!Array.isArray(s.releases)||s.releases.length>100) throw Error('僅接受本工作台匯出的展示資料（schemaVersion 1）');
+  if(s?.schemaVersion===1)s={...structuredClone(s),schemaVersion:2,registry:initialRegistry()};
+  if(!s||s.schemaVersion!==2||s.mode!=='demo'||!Array.isArray(s.experiments)||s.experiments.length>100||!Array.isArray(s.releases)||s.releases.length>100) throw Error('僅接受本工作台匯出的展示資料（schemaVersion 1 / 2）');
+  validateRegistry(s.registry);
   const ids=new Set();
   for(const e of s.experiments){
     newExperiment(e,e.id,e.createdAt);
