@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 DIST = Path(__file__).resolve().parents[1] / 'dist'
+DEFAULT_PORT = 8765
 
 
 class GuiHandler(SimpleHTTPRequestHandler):
@@ -31,8 +32,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port', type=int, default=8080)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='Local GUI HTTP port')
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error('--port must be between 1 and 65535')
@@ -43,7 +44,7 @@ def main(argv=None):
     try:
         server = ThreadingHTTPServer(('127.0.0.1', args.port), partial(GuiHandler, directory=str(DIST)))
     except OSError as exc:
-        print(f'Cannot start GUI on port {args.port}: {exc}. Try --port 8081.', file=sys.stderr)
+        print(f'Cannot start GUI on port {args.port}: {exc}. Choose another port with --port <number>.', file=sys.stderr)
         return 1
     print(f'nanobot GEPA MVP — GUI demo\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nPress Ctrl+C to stop. No model calls; records are browser-local.', flush=True)
     with server:

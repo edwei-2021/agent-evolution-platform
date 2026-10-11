@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.2 places the documented WSL workspace on Windows drive D and keeps project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.3 uses port 8765 by default and accepts a custom port through `--port`. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. This is an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
@@ -20,7 +20,7 @@ bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh
 ```
 
-The `--check` command is read-only and returns exit code 1 when prerequisites or `.venv` are missing. Inspect its output before installing. Open `http://localhost:8080` in Windows. Installation reuses Python, fills missing APT tools, downloads verified project-local Node only when necessary, creates `.venv` without pip, and runs tests. Source, `.venv`, `.tools`, reports and subprocess temp/cache directories stay inside the checkout on D. Full instructions, private GitHub clone authentication, migration and troubleshooting: [WSL installation guide](docs/wsl-install.md).
+The `--check` command is read-only and returns exit code 1 when prerequisites or `.venv` are missing. Inspect its output before installing. Open `http://localhost:8765` in Windows. Installation reuses Python, fills missing APT tools, downloads verified project-local Node only when necessary, creates `.venv` without pip, and runs tests. Source, `.venv`, `.tools`, reports and subprocess temp/cache directories stay inside the checkout on D. Full instructions, private GitHub clone authentication, migration and troubleshooting: [WSL installation guide](docs/wsl-install.md).
 
 ## Run locally
 
@@ -31,7 +31,17 @@ npm test
 npm run serve
 ```
 
-Open `http://localhost:8080`. Serve files over HTTP; opening index.html directly will not load ES modules reliably. Localhost serving is intended for development. The hosted GUI uses private Sites access.
+Open `http://localhost:8765`. Serve files over HTTP; opening index.html directly will not load ES modules reliably. Localhost serving is intended for development. The hosted GUI uses private Sites access.
+
+To choose another port (for example, 8766):
+
+```bash
+bash scripts/start-gui.sh --port 8766
+# Standalone server alternative:
+npm run serve -- --port 8766
+```
+
+Open `http://localhost:8766` when using that port.
 
 ## Implemented
 

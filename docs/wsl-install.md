@@ -106,15 +106,15 @@ cd /mnt/d/nanobot-gepa-mvp
 bash scripts/start-gui.sh
 ```
 
-Open **http://localhost:8080** in the Windows browser. Microsoft documents Windows-to-WSL applications through localhost; VPN, localhost-forwarding settings or custom WSL networking can affect access. The server binds to `127.0.0.1`, serves only `dist/`, and does not expose the repository root, reports or credentials. Use Ctrl+C to stop.
+Open **http://localhost:8765** in the Windows browser. Microsoft documents Windows-to-WSL applications through localhost; VPN, localhost-forwarding settings or custom WSL networking can affect access. The server binds to `127.0.0.1`, serves only `dist/`, and does not expose the repository root, reports or credentials. Use Ctrl+C to stop.
 
-If port 8080 is occupied:
+The default port is **8765**. You can choose another port at startup, including when the default is occupied:
 
 ```bash
-bash scripts/start-gui.sh --port 8081
+bash scripts/start-gui.sh --port 8766
 ```
 
-Then open http://localhost:8081. The current local server is for development and has no login, API worker or LAN exposure. For remote access now, use the private hosted GUI linked in README. This installer does not change Windows firewall or WSL network settings.
+Then open http://localhost:8766. The current local server is for development and has no login, API worker or LAN exposure. For remote access now, use the private hosted GUI linked in README. This installer does not change Windows firewall or WSL network settings.
 
 ## Update and repeat checks
 
@@ -125,7 +125,7 @@ bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh
 ```
 
-Stop the old server before restarting after an update. GUI records remain in browser localStorage and are tied to the origin (scheme/host/port); `localhost:8080`, `localhost:8081` and the hosted site each have separate stores. Export/import JSON when moving between them.
+Stop the old server before restarting after an update. GUI records remain in browser localStorage and are tied to the origin (scheme/host/port); `localhost:8765`, `localhost:8766` and the hosted site each have separate stores. If you previously used `localhost:8080`, export records from that origin and import them at the new address. Export/import JSON when moving between them.
 
 ## Troubleshooting
 
@@ -140,7 +140,7 @@ Stop the old server before restarting after an update. GUI records remain in bro
 | Node download/checksum failure | The installer stops before publishing the tool directory; check proxy/DNS/HTTPS and retry. |
 | Existing `.venv` mismatch | Inspect it and move it aside; rerun with the same intended interpreter. |
 | Browser cannot connect | Check the server terminal, chosen port, then WSL localhost-forwarding/network configuration. |
-| `Address already in use` | Stop the old server or use `--port 8081`. |
+| `Address already in use` | Stop the old server or use `--port 8766`. |
 
 ## References
 

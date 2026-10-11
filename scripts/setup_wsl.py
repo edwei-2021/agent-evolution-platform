@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+from serve_gui import DEFAULT_PORT
 
 ROOT = Path(__file__).resolve().parents[1]
 NODE_VERSION = '22.23.3'
@@ -267,7 +268,7 @@ def main(argv=None):
     temp = target.with_suffix('.tmp')
     temp.write_text(json.dumps(final, indent=2) + '\n')
     os.replace(temp, target)
-    print(f'Installation complete. Local report: {target}\nStart: bash scripts/start-gui.sh\nOpen: http://localhost:8080')
+    print(f'Installation complete. Local report: {target}\nStart: bash scripts/start-gui.sh\nOpen: http://localhost:{DEFAULT_PORT}\nCustom port: bash scripts/start-gui.sh --port <number>')
     return 0
 
 

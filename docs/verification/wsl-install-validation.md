@@ -17,3 +17,9 @@ Not executed: a real WSL2 host, Python 3.11, ARM64 binaries, Windows-to-WSL loca
 ## v0.1.2 — D-drive workspace update
 
 The documented clone root is `/mnt/d/nanobot-gepa-mvp`. Installer child-process working directories, temporary paths and cache paths follow the actual checkout, including paths with spaces. Two additional tests verify that behavior and copied-interpreter virtual environment creation (15 Python tests total). The GUI launcher is smoke-tested from outside the checkout to verify that it selects the project working directory. An actual Windows D / DrvFS mount is unavailable in the validation container; this update does not claim target-drive execution has been tested.
+
+## v0.1.3 — Configurable GUI port
+
+The default GUI port is now 8765. The server and installation success message share the same default constant. The existing `--port` option accepts a user-selected port, and `--help` displays the default. README and WSL installation examples use the new address.
+
+Validation in the container: 15 Python tests and 14 JavaScript tests pass, and both Bash entry scripts pass syntax checks. Live launcher smoke checks from outside the checkout return HTTP 200 on default port 8765 and explicitly selected port 8766. Binding to an occupied port exits with code 1 and a message directing the user to `--port <number>`. No target WSL execution is claimed for this update.
