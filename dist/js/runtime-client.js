@@ -47,6 +47,15 @@ export function validateLlmRun(run){
   if(run.task!=='llm-evolution'||!run.llmConfig||!validPrompt(run.llmConfig.baseline?.skill)||!['smoke','full'].includes(run.llmConfig.profile)||![15,101].includes(run.llmConfig.callBudget)||typeof run.llmConfig.provider?.config?.model!=='string')throw Error('模型技能實驗設定不正確');
   const p=run.llmProgress;
   if(p&&(p.engine!=='ollama-prompt-reflection-v1'||!Number.isInteger(p.calls)||p.calls<0||p.calls>run.llmConfig.callBudget||!Array.isArray(p.candidates)||p.candidates.length>2||p.candidates.some((c,i)=>c.id!==`C${i}`||!validPrompt(c.skill)||(c.training&&!validMetric(c.training))||(c.validation&&!validMetric(c.validation)))||!Array.isArray(p.trainingFailures)||p.trainingFailures.length>8))throw Error('模型技能進度不正確');
+  if(p){
+    for(const field of ['completedCalls','failedCalls'])if(p[field]!==undefined&&(!Number.isInteger(p[field])||p[field]<0||p[field]>p.calls))throw Error('模型呼叫計數不正確');
+    if((p.completedCalls||0)+(p.failedCalls||0)>p.calls)throw Error('模型呼叫計數不一致');
+    const c=p.lastCall;
+    if(c){
+      if(!Number.isInteger(c.id)||c.id<1||c.id>p.calls||!['running','completed','failed','cancelled'].includes(c.status))throw Error('模型呼叫狀態不正確');
+      for(const field of ['startedAt','finishedAt','deadlineEpoch','lastChunkAt','timeoutSeconds','chunks','outputChars','reasoningChars'])if(c[field]!==undefined&&(!Number.isFinite(c[field])||c[field]<0))throw Error('模型回應進度不正確');
+    }
+  }
   if(run.llmResult&&(typeof run.llmResult.eligible!=='boolean'||!validPrompt(run.llmResult.selectedSkill)||!validMetric(run.llmResult.selectedValidation)||!validMetric(run.llmResult.heldout?.baseline)||!validMetric(run.llmResult.heldout?.selected)))throw Error('模型技能證據不正確');
   return run;
 }
@@ -62,8 +71,8 @@ export function telemetryLabel(runtime,id){
 }
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
-  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.selectedLlmRun=null;this.pendingLlmSubmission=null;}
-  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,selectedLlmRun:this.selectedLlmRun};}
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;}
+  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun};}
   async request(path,{method='GET',body}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
     try{
@@ -142,7 +151,7 @@ export class RuntimeClient{
       if(!this.data.llm)throw Error('請更新模型技能後端');
       if(!this.pendingLlmSubmission){
         const provider=await this.request('/api/v1/llm/ollama');
-        this.pendingLlmSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.llmProfile,maxSeconds:this.llmSeconds,expectedRevision:this.data.llm.revision,providerRevision:provider.revision};
+        this.pendingLlmSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.llmProfile,maxSeconds:this.llmSeconds,callTimeoutSeconds:this.llmCallSeconds,expectedRevision:this.data.llm.revision,providerRevision:provider.revision};
       }
       try{await this.request('/api/v1/llm/skills/runs',{method:'POST',body:this.pendingLlmSubmission});}
       catch(error){if(error.status>=400&&error.status<500)this.pendingLlmSubmission=null;throw error;}

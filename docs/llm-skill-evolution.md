@@ -17,7 +17,7 @@ If the environment check reports missing prerequisites, run `bash scripts/instal
 
 Open `http://localhost:8765/#integrations`, select and save an exact installed model ID if none is selected. The Windows port remains 11435 by default; the GUI port remains 8765 and is separately configurable. The supplied Windows/WSL metadata evidence is accepted. No startup probe, metadata refresh, firewall change, model pull or diagnostic rerun is required.
 
-Open `http://localhost:8765/#llm`, keep **Smoke** for the first run, and click **Start LLM Skill evolution**. This explicit action submits real inference requests to the saved endpoint. Inspect roles/PIDs/logs in **Execution monitor**. The GUI polls the Python service every two seconds; it does not need synchronized screen sharing or streaming.
+Open `http://localhost:8765/#llm`, keep **Smoke** for the first run, and click **Start LLM Skill evolution**. This explicit action submits real inference requests to the saved endpoint. Inspect roles/PIDs/logs in **Execution monitor**. The GUI polls the Python service every two seconds; it does not need synchronized screen sharing. Model responses use SSE inside the worker; browser progress still uses polling.
 
 ## Profiles and budgets (資料分割與預算)
 
@@ -30,7 +30,7 @@ Smoke selects fixed, distinct groups from the existing dataset: training include
 
 Each profile executes baseline training and validation, one reflection request, candidate training and validation, then baseline and selected-candidate held-out evaluation. Validation ties retain the baseline. When the baseline wins, its held-out results are reused: Smoke uses 13 calls and Full uses 81 calls. The maximum call budget includes reflection and both held-out evaluations. Review and approval send no additional model requests.
 
-The whole-run deadline defaults to **900 seconds**, adjustable from 60 to 7200 in the GUI. It replaces the native-tool workflow's per-stage 120-second deadline for model runs, so cold model loading can use the saved inference timeout. Each call still has its configured socket timeout, bounded by remaining run time. The supervisor terminates the subprocess at the whole-run deadline. `maxOutputTokens = callBudget × saved maxTokens` is the sum of configured per-call output ceilings, not an observed usage total. Raw provider usage, when supplied, is retained separately.
+The whole-run deadline defaults to **900 seconds**, adjustable from 60 to 7200 in the GUI. Model runs replace the native-tool stage timeout with this workflow deadline. Version 0.5.2 additionally freezes `callTimeoutSeconds` (default **120**, integer 10–3600). The effective per-call limit is the minimum of that value, saved provider `inferenceTimeout` and remaining workflow time. Both the transport and supervisor enforce an absolute call deadline; partial chunks cannot keep a call alive indefinitely. Cold model loading may require a larger limit, configured before the next run. A timeout fails this run, releases its local operation slot and sends no automatic retry. `maxOutputTokens = callBudget × saved maxTokens` is the sum of configured per-call output ceilings, not an observed usage total. Raw provider usage, when supplied, is retained separately.
 
 One workflow runs at a time across project-health, rule-skill and LLM-skill tasks. A model workflow also reserves the local provider operation slot; Web manual metadata/chat requests cannot overlap it. Windows Ollama may continue computing an already dispatched request after a client process is cancelled. Cancellation stops future requests and queued roles; it does not claim server-side generation cancellation. No automatic retry occurs, including after an uncertain submission response.
 
@@ -48,18 +48,18 @@ Each role is a supervised Python subprocess. Worker and Reflector are model oper
 
 The fixed task is `normalize-support-title`. The name and description are immutable; only its instruction body evolves. The model receives the Skill body as system instructions and a JSON input object containing only the task text. It has no tools, shell access or shared conversation memory. Temperature is fixed at 0 for both execution and reflection.
 
-Requests use `/v1/chat/completions`, non-streaming responses and `response_format: {"type":"json_object"}`. Task responses must contain exactly one string field, `output`. Scoring compares that string to the expected output **without stripping whitespace**. Invalid task JSON is a failed task with a recorded format error; HTTP failure, empty visible completion or invalid candidate JSON fails the workflow. Reflection must return exactly one `body` field; changing metadata is rejected.
+New requests use `/v1/chat/completions`, `stream: true` SSE responses and `response_format: {"type":"json_object"}`. The worker reassembles visible content, separately counts reasoning characters, requires a finish reason plus `[DONE]`, and retains the received SSE events for review. A compatible server returning a single JSON reply is consumed once without resending. Task responses must contain exactly one string field, `output`. Scoring compares that string to the expected output **without stripping whitespace**. Invalid task JSON is a failed task with a recorded format error; HTTP failure, empty visible completion or invalid candidate JSON fails the workflow. Reflection must return exactly one `body` field; changing metadata is rejected.
 
 Reflector sees only baseline training failures. Validation and held-out inputs/outputs are excluded from its request. Validation selects the candidate before any held-out request. Reviewer checks those payloads and temporal ordering, not just reported success counts. No deterministic text transform replaces a model answer.
 
 ## Evidence, approval and rollback (證據、核准與回復)
 
-The Web page shows model calls, last request state, candidate/baseline validation scores, instruction diffs, baseline training failures, held-out results, history, versions and export controls. Existing process polling shows actual subprocess status/PIDs/logs. Stale snapshots disable submission and approval. Reading state never triggers inference.
+The Web page shows completed model calls separately from dispatched calls, the current request/split/task, elapsed and remaining call time, received chunk/answer/reasoning character counts, last model response time, role-stage progress, backend heartbeat and polling freshness. Before the first chunk it explicitly reports waiting; it cannot distinguish model loading, queueing or inference. A completed run may use fewer calls than its budget, so 13/15 is a valid completion. Paused or failed polling freezes the visible snapshot and stops live animation. It also shows candidate/baseline validation scores, instruction diffs, baseline training failures, held-out results, history, versions and export controls. Existing process polling shows actual subprocess status/PIDs/logs. Stale snapshots disable submission and approval. Reading state never triggers inference.
 
 Evidence is saved under `.local/runs/RUN-.../` on D:
 
 - `llm-config.json` and `llm-manifest.json`: frozen run settings, baseline and provenance.
-- `llm-calls.json`: actual request messages, raw provider responses/usage, timestamps, duration and failures.
+- `llm-calls.json`: actual request messages, received SSE events and normalized provider responses/usage, call deadlines, timestamps, duration and failures. Partial answer text is not rendered in the progress panel.
 - `llm-baseline-evaluation.json`: baseline task records.
 - `llm-search.json` and `llm-candidate.md`: candidate body and lineage.
 - `llm-evaluation.json` and `review.json`: independently recomputed scores and evidence hash.

@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 from skill_engine import NAME, DESCRIPTION, dataset, digest, distance, write
 from ollama_bridge import OllamaBridge
+from llm_transport import stream_chat, StreamAccumulator
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = 'ollama-prompt-reflection-v1'
@@ -43,7 +44,7 @@ def provenance(profile):
             'datasetHash': digest(data), 'splitSizes': {k: len(v) for k, v in data.items()},
             'splitHashes': {k: digest(v) for k, v in data.items()},
             'codeHashes': {name: hashlib.sha256((ROOT / 'scripts' / name).read_bytes()).hexdigest()
-                for name in ('llm_engine.py', 'llm_agents.py', 'ollama_bridge.py', 'runtime_service.py')}}
+                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'ollama_bridge.py', 'runtime_service.py')}}
 
 
 def messages(value, text):
@@ -118,26 +119,55 @@ class Runner:
             raise RuntimeError('LLM call/time budget exhausted')
         provider = self.config['provider']
         remaining = max(1, int(self.config['deadlineEpoch'] - time.time()))
-        settings = {**provider['config'], 'inferenceTimeout': min(provider['config']['inferenceTimeout'], remaining)}
-        payload = {'model': settings['model'], 'messages': request_messages, 'stream': False,
+        settings = {**provider['config'], 'inferenceTimeout': min(provider['config']['inferenceTimeout'], self.config.get('callTimeoutSeconds', 120), remaining)}
+        payload = {'model': settings['model'], 'messages': request_messages, 'stream': self.config.get('transport') == 'openai-sse-v1',
                    'temperature': 0, 'max_tokens': settings['maxTokens'], 'response_format': {'type': 'json_object'}}
         record = {'id': len(self.calls) + 1, 'kind': kind, **context, 'request': payload,
-                  'startedAt': time.time(), 'status': 'running'}
+                  'startedAt': time.time(), 'status': 'running', 'timeoutSeconds': settings['inferenceTimeout'],
+                  'deadlineEpoch': time.time() + settings['inferenceTimeout'], 'chunks': 0,
+                  'outputChars': 0, 'reasoningChars': 0}
         self.calls.append(record)
         write(self.calls_path, self.calls)
-        progress(self.directory, calls=len(self.calls), lastCall={k: record[k] for k in ('id', 'kind', 'status')}, callBudget=self.config['callBudget'])
+        def publish():
+            progress(self.directory, calls=len(self.calls), completedCalls=sum(c['status'] == 'completed' for c in self.calls),
+                     failedCalls=sum(c['status'] == 'failed' for c in self.calls),
+                     lastCall={k: v for k, v in record.items() if k not in ('request', 'response', 'streamEvents')},
+                     callBudget=self.config['callBudget'])
+        publish()
+        print(f'Model call {record["id"]}/{self.config["callBudget"]} started: {kind}; '
+              f'model={settings["model"]}; timeout={settings["inferenceTimeout"]}s; {context}', flush=True)
         started = time.monotonic()
+        last_publish = started
+        def update(changes):
+            nonlocal last_publish
+            first = changes.get('lastChunkAt') and not record.get('firstChunkAt')
+            record.update(changes)
+            if first:
+                record['firstChunkAt'] = changes['lastChunkAt']
+            # Publish first response immediately, then at most once per second.
+            if first or 'responseStartedAt' in changes or time.monotonic() - last_publish >= 1:
+                publish()
+                last_publish = time.monotonic()
         try:
-            record['response'] = self.client.request(provider['endpoint'], '/v1/chat/completions', settings, payload)
+            if payload['stream']:
+                record['response'], events = stream_chat(provider['endpoint'], settings, payload, update)
+                if events is not None:
+                    record['streamEvents'] = events
+            else:
+                record['response'] = self.client.request(provider['endpoint'], '/v1/chat/completions', settings, payload)
             content(record['response'])
             record['status'] = 'completed'
+        except TimeoutError as exc:
+            message = f'Model call #{record["id"]} exceeded its {record["timeoutSeconds"]}s time limit; no further requests were sent'
+            record.update(status='failed', error=message)
+            raise TimeoutError(message) from exc
         except Exception as exc:
             record.update(status='failed', error=str(exc))
             raise
         finally:
             record.update(elapsedMs=round((time.monotonic() - started) * 1000, 3), finishedAt=time.time())
             write(self.calls_path, self.calls)
-            progress(self.directory, lastCall={k: record[k] for k in ('id', 'kind', 'status', 'elapsedMs')})
+            publish()
         print(f'Model call {record["id"]}/{self.config["callBudget"]}: {kind}; {record["elapsedMs"]} ms', flush=True)
         return record
 
@@ -203,10 +233,16 @@ def verify(directory):
             wanted = reflection_messages(base, records[('C0', 'train')])
         else:
             raise ValueError('Unexpected call kind')
-        request = {'model': config['provider']['config']['model'], 'messages': wanted, 'stream': False,
+        request = {'model': config['provider']['config']['model'], 'messages': wanted, 'stream': config.get('transport') == 'openai-sse-v1',
                    'temperature': 0, 'max_tokens': config['provider']['config']['maxTokens'], 'response_format': {'type': 'json_object'}}
         if call['request'] != request:
             raise ValueError('Recorded model request diverges from frozen input/Skill')
+        if 'streamEvents' in call:
+            accumulator = StreamAccumulator()
+            for event in call['streamEvents']:
+                accumulator.add(event)
+            if accumulator.reply() != call['response']:
+                raise ValueError('Recorded completion differs from raw stream evidence')
     # Enforce temporal split isolation as well as prompt contents.
     reflection_index = reflection[0]['id']
     first_holdout = min(c['id'] for c in calls if c.get('split') == 'heldout')

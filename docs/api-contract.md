@@ -98,7 +98,7 @@ Provider status is separate from agent-framework connectivity. `modelConnected` 
 | Method | Path | Body / result |
 | --- | --- | --- |
 | GET | `/api/v1/llm/skills` | Prompt workspace and current progress, without model requests |
-| POST | `/api/v1/llm/skills/runs` | `{registry, requestId, profile, maxSeconds, expectedRevision, providerRevision}`; returns 202 |
+| POST | `/api/v1/llm/skills/runs` | `{registry, requestId, profile, maxSeconds, callTimeoutSeconds?, expectedRevision, providerRevision}`; returns 202 |
 | POST | `/api/v1/llm/skills/runs/{runId}/approve` | `{expectedRevision}`; recompute evidence and create/activate an immutable prompt version |
 | POST | `/api/v1/llm/skills/versions/{versionId}/activate` | `{expectedRevision}`; rollback/reactivate without deleting evidence |
 
@@ -107,3 +107,12 @@ Provider status is separate from agent-framework connectivity. `modelConnected` 
 Model and rule runs share the workflow slot. Model runs additionally reserve the server's provider operation slot. Request IDs bind immutable submissions; a replay cannot change profile, budgets or role bindings. Mutations use the existing Host/Origin/CSRF policy; stale revisions return 409. Provider settings may change during a run but cannot alter its frozen calls. `modelConnected` is the legacy external-framework flag, not a reachability probe; capabilities adds `llmWorkerAvailable: true` and `llmSkillEngine`. Provider snapshots now report `workerIntegrated: true`; no claim of installed nanobot/GEPA is made.
 
 Artifact previews additionally expose `truncated` and `totalChars` when content exceeds 200,000 characters. Complete evidence remains under `.local/runs/`.
+
+
+## Observable execution progress (v0.5.2／執行進度)
+
+All runtime run snapshots add `executionProgress`: `elapsedSeconds`, `completedStages`, `totalStages`, `stage` and `heartbeatAt`. This is observed subprocess telemetry; the stage denominator is the five configured roles, not model-inference completion percentage. Terminal snapshots freeze elapsed time at `endedAt`.
+
+LLM submission accepts optional `callTimeoutSeconds` (integer 10–3600, default 120); omission preserves compatibility with earlier clients. Frozen `llmConfig` adds `transport: "openai-sse-v1"` and an effective `callTimeoutSeconds` capped by the saved provider limit. Each call is further capped by remaining workflow time. Unknown fields and invalid/bool values are rejected before dispatch.
+
+`llmProgress.calls` remains dispatched requests. Added `completedCalls` and `failedCalls` count terminal transport calls; a formatted but incorrect task answer still completes its transport call and fails task scoring. `lastCall` adds `startedAt`, `deadlineEpoch`, `timeoutSeconds`, `responseStartedAt`, `firstChunkAt`, `lastChunkAt`, `chunks`, `outputChars`, `reasoningChars`, `finishedAt`, `elapsedMs` and failure `error` as applicable. Call timestamps use epoch seconds; role timestamps remain ISO strings. Character counts are not token usage and do not estimate model completion percentage. `lastCall` excludes request/response text and full stream events from polling snapshots. SSE events and normalized response are retained in local evidence for review. Cancelled or killed calls are finalized only after the worker stops. No further requests are submitted after cancellation, timeout or transport failure.

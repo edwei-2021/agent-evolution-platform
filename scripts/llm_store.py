@@ -30,8 +30,12 @@ class LlmStore:
             raise RuntimeError('LLM Skill state changed or service is stopping; refresh first')
 
     def freeze(self, options):
-        if not isinstance(options, dict) or set(options) != {'profile', 'maxSeconds', 'expectedRevision', 'providerRevision'}:
-            raise ValueError('Use profile, maxSeconds, expectedRevision and providerRevision')
+        required = {'profile', 'maxSeconds', 'expectedRevision', 'providerRevision'}
+        if not isinstance(options, dict) or not required <= set(options) or set(options) - required - {'callTimeoutSeconds'}:
+            raise ValueError('Use profile, maxSeconds, expectedRevision, providerRevision and optional callTimeoutSeconds')
+        call_timeout = options.get('callTimeoutSeconds', 120)
+        if type(call_timeout) is not int or not 10 <= call_timeout <= 3600:
+            raise ValueError('callTimeoutSeconds must be an integer between 10 and 3600')
         self.check_revision(options['expectedRevision'])
         if type(options['maxSeconds']) is not int or not 60 <= options['maxSeconds'] <= 7200:
             raise ValueError('maxSeconds must be an integer between 60 and 7200')
@@ -46,6 +50,7 @@ class LlmStore:
         return {'schemaVersion': 1, 'engine': ENGINE, 'profile': options['profile'],
                 'baseline': self.snapshot()['active'], 'provider': {**provider, 'endpoint': endpoint},
                 'maxSeconds': options['maxSeconds'], 'deadlineEpoch': time.time() + options['maxSeconds'],
+                'transport': 'openai-sse-v1', 'callTimeoutSeconds': min(call_timeout, provider['config']['inferenceTimeout']),
                 'callBudget': budget, 'maxOutputTokens': budget * provider['config']['maxTokens'],
                 'provenance': provenance(options['profile'])}
 

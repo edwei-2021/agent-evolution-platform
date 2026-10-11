@@ -39,6 +39,7 @@ class MockModel(BaseHTTPRequestHandler):
     calls = []
     mode = 'improve'
     block = None
+    stream_block = None
     entered = threading.Event()
 
     def log_message(self, *args): pass
@@ -62,6 +63,23 @@ class MockModel(BaseHTTPRequestHandler):
             data = {'model': request['model'], 'choices': [{'message': {'content': json.dumps(value)}}],
                     'usage': {'prompt_tokens': 20, 'completion_tokens': 10}}
             status = 200
+        if self.mode in ('stream', 'stream-disconnect', 'stream-trickle'):
+            self.send_response(200); self.send_header('Content-Type', 'text/event-stream'); self.end_headers()
+            text = data['choices'][0]['message']['content']
+            events = [{'model': request['model'], 'choices': [{'index': 0, 'delta': {'reasoning_content': '正在處理'}}]},
+                      {'model': request['model'], 'choices': [{'index': 0, 'delta': {'content': text[:4]}}]},
+                      {'model': request['model'], 'choices': [{'index': 0, 'delta': {'content': text[4:]}, 'finish_reason': 'stop'}]},
+                      {'model': request['model'], 'choices': [], 'usage': data['usage']}]
+            try:
+                if self.mode == 'stream-trickle':
+                    for _ in range(30):
+                        self.wfile.write(b'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}\n\n'); self.wfile.flush(); time.sleep(.1)
+                for index, event in enumerate(events):
+                    self.wfile.write(('data: ' + json.dumps(event, ensure_ascii=False) + '\n\n').encode()); self.wfile.flush()
+                    if index == 0 and self.stream_block: self.stream_block.wait(5)
+                if self.mode == 'stream': self.wfile.write(b'data: [DONE]\n\n'); self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
         raw = json.dumps(data).encode()
         self.send_response(status); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(raw))); self.end_headers()
         try: self.wfile.write(raw)
@@ -71,7 +89,7 @@ class MockModel(BaseHTTPRequestHandler):
 class LlmWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.service = RuntimeService(self.temp.name)
-        MockModel.calls = []; MockModel.mode = 'improve'; MockModel.block = None; MockModel.entered.clear()
+        MockModel.calls = []; MockModel.mode = 'improve'; MockModel.block = None; MockModel.stream_block = None; MockModel.entered.clear()
         self.model = ThreadingHTTPServer(('127.0.0.1', 0), MockModel)
         self.thread = threading.Thread(target=self.model.serve_forever, daemon=True); self.thread.start()
         self.service.ollama.save({**DEFAULTS, 'host': '127.0.0.1', 'port': self.model.server_port,
@@ -79,6 +97,7 @@ class LlmWorkflowTests(unittest.TestCase):
 
     def tearDown(self):
         if MockModel.block: MockModel.block.set()
+        if MockModel.stream_block: MockModel.stream_block.set()
         self.service.close(); self.model.shutdown(); self.model.server_close(); self.thread.join(); self.temp.cleanup()
 
     def options(self, revision=1):
@@ -159,11 +178,15 @@ class LlmWorkflowTests(unittest.TestCase):
         self.service.cancel(run['id'])
         done = finish(self.service, run['id'])
         self.assertEqual(done['status'], 'cancelled'); self.assertEqual(len(MockModel.calls), 1)
+        self.assertEqual(done['llmProgress']['completedCalls'], 0)
+        self.assertEqual(done['llmProgress']['lastCall']['status'], 'cancelled')
+        self.assertIn('no further requests', done['llmProgress']['lastCall']['error'])
         self.assertFalse(self.service.ollama.operation.locked())
         with self.assertRaises(RuntimeError): self.service.llm.approve(run['id'], 1)
 
     def test_invalid_or_stale_configuration_and_idempotent_replay(self):
-        for options in [{**self.options(), 'maxSeconds': True}, {**self.options(), 'profile': 'other'}, {**self.options(), 'providerRevision': 2}]:
+        for options in [{**self.options(), 'maxSeconds': True}, {**self.options(), 'profile': 'other'}, {**self.options(), 'providerRevision': 2},
+                        *[{**self.options(), 'callTimeoutSeconds': value} for value in (True, 9, 3601, '120')]]:
             with self.assertRaises((ValueError, RuntimeError)):
                 self.service.start(registry(), 'invalid', 'llm-evolution', options)
         self.assertEqual(MockModel.calls, [])
@@ -193,7 +216,87 @@ class LlmWorkflowTests(unittest.TestCase):
         self.assertEqual(done['status'], 'failed')
         self.assertEqual(len(MockModel.calls), 1)
         self.assertFalse(self.service.ollama.operation.locked())
-        self.assertEqual(next(a for a in done['agents'] if a['role'] == 'worker')['error'], 'Stage timed out')
+        self.assertEqual(next(a for a in done['agents'] if a['role'] == 'worker')['error'], 'Workflow time limit exceeded')
+        self.assertEqual(done['llmProgress']['lastCall']['status'], 'failed')
+
+    def test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering(self):
+        MockModel.mode = 'stream'
+        done = finish(self.service, self.start()['id'])
+        self.assertEqual(done['status'], 'completed', done)
+        self.assertEqual(done['llmProgress']['completedCalls'], 15)
+        self.assertEqual(done['executionProgress']['completedStages'], 5)
+        self.assertTrue(all(c['stream'] for c in MockModel.calls))
+        path = self.service.local / 'runs' / done['id']
+        self.assertEqual(verify(path), done['llmResult'])
+        calls = json.loads((path / 'llm-calls.json').read_text())
+        self.assertEqual(calls[0]['chunks'], 4)
+        self.assertEqual(calls[0]['reasoningChars'], 4)
+        self.assertGreater(calls[0]['outputChars'], 0)
+        calls[0]['streamEvents'][1]['choices'][0]['delta']['content'] = 'tampered'
+        (path / 'llm-calls.json').write_text(json.dumps(calls))
+        with self.assertRaises(ValueError): self.service.llm.approve(done['id'], 1)
+
+    def test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream(self):
+        MockModel.mode = 'stream'; MockModel.stream_block = threading.Event()
+        run = self.start()
+        until = time.monotonic() + 5
+        while time.monotonic() < until:
+            waiting = self.service.get_run(run['id'])
+            call = waiting.get('llmProgress', {}).get('lastCall')
+            if call and call.get('chunks'): break
+            time.sleep(.025)
+        self.assertEqual(call['status'], 'running')
+        self.assertEqual(call['reasoningChars'], 4)
+        self.assertEqual(waiting['llmProgress']['completedCalls'], 0)
+        self.assertEqual(waiting['llmProgress']['calls'], 1)
+        self.assertEqual(call['timeoutSeconds'], 10)  # Provider cap is frozen.
+        self.assertIsNotNone(waiting['executionProgress']['heartbeatAt'])
+        # Fault injection expires this call while the socket is still open.
+        from skill_engine import write
+        path = self.service.local / 'runs' / run['id'] / 'llm-progress.json'
+        state = json.loads(path.read_text()); state['lastCall']['deadlineEpoch'] = time.time() - 1; write(path, state)
+        done = finish(self.service, run['id'])
+        self.assertEqual(done['status'], 'failed')
+        self.assertIn('Model call #1 exceeded its 10s time limit', done['error'])
+        self.assertEqual(done['llmProgress']['lastCall']['status'], 'failed')
+        self.assertEqual(done['llmProgress']['failedCalls'], 1)
+        self.assertEqual(len(MockModel.calls), 1)
+        self.assertFalse(self.service.ollama.operation.locked())
+
+    def test_disconnected_stream_does_not_complete_or_retry(self):
+        MockModel.mode = 'stream-disconnect'
+        done = finish(self.service, self.start()['id'])
+        self.assertEqual(done['status'], 'failed')
+        self.assertIn('disconnected before [DONE]', done['error'])
+        self.assertEqual(done['llmProgress']['completedCalls'], 0)
+        self.assertEqual(len(MockModel.calls), 1)
+
+    def test_silent_model_has_a_real_single_call_timeout_and_no_retry(self):
+        self.service.ollama.save({**self.service.ollama.state()['config'], 'inferenceTimeout': 1}, 1)
+        MockModel.block = threading.Event()
+        started = time.monotonic()
+        run = self.service.start(registry(), 'silent', 'llm-evolution', {**self.options(), 'providerRevision': 2})
+        done = finish(self.service, run['id'])
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(done['status'], 'failed')
+        self.assertIn('Model call #1 exceeded its 1s time limit', done['error'])
+        self.assertEqual(done['llmProgress']['completedCalls'], 0)
+        self.assertEqual(done['llmProgress']['lastCall']['status'], 'failed')
+        self.assertEqual(len(MockModel.calls), 1)
+        self.assertFalse(self.service.ollama.operation.locked())
+
+    def test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline(self):
+        self.service.ollama.save({**self.service.ollama.state()['config'], 'inferenceTimeout': 1}, 1)
+        MockModel.mode = 'stream-trickle'
+        started = time.monotonic()
+        run = self.service.start(registry(), 'trickle', 'llm-evolution', {**self.options(), 'providerRevision': 2})
+        done = finish(self.service, run['id'])
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(done['status'], 'failed')
+        self.assertIn('Model call #1 exceeded its 1s time limit', done['error'])
+        self.assertGreater(done['llmProgress']['lastCall']['chunks'], 0)
+        self.assertEqual(done['llmProgress']['completedCalls'], 0)
+        self.assertEqual(len(MockModel.calls), 1)
 
     def test_local_http_submission_history_approval_and_rollback(self):
         class Quiet(GuiHandler):

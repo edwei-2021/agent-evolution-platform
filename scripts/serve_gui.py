@@ -108,6 +108,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
             elif path == '/api/v1/llm/skills/runs':
                 options = {key: body.get(key) for key in ('profile', 'maxSeconds', 'expectedRevision', 'providerRevision')}
+                if 'callTimeoutSeconds' in body:
+                    options['callTimeoutSeconds'] = body['callTimeoutSeconds']
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId'), 'llm-evolution', options))
             elif match := re.fullmatch(r'/api/v1/llm/skills/runs/(RUN-[A-Za-z0-9-]+)/approve', path):
                 self.json_response(200, runtime.llm.approve(match[1], body.get('expectedRevision')))

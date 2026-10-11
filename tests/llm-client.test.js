@@ -49,7 +49,7 @@ test('LLM submit reads local provider settings and pins revisions without metada
  }});
  await client.refresh();await client.startLlm(initialRegistry());await client.approveLlm('RUN-llm');await client.activateLlm('LSV-baseline');
  const posts=calls.filter(c=>c.options.method==='POST');assert.equal(posts.length,3);
- const body=JSON.parse(posts[0].options.body);assert.equal(body.providerRevision,7);assert.equal(body.expectedRevision,1);assert.equal(body.profile,'smoke');assert.equal(body.maxSeconds,900);
+ const body=JSON.parse(posts[0].options.body);assert.equal(body.providerRevision,7);assert.equal(body.expectedRevision,1);assert.equal(body.profile,'smoke');assert.equal(body.maxSeconds,900);assert.equal(body.callTimeoutSeconds,120);
  assert.ok(posts.every(c=>c.options.headers['X-Lab-Token']===caps.csrfToken));assert.ok(!calls.some(c=>c.path.endsWith('/metadata')||c.path.endsWith('/chat')));
 });
 test('uncertain LLM submission retains the same request body and never auto-retries',async()=>{
@@ -61,5 +61,10 @@ test('uncertain LLM submission retains the same request body and never auto-retr
   return response(snapshot());
  }});
  await client.refresh();await assert.rejects(client.startLlm(initialRegistry()));assert.equal(bodies.length,1);
- client.llmProfile='full';fail=false;await client.startLlm(initialRegistry());assert.deepEqual(bodies[0],bodies[1]);assert.equal(client.pendingLlmSubmission,null);
+ client.llmProfile='full';client.llmCallSeconds=360;fail=false;await client.startLlm(initialRegistry());assert.deepEqual(bodies[0],bodies[1]);assert.equal(client.pendingLlmSubmission,null);
+});
+test('model telemetry rejects impossible completion counts and invalid timing',()=>{
+ for(const changes of [{completedCalls:16},{completedCalls:14,failedCalls:2},{failedCalls:-1},{lastCall:{id:1,status:'running',startedAt:'fake'}}]){
+  const r=run();Object.assign(r.llmProgress,changes);assert.throws(()=>validateLlmRun(r));
+ }
 });

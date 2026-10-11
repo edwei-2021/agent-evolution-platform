@@ -119,6 +119,13 @@ class RuntimeService:
             return self.decorate(json.loads(row[0]))
 
     def decorate(self, run):
+        end = run.get('endedAt') or now()
+        elapsed = max(0, (datetime.fromisoformat(end) - datetime.fromisoformat(run['createdAt'])).total_seconds())
+        active_agent = next((a for a in run['agents'] if a['status'] == 'running'), None)
+        run['executionProgress'] = {'elapsedSeconds': round(elapsed, 1),
+            'completedStages': sum(a['status'] == 'completed' for a in run['agents']),
+            'totalStages': len(run['agents']), 'stage': active_agent['role'] if active_agent else None,
+            'heartbeatAt': active_agent['updatedAt'] if active_agent else run['updatedAt']}
         if run.get('task') == 'skill-evolution':
             path = self.local / 'runs' / run['id'] / 'progress.json'
             if path.is_file():
@@ -133,7 +140,28 @@ class RuntimeService:
                     run['llmProgress'] = json.loads(path.read_text())
                 except (ValueError, OSError):
                     pass
+        if run['status'] in ('failed', 'cancelled', 'interrupted'):
+            run['error'] = next((a['error'] for a in run['agents'] if a.get('error')), None)
         return run
+
+    def close_model_call(self, directory, status, error):
+        """Finalize evidence only after the worker is stopped; no concurrent writer."""
+        from skill_engine import write
+        path = directory / 'llm-progress.json'
+        if not path.exists():
+            return
+        state = json.loads(path.read_text())
+        call = state.get('lastCall')
+        if not call or call.get('status') != 'running':
+            return
+        call.update(status=status, error=error, finishedAt=time.time(),
+                    elapsedMs=round((time.time() - call['startedAt']) * 1000, 3))
+        calls_path = directory / 'llm-calls.json'
+        calls = json.loads(calls_path.read_text())
+        calls[-1].update({k: v for k, v in call.items() if k not in ('request', 'response')})
+        write(calls_path, calls)
+        state['failedCalls'] = sum(c['status'] == 'failed' for c in calls)
+        write(path, state)
 
     def snapshot(self):
         with self.lock, self.connect() as db:
@@ -257,18 +285,30 @@ class RuntimeService:
                             self.persist()
                         started = time.monotonic()
                         timed_out = False
+                        timeout_error = None
                         while self.process.poll() is None:
                             if self.cancel_event.wait(0.25):
                                 self.stop_process()
                             elif (self.current.get('task') == 'llm-evolution' and time.monotonic() - workflow_started > self.current['llmConfig']['maxSeconds']) or (self.current.get('task') != 'llm-evolution' and time.monotonic() - started > self.stage_timeout):
                                 timed_out = True
+                                timeout_error = 'Workflow time limit exceeded' if provider_leased else 'Stage timed out'
                                 self.stop_process()
+                            elif provider_leased:
+                                call = self.decorate(copy.deepcopy(self.current)).get('llmProgress', {}).get('lastCall')
+                                if call and call.get('status') == 'running' and call.get('deadlineEpoch', float('inf')) <= time.time():
+                                    timed_out = True
+                                    timeout_error = f'Model call #{call["id"]} exceeded its {call["timeoutSeconds"]}s time limit; no further requests were sent'
+                                    self.stop_process()
                             with self.lock:
                                 agent.update(updatedAt=now(), processAlive=self.process.poll() is None, logTail=self.tail(log))
                                 self.persist()
                         code = self.process.wait()
                     with self.lock:
-                        agent.update(status='cancelled' if self.cancel_event.is_set() else 'failed' if timed_out or code else 'completed', exitCode=code, processAlive=False, endedAt=now(), updatedAt=now(), logTail=self.tail(log), error='Stage timed out' if timed_out else 'Process exited with an error' if code and not self.cancel_event.is_set() else None)
+                        tail = self.tail(log)
+                        error = timeout_error if timed_out else (tail.strip().splitlines()[-1][:1500] if tail.strip() else 'Process exited with an error') if code and not self.cancel_event.is_set() else None
+                        agent.update(status='cancelled' if self.cancel_event.is_set() else 'failed' if timed_out or code else 'completed', exitCode=code, processAlive=False, endedAt=now(), updatedAt=now(), logTail=tail, error=error)
+                        if provider_leased and agent['status'] in ('failed', 'cancelled'):
+                            self.close_model_call(directory, agent['status'], error or 'Cancelled by user; no further requests were sent')
                         self.event(agent, f"{agent['status']}; PID {agent['pid']}; exit {code}")
                         self.process = None
                         self.persist()

@@ -78,4 +78,13 @@ test('app form events preserve settings through click, submit, navigation and LL
    const target=form(id,{}),before=renders;await click(button(target));assert.equal(renders,before);assert.equal(target.isConnected,true);
   }
  });
+ await t.test('polling updates progress while an input has focus without detaching its form',async()=>{
+  await click(button(null,{page:'llm'}));
+  const focused=form('focused-settings',{model:'draft'}),before=renders;
+  globalThis.document.activeElement={matches:()=>true};
+  await click(button(null,{liveRefresh:''}));
+  assert.equal(renders,before);assert.equal(focused.isConnected,true);
+  assert.match(nodes.get('[data-execution-progress]').outerHTML,/aria-label="實驗進度"/);
+  globalThis.document.activeElement=null;
+ });
 });

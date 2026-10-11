@@ -1,6 +1,7 @@
 import {escapeHtml as esc} from './agent-view.js';
 import {LIVE_STATUSES} from './runtime-client.js';
 import {ROLES} from './agents.js';
+import {runProgressView} from './progress-view.js';
 const time=v=>v?new Date(v).toLocaleString('zh-TW',{hour12:false}):'—';
 const fraction=v=>v?`${v.passed} / ${v.total} · ${Math.round(v.score*100)}%`:'尚未評估';
 const button=(attribute,label,disabled=false,kind='secondary')=>`<button class="button ${kind}" ${attribute} ${disabled?'disabled':''}>${label}</button>`;
@@ -24,7 +25,8 @@ export function skillView(runtime){
   const counts=p?.evaluations,searchCount=counts?counts.training+counts.validation+counts.heldout:0;
   return `<div class="page-heading"><div><p class="eyebrow">MEASURED SKILL EVOLUTION · LOCAL</p><h1>本機技能實驗</h1><p>從訓練回饋修改規則，檢閱實測結果與技能版本。</p></div><div class="actions">${button('data-live-refresh','↻ 立即更新')}${button('data-skill-start','▷ 開始技能演化',disabled||activeWork,'primary')}</div></div>
   <section class="card polling-bar"><div><strong>${runtime.error?'服務未連線／資料過期':workspace?'本機技能服務已連線':'等待技能服務'}</strong><p>最近成功更新：${time(runtime.lastSuccess)} · polling ${runtime.pollCount} 次 · ${runtime.enabled?'持續更新':'已暫停'}</p></div><label>候選上限<select data-skill-limit ${runtime.actionBusy?'disabled':''}>${[1,2,3,4].map(n=>`<option value="${n}" ${runtime.skillLimit===n?'selected':''}>${n} 個</option>`).join('')}</select></label>${button('data-live-toggle',runtime.enabled?'暫停 polling':'繼續 polling')}</section>
-  ${runtime.error?`<div class="error-banner spaced">${esc(runtime.error)}。請啟動 WSL 的 <code>bash scripts/start-gui.sh</code>，使用本機網址操作；保留的資料已過期。</div>`:!workspace?'<div class="error-banner spaced">正在確認服務。若持續沒有資料，請更新專案並重新啟動本機服務至 v0.4.0。</div>':''}
+  ${runProgressView(runtime,run)}
+  ${runtime.error?`<div class="error-banner spaced">${esc(runtime.error)}。請啟動 WSL 的 <code>bash scripts/start-gui.sh</code>，使用本機網址操作；保留的資料已過期。</div>`:!workspace?'<div class="error-banner spaced">正在確認服務。若持續沒有資料，請更新專案並重新啟動本機服務。</div>':''}
   <div class="demo-banner spaced"><span class="info-icon">i</span><div><strong>本機規則搜尋 · 實測評估</strong><span>目標：<code>normalize-support-title</code>。固定四種文字規則，使用小型手寫資料集；結果僅適用於此任務。引擎為 local-rule-search-v1，不呼叫模型、nanobot 或 GEPA。</span></div></div>
   <div class="metrics">${metric('使用中的技能',workspace?.active?.label||'—',workspace?.activeVersionId||'服務尚未連線')}${metric('驗證結果',fraction(result?.selectedValidation||selected?.validation),'固定 validation 10 題 · 精確輸出比對')}${metric('保留測試',fraction(result?.heldout?.selected||p?.heldout?.selected),'選定候選後才評估 · 20 題')}${metric('實際任務評估',searchCount,'包含所有訓練探測、驗證與保留測試')}</div>
   <section class="card"><div class="card-heading"><div><h2>${run?`實驗 ${esc(run.id)}`:'開始第一輪演化'}</h2><p>${run?`${esc(LIVE_STATUSES[run.status])} · 基準 ${esc(run.skillConfig.baseline.label)} · 候選上限 ${run.skillConfig.maxCandidates}`:'使用目前啟用的五個角色，由本機程序依序執行。'}</p></div>${run&&['queued','running'].includes(run.status)?button(`data-live-cancel="${esc(run.id)}"`,'取消執行',disabled,'danger'):''}</div>
