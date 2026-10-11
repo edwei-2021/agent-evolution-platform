@@ -4,24 +4,25 @@
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
 <aside class="sidebar">
-  <a class="brand" href="#evolution"><span class="brand-mark">E<span>↗</span></span><span>nanobot × GEPA<small>SKILL EVOLUTION WORKSPACE</small></span></a>
-  <div class="workspace"><span class="avatar">EL</span><span>技能演化工作區<small>第二階段 · Agent GUI</small></span><span class="tiny">⌄</span></div>
+  <a class="brand" href="#skills"><span class="brand-mark">E<span>↗</span></span><span>nanobot × GEPA<small>SKILL EVOLUTION WORKSPACE</small></span></a>
+  <div class="workspace"><span class="avatar">EL</span><span>技能演化工作區<small>第四階段 · Local Skills</small></span><span class="tiny">⌄</span></div>
   <p class="nav-label">WORKSPACE</p>
   <nav aria-label="主導覽">
     <button data-page="overview"><span>▦</span>總覽</button>
     <button data-page="agents" class="active"><span>◎</span>代理人<span class="nav-tag" id="agent-nav-count">5</span></button>
     <button data-page="runtime"><span>◉</span>執行監控<span class="nav-tag">LIVE</span></button>
-    <button data-page="evolution"><span>⌁</span>技能演化<span class="nav-tag">MVP</span></button>
-    <button data-page="evaluations"><span>◷</span>評估紀錄</button>
-    <button data-page="releases"><span>◇</span>版本管理</button>
+    <button data-page="skills"><span>⌁</span>本機技能實驗<span class="nav-tag">RUN</span></button>
+    <button data-page="evolution"><span>∿</span>演化展示<span class="nav-tag">DEMO</span></button>
+    <button data-page="evaluations"><span>◷</span>展示評估紀錄</button>
+    <button data-page="releases"><span>◇</span>展示版本管理</button>
     <button data-page="integrations"><span>⊞</span>框架整合</button>
   </nav>
-  <div class="sidebar-bottom"><div class="stage-label"><i></i> GUI PHASE 03</div><p>檢閱角色、Skill 與工作關係，<br>逐步接入真實執行服務。</p><a href="https://github.com/edwei-2021/nanobot-gepa-mvp" target="_blank" rel="noreferrer">GitHub 專案 ↗</a><small>v0.3.1 · Polling Runtime</small></div>
+  <div class="sidebar-bottom"><div class="stage-label"><i></i> GUI PHASE 04</div><p>檢閱角色、技能候選與證據，<br>追蹤本機演化與版本回復。</p><a href="https://github.com/edwei-2021/nanobot-gepa-mvp" target="_blank" rel="noreferrer">GitHub 專案 ↗</a><small>v0.4.0 · Measured Skills</small></div>
 </aside>
 <div class="shell">
 <header class="topbar"><span>工作區 <span class="muted">/</span> <span id="breadcrumb">代理人</span></span><div><span class="mode-pill"><i></i> 展示模式</span><span class="user-avatar">EW</span></div></header>
 <main id="main" tabindex="-1"></main>
-<footer>nanobot GEPA MVP <span>瀏覽器本機儲存 · 不呼叫模型 API · 不部署代理人技能</span></footer>
+<footer>nanobot GEPA MVP <span>設定與展示存於瀏覽器 · 實測技能存於本機 SQLite · 不呼叫模型 API</span></footer>
 </div>
 <dialog id="new-experiment"><form id="experiment-form"><div class="dialog-title"><div><p class="eyebrow">NEW EXPERIMENT</p><h2>建立技能演化實驗</h2></div><button type="button" class="icon-button" data-close aria-label="關閉">×</button></div><p class="muted">體驗固定資料集的模擬流程，確認 GUI 與檢閱方式。</p><label>實驗名稱<input name="name" required maxlength="80" value="Python 修復技能 · 第一輪"></label><label>技能<select name="skill"><option>python-fix-and-verify</option></select></label><div class="two-col"><label>評估預算<select name="budget"><option value="40">40 次</option><option value="80" selected>80 次</option><option value="120">120 次</option></select></label><label>展示情境<select name="scenario"><option value="improve">候選改善</option><option value="no-gain">沒有改善</option></select></label></div><div class="notice">固定模型、工具與工作流程。展示分割：訓練 20／驗證 10／保留測試 20；數字為模擬結果。</div><div class="dialog-actions"><button type="button" data-close class="button secondary">取消</button><button class="button primary" type="submit">建立實驗 →</button></div></form></dialog>
 <input type="file" id="import-file" accept="application/json,.json" hidden>

@@ -1,0 +1,62 @@
+{
+  "revision": "title-normalizer-v1",
+  "description": "Small handwritten engineering fixture. Measured results apply only to this normalization contract, not to general agent reasoning.",
+  "splits": {
+    "train": [
+      {"id":"TR-01","group":"login","input":"login failure","expected":"login failure"},
+      {"id":"TR-02","group":"cache","input":"cache miss","expected":"cache miss"},
+      {"id":"TR-03","group":"disk","input":"disk full","expected":"disk full"},
+      {"id":"TR-04","group":"backup","input":" BACKUP FAILED ","expected":"backup failed"},
+      {"id":"TR-05","group":"update","input":"Update Pending","expected":"update pending"},
+      {"id":"TR-06","group":"audio","input":"AUDIO MUTED","expected":"audio muted"},
+      {"id":"TR-07","group":"wifi","input":" WiFi Offline ","expected":"wifi offline"},
+      {"id":"TR-08","group":"printer","input":"printer jam  ","expected":"printer jam"},
+      {"id":"TR-09","group":"queue","input":"\tqueue empty\n","expected":"queue empty"},
+      {"id":"TR-10","group":"sync","input":"  sync stalled","expected":"sync stalled"},
+      {"id":"TR-11","group":"memory","input":"memory   pressure","expected":"memory pressure"},
+      {"id":"TR-12","group":"fan","input":"fan\tspeed","expected":"fan speed"},
+      {"id":"TR-13","group":"usb","input":"usb\nreset","expected":"usb reset"},
+      {"id":"TR-14","group":"quota","input":"ＱＵＯＴＡ　ＥＸＣＥＥＤＥＤ","expected":"quota exceeded"},
+      {"id":"TR-15","group":"vpn","input":"ｖｐｎ　ｃｌｏｓｅｄ","expected":"vpn closed"},
+      {"id":"TR-16","group":"route","input":"route missing","expected":"route missing"},
+      {"id":"TR-17","group":"service","input":"  Ｓｅｒｖｉｃｅ\tＤｏｗｎ  ","expected":"service down"},
+      {"id":"TR-18","group":"token","input":"Token\n  Expired","expected":"token expired"},
+      {"id":"TR-19","group":"street","input":"Straße Notice","expected":"strasse notice"},
+      {"id":"TR-20","group":"cpu","input":"  CPU   Hot\t","expected":"cpu hot"}
+    ],
+    "validation": [
+      {"id":"VA-01","group":"battery","input":"battery low","expected":"battery low"},
+      {"id":"VA-02","group":"session","input":"session active","expected":"session active"},
+      {"id":"VA-03","group":"display","input":"Display Blank","expected":"display blank"},
+      {"id":"VA-04","group":"clock","input":"  clock drift\n","expected":"clock drift"},
+      {"id":"VA-05","group":"socket","input":"socket\t\tclosed","expected":"socket closed"},
+      {"id":"VA-06","group":"timeout","input":"ｔｉｍｅｏｕｔ　ｒｅｔｒｙ","expected":"timeout retry"},
+      {"id":"VA-07","group":"camera","input":"  CAMERA   Blocked  ","expected":"camera blocked"},
+      {"id":"VA-08","group":"sensor","input":"ＳＥＮＳＯＲ　ＦＡＵＬＴ","expected":"sensor fault"},
+      {"id":"VA-09","group":"build","input":"  Ｂｕｉｌｄ\n  Ｅｒｒｏｒ ","expected":"build error"},
+      {"id":"VA-10","group":"request","input":"Request  Denied","expected":"request denied"}
+    ],
+    "heldout": [
+      {"id":"HO-01","group":"power","input":"power restored","expected":"power restored"},
+      {"id":"HO-02","group":"proxy","input":"proxy ready","expected":"proxy ready"},
+      {"id":"HO-03","group":"worker","input":"worker idle","expected":"worker idle"},
+      {"id":"HO-04","group":"upload","input":"upload done","expected":"upload done"},
+      {"id":"HO-05","group":"network","input":"NETWORK UNREACHABLE","expected":"network unreachable"},
+      {"id":"HO-06","group":"task","input":"Task Aborted","expected":"task aborted"},
+      {"id":"HO-07","group":"packet","input":"  packet dropped","expected":"packet dropped"},
+      {"id":"HO-08","group":"signal","input":"signal lost\n","expected":"signal lost"},
+      {"id":"HO-09","group":"drive","input":"\tdrive locked  ","expected":"drive locked"},
+      {"id":"HO-10","group":"process","input":"process   stopped","expected":"process stopped"},
+      {"id":"HO-11","group":"image","input":"image\tcorrupt","expected":"image corrupt"},
+      {"id":"HO-12","group":"buffer","input":"buffer\n\noverflow","expected":"buffer overflow"},
+      {"id":"HO-13","group":"thread","input":"ｔｈｒｅａｄ　ｗａｉｔｉｎｇ","expected":"thread waiting"},
+      {"id":"HO-14","group":"module","input":"ＭＯＤＵＬＥ　ＭＩＳＳＩＮＧ","expected":"module missing"},
+      {"id":"HO-15","group":"event","input":"event delayed","expected":"event delayed"},
+      {"id":"HO-16","group":"handler","input":"  Ｈａｎｄｌｅｒ\tＳｔｕｃｋ  ","expected":"handler stuck"},
+      {"id":"HO-17","group":"connection","input":"Connection\n   Refused","expected":"connection refused"},
+      {"id":"HO-18","group":"resource","input":"  RESOURCE　Busy\t","expected":"resource busy"},
+      {"id":"HO-19","group":"bridge","input":"  Ｂｒｉｄｇｅ   Ｂｒｏｋｅｎ ","expected":"bridge broken"},
+      {"id":"HO-20","group":"access","input":"ACCESS\t Restricted\n","expected":"access restricted"}
+    ]
+  }
+}

@@ -1,6 +1,6 @@
-# Live Runtime — v0.3.1 (實際執行與狀態監控)
+# Live Runtime — v0.4.0 (實際執行與狀態監控)
 
-The local Web interface now reads actual process evidence through polling. This release supplies native tool agents, not LLM agents: it does not call nanobot, GEPA or a model provider. The separate Skill evolution tab still uses synthetic fixtures.
+The local Web interface now reads actual process evidence through polling. This release supplies native tool agents, not LLM agents: it does not call nanobot, GEPA or a model provider. The separate evolution demonstration still uses synthetic fixtures. Version 0.4.0 adds a measured local rule-search workflow under **本機技能實驗**; see [the skill evolution guide](skill-evolution.md). The runtime monitor shows process evidence for either workflow.
 
 Version 0.3.1 fixes the browser `Failed to execute 'fetch' on 'Window': Illegal invocation` error. The default HTTP transport now binds native `fetch` to the browser global object, so polling and workflow start/cancel requests reach the local API. No additional packages are required.
 
@@ -22,7 +22,7 @@ bash scripts/start-gui.sh
 
 Open `http://localhost:8765` in Windows. `--port 9000` selects another port for both GUI and API. To inspect the GUI without a supervisor, use `bash scripts/start-gui.sh --static-only`; polling then reports the runtime unavailable.
 
-After updating, use **Ctrl+Shift+R** in the Windows browser to reload frontend modules, then open `http://localhost:8765/#runtime`. Confirm the UI version is **v0.3.1**, the last successful update time is populated and the polling count keeps increasing. Choose **執行專案檢查** to create a workflow; PID/output/history appear once it starts. The WSL terminal should log `GET /api/v1/runtime/capabilities`, repeated `GET /api/v1/runtime` and `POST /api/v1/runtime/runs` when starting work. If `Illegal invocation` remains, verify `git log -1 --oneline`, the displayed UI version, and that the server uses the updated checkout.
+After updating, use **Ctrl+Shift+R** in the Windows browser to reload frontend modules, then open `http://localhost:8765/#runtime`. Confirm the UI version is **v0.4.0**, the last successful update time is populated and the polling count keeps increasing. Choose **執行專案檢查** to create a workflow; PID/output/history appear once it starts. The WSL terminal should log `GET /api/v1/runtime/capabilities`, repeated `GET /api/v1/runtime` and `POST /api/v1/runtime/runs` when starting work. If `Illegal invocation` remains, verify `git log -1 --oneline`, the displayed UI version, and that the server uses the updated checkout.
 
 ## Run and observe (啟動與觀察)
 

@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.3.1 fixes browser-native fetch binding for the local SQLite/subprocess supervisor and polling-based live agent telemetry introduced in 0.3.0, alongside the editable registry and relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. The evolution workflow remains an interactive **demo**. The local execution monitor runs real project-health tool tasks without model calls or a real evolution optimizer. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.4.0 adds **measured local skill evolution**: training-only rule search, actual task-output evaluation, candidate curves/diffs, human approval, immutable SQLite versions, rollback and live skill trials. Its engine is `local-rule-search-v1`, implemented here; nanobot/GEPA/model adapters remain planned. The earlier `python-fix-and-verify` simulation remains separately labeled. Port 8765 is the default with `--port` overrides; the WSL checkout and processing/temp/cache paths stay on D. This independent project does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
@@ -43,7 +43,15 @@ npm run serve -- --port 8766
 
 Open `http://localhost:8766` when using that port.
 
+## Measured local skill evolution (本機技能演化)
+
+Open `http://localhost:8765/#skills` after starting the local server. Select up to four candidates, run search, review the actual validation/held-out evidence, then approve/activate or roll back a local version. Try your own text against the active Skill and export its `SKILL.md`. This phase requires no model key or new packages. The bounded target is `normalize-support-title`, with fixed Unicode/case/whitespace rules and a 20/10/20 handwritten dataset. Scores are measured task outputs; they do not represent LLM or GEPA performance. See the [skill evolution guide](docs/skill-evolution.md).
+
 ## Implemented
+
+- Measured rule-based Skill search and candidate curves/diffs; all training probes are counted.
+- Frozen skill/data/evaluator/runner/runtime hashes, actual task traces and held-out release checks.
+- Server-owned version approval, activation/rollback, optimistic revision checks and Skill export/trials.
 
 - Live execution monitor: default 2-second polling, interval selection, refresh, pause/resume polling and workflow cancellation.
 - Actual local tool-agent processes: asset hashes, JavaScript/Python tests, evidence analysis and review artifacts.
@@ -69,7 +77,7 @@ Open `http://localhost:8766` when using that port.
 
 Agent records are editable browser-local role configurations. Their latest real native-tool run state appears as a separate telemetry overlay. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Framework-connected count remains zero; native tool processes are tracked separately in the execution monitor. GEPA is a planned optimizer adapter, not a runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
 
-Scores, tasks and events in the evolution tab are synthetic fixtures. The execution monitor reads real process evidence from the local service; see the [live runtime guide](docs/live-runtime.md). `S0` and `S1` are fixed example skill bodies. No nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw execution integration has been implemented. The native tool workflow does not perform LLM reasoning, optimize Skills or publish releases. A GUI release changes only the browser's active version pointer, not a Git repository or agent installation.
+Scores, tasks and events in **演化展示** are synthetic fixtures. **本機技能實驗** executes the bounded rule-search engine and stores actual outputs/evidence in SQLite and run artifacts. **執行監控** reads real process evidence for both workflow types. No nanobot, GEPA, Hermes, Herdr, OpenClaw or NanoClaw execution adapter has been implemented. Local measured Skill activation changes the server's active policy for future runs/trials; demo activation changes browser-only state. Neither operation publishes Git code or installs an external-agent Skill.
 
 ## Source structure
 
@@ -84,8 +92,15 @@ dist/js/agent-view.js     Agent details, graph and configuration form views
 dist/js/agent-ui.js       Agent workspace interactions
 dist/js/runtime-client.js Live HTTP/polling client and stale-state handling
 dist/js/runtime-view.js   Live process/evidence monitor
+dist/js/skill-view.js     Measured candidates, review, versions and trials
 scripts/runtime_service.py SQLite history and process supervisor
-scripts/native_agents.py Fixed native tool-agent tasks
+scripts/native_agents.py Fixed project-health tasks
+scripts/skill_engine.py  Declarative Skill executor and training-only search
+scripts/skill_agents.py  Fixed skill-search/evaluation/review role tasks
+scripts/skill_store.py   Immutable versions and revision-checked activation
+skills/title-normalizer/ Fixed baseline and 20/10/20 task dataset
+tests/skill_test.py      Actual skill processes, evidence gates and version/API tests
+tests/skill-client.test.js Skill HTTP/controller and rendering regressions
 tests/runtime_test.py     Actual processes, API policy and workflow integration
 tests/runtime-client.test.js Polling, live mutations and stale snapshots
 tests/agents.test.js      Registry, migration, persistence and rendering boundaries
@@ -98,7 +113,8 @@ scripts/serve_gui.py    Loopback HTTP server for public assets only
 docs/wsl-install.md     WSL2 installation and troubleshooting
 docs/agents-workspace.md Agent workspace usage and data semantics
 docs/architecture.md     Incremental implementation plan
-docs/api-contract.md     Proposed backend contract (not implemented)
+docs/api-contract.md     Implemented local API and future adapter contracts
+docs/skill-evolution.md  Measured skill workflow, evaluation and boundaries
 .openai/hosting.json     Private Site deployment identity
 ```
 
@@ -106,14 +122,12 @@ The tracked `dist/` folder is the canonical frontend source in this buildless MV
 
 ## Persistence and remote use
 
-The hosted URL can be accessed from a remote browser, subject to the owner's private sign-in. Sites serves static assets and does not execute this Python supervisor: use the WSL localhost interface for live execution. A hosted browser does not automatically connect to your WSL machine. Records remain browser-local and do not sync across devices. Use JSON export/import to move demo records. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
+The hosted URL can be accessed from a remote browser, subject to the owner's private sign-in. Sites serves static assets and does not execute this Python supervisor: use the WSL localhost interface for live execution. A hosted browser does not automatically connect to your WSL machine. Registry/demo records remain browser-local; measured skills/runs live in the local server SQLite store. Use JSON export/import to move demo records, and back up server `.local/` with the service stopped for measured evidence. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
 
 ## Next milestone
 
-A standard-library local supervisor and SQLite history are implemented. Next, add authenticated remote access and real nanobot/GEPA execution adapters. The existing fixed project-health pipeline is separate from Skill evolution.
-
-Implement FastAPI + SQLite with a job worker, nanobot execution adapter, trusted evaluator and GEPA optimizer. Replace DemoAdapter through the contract in `docs/api-contract.md`. Preserve this GUI and add explicit real/demo mode separation. Treat real publication and rollback as server-owned Git operations.
+Local process monitoring and measured declarative skill evolution are implemented. Add isolated nanobot model-task execution and GEPA reflective search behind the frozen skill/evaluation contracts, followed by authenticated remote access. The local rule engine is a dependency-free integration foundation, not a GEPA implementation. Keep model secrets server-side and preserve trusted release/rollback gates.
 
 ## Verification
 
-`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. The v0.3.0 delivery has 35 JavaScript and 25 Python passing tests, including real process/API/launcher validation; see [live runtime verification](docs/verification/live-runtime-validation.md). WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.
+`npm test` verifies demo/registry behavior, polling transport, measured skill controls and stale-state boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer/HTTP behavior, real role processes, skill execution, evidence gates and immutable version persistence. See [measured skill verification](docs/verification/skill-evolution-validation.md), [prior runtime verification](docs/verification/live-runtime-validation.md) and [installation verification](docs/verification/wsl-install-validation.md). Browser visual/full DOM QA and the user's WSL host were not directly tested. The fixture results support only the specified text-normalization contract; no LLM/GEPA performance claim is made.

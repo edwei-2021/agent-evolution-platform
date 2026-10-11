@@ -280,3 +280,18 @@
 .graph-node.live-node-stale{background:#fff8ea;border-color:#c5a46b}
 @media(max-width:1050px){.live-agent-grid{grid-template-columns:1fr}.polling-bar{gap:12px}}
 @media(max-width:760px){.polling-bar{padding:17px}.polling-bar>div{flex-basis:100%;min-width:0}.live-agent-body{padding:0 17px 17px}.live-event-list li{display:block}.live-event-list time,.live-event-list code{display:block}.runtime-metric{font-size:22px!important}}
+
+/* Measured skill search and local version review. */
+.skill-role-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:0 21px 18px}
+.skill-role-strip>div{padding:13px;border:1px solid var(--line);border-radius:8px;min-width:0}
+.skill-role-strip strong{display:block;font-size:11px;margin-bottom:10px}
+.skill-role-strip small{display:block;font-size:10px;color:#68758c;line-height:1.7;margin-top:9px;overflow-wrap:anywhere}
+.skill-chart{max-height:240px}
+.skill-trial-form{display:flex;align-items:flex-end;gap:15px;padding:0 21px 21px}
+.skill-trial-form label{flex:1;margin:0}
+.skill-trial-result{padding:0 21px 21px;font-size:12px;overflow-wrap:anywhere}
+.skill-trial-result pre{min-height:0;margin:12px 0;background:#f5f7fd;border-radius:6px}
+.release-row{gap:12px}
+@media(max-width:1150px){.skill-role-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.skill-role-strip{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 17px 18px}.skill-chart{min-width:420px}.card:has(.skill-chart){overflow:auto}}
+@media(max-width:760px){.skill-trial-form{flex-direction:column;align-items:stretch}.skill-trial-result{padding:0 17px 17px}}

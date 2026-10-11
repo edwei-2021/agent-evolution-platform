@@ -57,12 +57,14 @@ class GuiHandler(SimpleHTTPRequestHandler):
         try:
             if path == '/api/v1/runtime/capabilities':
                 from setup_wsl import find_node
-                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'nodeReady': bool(find_node()), 'nanobotInstalled': bool(shutil.which('nanobot')), 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False})
+                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': bool(shutil.which('nanobot')), 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())
+            elif path == '/api/v1/skills':
+                self.json_response(200, runtime.snapshot()['skills'])
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)', path):
                 self.json_response(200, runtime.get_run(match[1]))
-            elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log))', path):
+            elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md))', path):
                 run = runtime.get_run(match[1])
                 target = (runtime.local / 'runs' / match[1] / match[2]).resolve()
                 if match[2] not in run['artifacts'] or not target.is_relative_to((runtime.local / 'runs').resolve()) or not target.is_file():
@@ -87,6 +89,19 @@ class GuiHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
+            elif path == '/api/v1/skills/runs':
+                self.json_response(202, runtime.start(body.get('registry'), body.get('requestId'), task='skill-evolution', options={'maxCandidates': body.get('maxCandidates'), 'expectedRevision': body.get('expectedRevision')}))
+            elif path == '/api/v1/skills/execute':
+                from skill_engine import execute
+                with runtime.lock:
+                    runtime.skills.check_revision(body.get('expectedRevision'))
+                    version = runtime.skills.snapshot()['active']
+                    output = execute(version['skill'], body.get('text'))
+                    self.json_response(200, {'versionId': version['id'], 'label': version['label'], 'skillHash': version['skill']['hash'], 'input': body['text'], 'output': output})
+            elif match := re.fullmatch(r'/api/v1/skills/runs/(RUN-[A-Za-z0-9-]+)/approve', path):
+                self.json_response(200, runtime.skills.approve(match[1], body.get('expectedRevision')))
+            elif match := re.fullmatch(r'/api/v1/skills/versions/(SKV-[A-Za-z0-9-]+)/activate', path):
+                self.json_response(200, runtime.skills.activate(match[1], body.get('expectedRevision')))
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/cancel', path):
                 self.json_response(200, runtime.cancel(match[1]))
             else:

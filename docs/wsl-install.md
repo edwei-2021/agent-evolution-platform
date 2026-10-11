@@ -1,6 +1,6 @@
 # WSL2 Ubuntu 24.04 installation（安裝與啟動）
 
-This installs the GUI, local native-tool runtime supervisor and development checks. It does not install or execute nanobot, GEPA, a model server or a real Skill evolution optimizer. The GUI has no Python third-party dependencies, npm packages, build step or model API key requirement.
+This installs the GUI, local native-tool runtime supervisor and development checks. It includes the measured `local-rule-search-v1` skill engine, and does not install or execute nanobot, GEPA or a model server. The GUI has no Python third-party dependencies, npm packages, build step or model API key requirement.
 
 ## 1. Verify WSL2 in Windows
 
@@ -50,6 +50,8 @@ Project paths follow the checkout location:
 | Installer/test/GUI temporary files | `/mnt/d/nanobot-gepa-mvp/.local/tmp/` |
 | Subprocess cache locations | `/mnt/d/nanobot-gepa-mvp/.local/cache/` |
 | Environment report | `/mnt/d/nanobot-gepa-mvp/.local/environment.json` |
+| Measured Skill versions and runtime history | `/mnt/d/nanobot-gepa-mvp/.local/runtime.sqlite3` |
+| Frozen Skill/run evidence | `/mnt/d/nanobot-gepa-mvp/.local/runs/` |
 | GUI launch working directory | `/mnt/d/nanobot-gepa-mvp` |
 
 Installer subprocesses receive project-local TMPDIR/TMP/TEMP and cache settings. APT packages and the existing base Python remain managed by Ubuntu; the installer does not relocate the operating system. GUI demo records still use browser localStorage; export JSON to a directory under `D:\nanobot-gepa-mvp` when a file backup on D is needed. Runtime directories are excluded from Git.
@@ -152,3 +154,7 @@ Stop the old server before restarting after an update. GUI records remain in bro
 - Node.js 22.23.3 LTS release and Linux binaries: https://nodejs.org/en/blog/release/v22.23.3
 - Python 3.11 venv / --without-pip: https://docs.python.org/3.11/library/venv.html
 - Microsoft WSL networking: https://learn.microsoft.com/en-us/windows/wsl/networking
+
+## Measured skill phase (本機技能實驗)
+
+Version 0.4.0 adds no dependencies. Stop the old service, pull, run the doctor with your existing Python 3.11, restart, then hard-refresh `http://localhost:8765/#skills`. See [the skill workflow guide](skill-evolution.md) for candidates, trusted review, local activation/rollback and trials. `.local/` contains authoritative measured versions; browser JSON export does not include them.

@@ -12,6 +12,12 @@ One demo evaluation tick occurs every 1.2 seconds while the page is open. Pausin
 
 Cancellation terminates the active process group. A stage deadline bounds work; queued downstream stages are skipped after failure. One supervisor holds the checkout lock, and one workflow runs at a time. After a restart, unfinished records are marked interrupted and process liveness is unconfirmed. This is a local development service, not a durable queue or remotely authenticated agent platform. The static hosted Site does not run this Python service.
 
+## Phase 2a extension: Measured declarative Skills (implemented in v0.4.0)
+
+The same standard-library supervisor now dispatches either project-health tasks or a five-role skill workflow. `skill_engine.py` owns four allowlisted text rules, generated Skill bodies/hashes, objective output equality and training-only one-rule search. `skill_agents.py` freezes provenance, searches training traces, selects on validation, then evaluates held-out tasks and recomputes evidence. `skill_store.py` owns immutable SQLite versions, explicit human approval, revision-checked activation and rollback. Runtime snapshots include the separate measured skill workspace; `skill-view.js` renders candidates, curve/diff, failures, versions, trials and history with the existing polling transport.
+
+The target is a small `normalize-support-title` fixture, with 20/10/20 distinct task/output groups. This dependency-free engine establishes the execution/evidence/version path before model integration. It does not replace the planned nanobot/GEPA free-form prompt optimizer or Python repair runner. See `docs/skill-evolution.md` for counts, gates and limitations.
+
 ## Phase 2b: Real single-worker model evaluation (planned)
 
 Add a separately deployed FastAPI service, SQLite experiments/artifacts, and a durable worker. Sites hosts the browser GUI; it does not execute Python agents. Run the worker on a user-controlled server/VM with isolated task workspaces. Keep provider credentials server-side.
@@ -34,4 +40,4 @@ Add Hermes and OpenClaw runtime adapters behind the same trace contract. Herdr c
 
 ## Git workflow
 
-Use an independent `nanobot-gepa-mvp` GitHub repository. Keep source, docs and tests in Git; exclude credentials and private runtime logs. Use feature branches and PRs for subsequent changes. A demo release in the GUI is separate from a Git software release. No CI workflow is included yet; run `npm test` before changes are submitted. Private Sites publication is independent of GitHub synchronization and must not be reported as a GitHub push.
+Use an independent `nanobot-gepa-mvp` GitHub repository. Keep source, docs and tests in Git; exclude credentials and private runtime logs. Keep reviewable commits for authorized incremental work; use feature branches/PRs when a separate review is requested. A demo release in the GUI is separate from a Git software release. No CI workflow is included yet; run `npm test` before changes are submitted. Private Sites publication is independent of GitHub synchronization and must not be reported as a GitHub push.

@@ -1,6 +1,6 @@
 # Runtime API and proposed evolution service contract
 
-v0.3.0 implements only the local runtime endpoints below. Experiments, demo releases and registry editing remain browser-local; the broader evolution service endpoints are future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
+v0.4.0 implements local runtime and measured declarative-skill endpoints. Simulation experiments/releases and registry editing remain browser-local; model-agent/GEPA endpoints below remain future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
 
 ## Implemented local runtime API (已實作的本機執行 API)
 
@@ -18,6 +18,22 @@ Requests are same-origin on the loopback server. Mutations require `X-Lab-Token`
 Submission body: `{registry, requestId}`. The server validates and projects enabled agent identities to exactly one of each fixed role. It never executes browser-supplied commands, Runtime strings, tool identifiers, model settings, Skill bodies or custom graph edges. Idempotency preserves the prior run ID for repeated request IDs. Run evidence is authoritative server data and is never imported into the demo registry as a connection claim.
 
 Snapshot fields include `serviceId`, `serverTime`, `latestRun`, and `runs`. Per-agent telemetry includes identity/role, adapter, status, task, PID, observed process liveness, start/end/update times, exit code, error and an 8 KB output tail. PID is execution evidence, not an LLM session ID. A completed role means its script exited successfully; the trusted test exit codes and final review determine `checksPassed`. A workflow can end failed when tests fail even if every stage process exited normally. Persisted running work becomes interrupted after supervisor restart.
+
+## Implemented measured Skill API (本機實測技能 API)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | /api/v1/skills | Active policy/version, revision, immutable versions, actions and recent Skill runs |
+| POST | /api/v1/skills/runs | Submit `{registry, requestId, maxCandidates, expectedRevision}`; candidate limit 1–4 |
+| POST | /api/v1/skills/runs/{id}/approve | Trusted evidence recomputation, version creation and local activation; body `{expectedRevision}` |
+| POST | /api/v1/skills/versions/{id}/activate | Activate/roll back an existing immutable version; body `{expectedRevision}` |
+| POST | /api/v1/skills/execute | Trial using the active policy; body `{text, expectedRevision}`, text at most 500 characters |
+
+These routes use the same Host/origin/session-token/body limits as runtime routes. State conflicts return 409; invalid policy/evidence/input returns 400. Browser-supplied scores are ignored. Only a completed, improving, independently verified run with the current active baseline can be approved. A version remains immutable; activation changes a revision-checked pointer and records an action. Existing work retains its frozen baseline. Default maximum: 100 stored versions.
+
+`GET /api/v1/runtime` includes a `skills` workspace without changing the existing schemaVersion 1 process contract. Its Skill `latestRun` contains frozen `skillConfig`, atomically read `skillProgress` and terminal `skillResult`. `GET /api/v1/runtime/runs/{id}` also supplies these fields for history selection. Cancellation uses the existing runtime cancel route. Artifact access now includes allowlisted `.md` files alongside `.json`/`.log`.
+
+Project-health and Skill runs share the active-workflow slot. Submission IDs bind immutable task/role/options projections; reuse with different input returns 409. Optimizer engine is `local-rule-search-v1`, not GEPA. Capabilities exposes `skillEngine`; `frameworkConnected` and `modelConnected` remain false. See `docs/skill-evolution.md` for exact evaluation counts and evidence scope.
 
 ## Proposed evolution service resources
 

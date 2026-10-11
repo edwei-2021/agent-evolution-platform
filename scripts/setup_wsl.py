@@ -105,12 +105,15 @@ def check_environment(root=ROOT, allow_non_wsl=False):
             importlib.import_module(module)
         except ImportError:
             errors.append(f'Python {module} support is unavailable; repair the selected interpreter through its provider.')
-    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js', 'js/runtime-client.js', 'js/runtime-view.js']:
+    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js', 'js/runtime-client.js', 'js/runtime-view.js', 'js/skill-view.js']:
         if not (root / 'dist' / name).is_file():
             errors.append(f'Missing frontend asset: dist/{name}. Use a complete repository checkout.')
-    for name in ['serve_gui.py', 'runtime_service.py', 'native_agents.py']:
+    for name in ['serve_gui.py', 'runtime_service.py', 'native_agents.py', 'skill_engine.py', 'skill_agents.py', 'skill_store.py']:
         if not (root / 'scripts' / name).is_file():
             errors.append(f'Missing runtime source: scripts/{name}. Use a complete repository checkout.')
+    for name in ['SKILL.md', 'dataset.json']:
+        if not (root / 'skills/title-normalizer' / name).is_file():
+            errors.append(f'Missing skill fixture: skills/title-normalizer/{name}. Use a complete repository checkout.')
     venv_path = root / '.venv' / 'bin/python'
     venv_ready = False
     if (root / '.venv').exists():

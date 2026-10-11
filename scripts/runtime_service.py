@@ -3,6 +3,7 @@ import copy
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,7 +59,7 @@ class RuntimeService:
         self.lock = threading.RLock()
         self.csrf_token = secrets.token_urlsafe(32)
         self.service_id = str(uuid.uuid4())
-        self.command_factory = command_factory or (lambda role, path: [sys.executable, str(ROOT / 'scripts/native_agents.py'), '--role', role, '--run-dir', str(path)])
+        self.command_factory = command_factory or self.native_command
         self.stage_timeout = stage_timeout
         self.thread = None
         self.process = None
@@ -76,6 +77,17 @@ class RuntimeService:
                         if agent['status'] in ('queued', 'running'):
                             agent.update(status='interrupted', processAlive=None, updatedAt=now(), error='Supervisor restarted; previous process state is unconfirmed')
                     db.execute('UPDATE runs SET data=? WHERE id=?', (json.dumps(run), identifier))
+        from skill_store import SkillStore
+        self.skills = SkillStore(self)
+
+    @staticmethod
+    def timestamp():
+        return now()
+
+    @staticmethod
+    def native_command(role, path):
+        filename = 'skill_agents.py' if (path / 'skill-config.json').is_file() else 'native_agents.py'
+        return [sys.executable, str(ROOT / 'scripts' / filename), '--role', role, '--run-dir', str(path)]
 
     @contextmanager
     def connect(self):
@@ -100,33 +112,67 @@ class RuntimeService:
             row = db.execute('SELECT data FROM runs WHERE id=?', (identifier,)).fetchone()
             if not row:
                 raise KeyError('Run not found')
-            return json.loads(row[0])
+            return self.decorate(json.loads(row[0]))
+
+    def decorate(self, run):
+        if run.get('task') == 'skill-evolution':
+            path = self.local / 'runs' / run['id'] / 'progress.json'
+            if path.is_file():
+                try:
+                    run['skillProgress'] = json.loads(path.read_text())
+                except (ValueError, OSError):
+                    pass
+        return run
 
     def snapshot(self):
         with self.lock, self.connect() as db:
             runs = [json.loads(row[0]) for row in db.execute('SELECT data FROM runs ORDER BY created DESC LIMIT 10')]
-        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': runs[0] if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in runs]}
+        with self.lock, self.connect() as db:
+            skill_runs = []
+            for row in db.execute('SELECT data FROM runs ORDER BY created DESC'):
+                run = json.loads(row[0])
+                if run.get('task') == 'skill-evolution':
+                    skill_runs.append(run)
+                    if len(skill_runs) == 10:
+                        break
+            workspace = self.skills.snapshot()
+            workspace.update(latestRun=self.decorate(skill_runs[0]) if skill_runs else None,
+                             runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt'], 'baselineVersionId': r['skillConfig']['baseline']['id'], 'selectedId': r.get('skillResult', {}).get('selectedId'), 'eligible': r.get('skillResult', {}).get('eligible')} for r in skill_runs])
+        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace}
 
-    def start(self, registry, request_id):
+    def start(self, registry, request_id, task='project-health', options=None):
         agents = validate_bindings(registry)
         if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', request_id):
             raise ValueError('Invalid idempotency request ID')
+        if task not in ('project-health', 'skill-evolution') or (task == 'project-health' and options is not None):
+            raise ValueError('Unsupported fixed workflow')
+        submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
         with self.lock:
             if self.closed:
                 raise RuntimeError('Runtime service is stopping')
             with self.connect() as db:
                 prior = db.execute('SELECT data FROM runs WHERE request_id=?', (request_id,)).fetchone()
             if prior:
-                return json.loads(prior[0])
+                existing = json.loads(prior[0])
+                if existing.get('submissionHash', submission_hash) != submission_hash or existing.get('task') != task:
+                    raise RuntimeError('Idempotency request ID is already bound to a different submission')
+                return self.decorate(existing)
             if self.current and self.current['status'] not in TERMINAL:
                 raise RuntimeError('A workflow is already running; cancel or wait before starting another')
+            config = self.skills.freeze(options) if task == 'skill-evolution' else None
+            from skill_agents import TASKS as SKILL_TASKS
+            tasks = SKILL_TASKS if config else TASKS
             identifier = 'RUN-' + str(uuid.uuid4())
             directory = self.local / 'runs' / identifier
             directory.mkdir(parents=True)
             (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
+            if config:
+                (directory / 'skill-config.json').write_text(json.dumps(config, indent=2, ensure_ascii=False))
             timestamp = now()
-            self.current = {'id': identifier, 'requestId': request_id, 'task': 'project-health', 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'native-tool-agent', 'status': 'queued', 'task': TASKS[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
-            self.event(None, 'Queued real project-health workflow; no LLM or GEPA calls')
+            self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
+            if config:
+                self.current['skillConfig'] = config
+            self.event(None, f'Queued actual {task} workflow; no LLM or GEPA calls')
             self.persist()
             self.cancel_event.clear()
             self.thread = threading.Thread(target=self.execute, args=(directory,), daemon=True)
@@ -216,7 +262,10 @@ class RuntimeService:
                 self.current.update(status='cancelled' if self.cancel_event.is_set() else 'failed' if failed else 'completed', endedAt=now())
                 review = directory / 'review.json'
                 if review.exists():
-                    self.current['checksPassed'] = json.loads(review.read_text())['checksPassed']
+                    result = json.loads(review.read_text())
+                    self.current['checksPassed'] = result['checksPassed']
+                    if self.current.get('task') == 'skill-evolution':
+                        self.current['skillResult'] = result
                     if not self.current['checksPassed'] and self.current['status'] == 'completed':
                         self.current['status'] = 'failed'
                         self.event(None, 'Workflow finished but trusted checks failed')

@@ -45,7 +45,8 @@ def main(argv=None):
         write(run_dir / 'worker-result.json', result)
         # Test failure is recorded evidence; the downstream reviewer must inspect it.
     elif args.role == 'evaluator':
-        result = execute([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'setup_test.py'], ROOT, run_dir / 'python-tests.log')
+        # Include installer and skill regressions; exclude runtime_test.py to avoid recursion.
+        result = execute([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 's*_test.py'], ROOT, run_dir / 'python-tests.log')
         write(run_dir / 'evaluator-result.json', result)
     elif args.role == 'reflector':
         evidence = {role: json.loads((run_dir / filename).read_text()) for role, filename in [('worker', 'worker-result.json'), ('evaluator', 'evaluator-result.json')]}
