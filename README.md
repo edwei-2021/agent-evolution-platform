@@ -4,7 +4,7 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.3.0 adds a local SQLite/subprocess supervisor and polling-based live agent telemetry, alongside the editable registry and relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. The evolution workflow remains an interactive **demo**. The local execution monitor runs real project-health tool tasks without model calls or a real evolution optimizer. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.3.1 fixes browser-native fetch binding for the local SQLite/subprocess supervisor and polling-based live agent telemetry introduced in 0.3.0, alongside the editable registry and relationship graph. Port 8765 remains the default, with `--port` for overrides. The documented WSL workspace is on Windows drive D, with project processing/temp/cache paths relative to that checkout. The evolution workflow remains an interactive **demo**. The local execution monitor runs real project-health tool tasks without model calls or a real evolution optimizer. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 

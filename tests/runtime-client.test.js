@@ -9,6 +9,35 @@ const snapshot=()=>({schemaVersion:1,mode:'native-tools',serviceId:caps.serviceI
 const running=()=>({...snapshot(),latestRun:{id:'RUN-test',requestId:'test',mode:'native-tools',status:'running',createdAt:stamp,updatedAt:stamp,checksPassed:null,agents:initialRegistry().agents.map((a,i)=>({...a,status:i?'queued':'running',adapter:'native-tool-agent',task:'actual check',pid:i?null:1234,processAlive:!i,startedAt:i?null:stamp,endedAt:null,updatedAt:stamp,exitCode:null,error:null,logTail:'tool output'})),events:[{at:stamp,agentId:'AG-001',text:'actual subprocess started'}],artifacts:[]},runs:[{id:'RUN-test',status:'running',createdAt:stamp}]});
 const response=data=>({ok:true,status:200,json:async()=>structuredClone(data)});
 
+test('default browser fetch keeps its global receiver for polling, run and cancellation',async()=>{
+  const originalFetch=globalThis.fetch,requests=[];
+  let client,started=false;
+  try{
+    // Browser Web APIs can reject a RuntimeClient receiver before issuing HTTP.
+    globalThis.fetch=async function(path,options){
+      if(this!==globalThis)throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      requests.push({path,options});
+      if(path.endsWith('capabilities'))return response(caps);
+      if(options.method==='POST'){started=true;return response({id:'RUN-test'});}
+      return response(started?running():snapshot());
+    };
+    client=new RuntimeClient();
+    assert.equal(await client.refresh(),true,client.error);
+    await client.run(initialRegistry());
+    await client.cancel('RUN-test');
+    assert.equal(await client.refresh(),true);
+    assert.equal(client.pollCount,4);
+    assert.equal(client.error,null);
+    assert.ok(client.lastSuccess);
+    assert.equal(requests.filter(r=>r.path.endsWith('capabilities')).length,1);
+    assert.equal(requests.filter(r=>r.options.method==='POST').length,2);
+    assert.equal(requests.filter(r=>r.path==='/api/v1/runtime').length,4);
+  }finally{
+    client?.stop();
+    globalThis.fetch=originalFetch;
+  }
+});
+
 test('polling reads capabilities once, then fresh snapshots with no-store',async()=>{
   const calls=[],client=new RuntimeClient({fetcher:async(path,options)=>{calls.push({path,options});return response(path.endsWith('capabilities')?caps:running());}});
   assert.equal(await client.refresh(),true);assert.equal(await client.refresh(),true);

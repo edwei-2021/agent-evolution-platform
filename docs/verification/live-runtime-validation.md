@@ -1,5 +1,17 @@
 # Live Runtime verification — 2026-10-11
 
+## v0.3.1 browser fetch hotfix (瀏覽器連線修正)
+
+The user's screenshots show WSL2 Ubuntu 24.04.5 / Python 3.11.9 / Linux Node 22.23.3 and a READY doctor report. The local server serves GUI modules successfully, but the browser reports `Failed to execute 'fetch' on 'Window': Illegal invocation` and the terminal receives no runtime API requests. The default transport stored native `fetch` as a client method, changing its receiver to the RuntimeClient instance.
+
+Native `fetch` is now bound to `globalThis`; injected test transports are retained. A receiver-sensitive default-transport regression test reproduced the exact error before the fix, and passes after it. It covers repeated polling plus token-bearing start/cancel requests. All **36 JavaScript + 25 Python tests** pass, including actual native-role subprocess checks. Module/shell syntax checks and `git diff --check` also pass.
+
+A separate HTTP integration check uses the default RuntimeClient with a receiver-sensitive, relative-URL browser-fetch shim against an actual loopback server. It successfully obtains capabilities, submits work and completes 42 refreshes. All five roles report real PIDs and zero exit codes, and final `checksPassed=true`. Temporary smoke runtime data is cleaned up. This is HTTP/controller/process verification, not a real Chrome DOM test.
+
+The development environment was checked again: Python 3.12.14, Linux Node 24.19.0 and ready `.venv`; it remains a non-WSL container. No packages were installed. The user's Chrome/Windows/WSL host cannot be operated from this session; browser visual QA remains unavailable. Update/restart/hard-refresh and API-log verification steps are documented in `docs/live-runtime.md`.
+
+## Original v0.3.0 verification
+
 Release: v0.3.0. Target: WSL2 Ubuntu 24.04, Python 3.11+, project under `/mnt/d/nanobot-gepa-mvp`.
 
 ## Environment inspected first (先檢查環境)

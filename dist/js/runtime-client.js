@@ -22,7 +22,8 @@ export function telemetryLabel(runtime,id){
   return agent?(runtime.error?'狀態過期':LIVE_STATUSES[agent.status]):'尚無執行紀錄';
 }
 export class RuntimeClient{
-  constructor({fetcher=globalThis.fetch,onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;}
+  // Native browser fetch requires the global receiver, not this RuntimeClient.
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;}
   snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval};}
   async request(path,{method='GET',body}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
