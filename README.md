@@ -10,9 +10,10 @@ GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1
 
 In the WSL2 Ubuntu terminal, clone into `/mnt/d/nanobot-gepa-mvp` (Windows `D:\nanobot-gepa-mvp`), inspect first, install missing prerequisites, then start:
 
+This repository is private. Before cloning, authenticate Git inside WSL through the [GitHub CLI browser-login instructions](docs/wsl-install.md#2-obtain-the-independent-project). The connected GitHub account in ChatGPT does not authenticate the WSL terminal, and GitHub account passwords cannot be used for HTTPS Git operations.
+
 ```bash
-cd /mnt/d
-git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git nanobot-gepa-mvp
+git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git /mnt/d/nanobot-gepa-mvp
 cd /mnt/d/nanobot-gepa-mvp
 bash scripts/install-wsl.sh --check --python python3.11
 bash scripts/install-wsl.sh --python python3.11

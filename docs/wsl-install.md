@@ -14,17 +14,31 @@ Confirm that the Ubuntu 24.04 distribution has `VERSION` = `2`. Open that Ubuntu
 
 ## 2. Obtain the independent project
 
-Use `/mnt/d/nanobot-gepa-mvp` as the project root (Windows `D:\nanobot-gepa-mvp`). Confirm `/mnt/d` is mounted and writable. If Git is missing, install the clone prerequisites first:
+Use `/mnt/d/nanobot-gepa-mvp` as the project root (Windows `D:\nanobot-gepa-mvp`). Confirm `/mnt/d` is mounted and writable. The repository is private: the connected GitHub account in ChatGPT does not authenticate Git inside WSL. Authenticate in WSL before cloning.
+
+Install Git and GitHub CLI, then start browser authentication. When running as `root`, omit `sudo` from the APT commands:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y --no-install-recommends git ca-certificates
-cd /mnt/d
-git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git nanobot-gepa-mvp
+sudo apt-get install -y --no-install-recommends git gh ca-certificates
+gh auth login --hostname github.com --git-protocol https --web
+```
+
+Use the URL and one-time code displayed in the terminal to complete authentication in the Windows browser. Sign in as GitHub user `edwei-2021` (or another account granted repository access). If WSL cannot launch a browser, open the displayed URL manually. Complete login before continuing. Do not share the code or credentials in chat.
+
+Configure Git to use the authenticated CLI, verify repository access, then clone:
+
+```bash
+gh auth setup-git --hostname github.com
+gh auth status --hostname github.com
+gh repo view edwei-2021/nanobot-gepa-mvp --json nameWithOwner,isPrivate
+git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git /mnt/d/nanobot-gepa-mvp
 cd /mnt/d/nanobot-gepa-mvp
 ```
 
-The repository is private. The connected GitHub account in ChatGPT does not sign in Git inside WSL. Use your existing Git HTTPS credential manager or configured GitHub SSH authentication. For SSH, replace the clone URL with `git@github.com:edwei-2021/nanobot-gepa-mvp.git`. Do not put access tokens into the clone URL, scripts or logs. If Git access is not configured, download the repository ZIP through your signed-in GitHub browser and extract it into `/mnt/d/nanobot-gepa-mvp`; version metadata in the local installation report will then be null until a Git checkout is used.
+Run authentication, credential setup and clone as the same Linux user: `root` and a regular Ubuntu user have separate credential configuration. GitHub account passwords are not accepted for HTTPS Git operations. If using manual HTTPS authentication, the username is the GitHub login (`edwei-2021`), and the password prompt requires a personal access token. The browser flow above avoids manually copying a token. Do not put tokens in clone URLs, project files or logs.
+
+An existing Git HTTPS credential manager or configured SSH authentication is also supported. For SSH, replace the clone URL with `git@github.com:edwei-2021/nanobot-gepa-mvp.git`. Alternatively, download the repository ZIP through your signed-in GitHub browser and extract it into `/mnt/d/nanobot-gepa-mvp`; installation report version metadata will be null until a Git checkout is used.
 
 Project paths follow the checkout location:
 
@@ -40,9 +54,7 @@ Project paths follow the checkout location:
 
 Installer subprocesses receive project-local TMPDIR/TMP/TEMP and cache settings. APT packages and the existing base Python remain managed by Ubuntu; the installer does not relocate the operating system. GUI demo records still use browser localStorage; export JSON to a directory under `D:\nanobot-gepa-mvp` when a file backup on D is needed. Runtime directories are excluded from Git.
 
-To migrate an older checkout, first commit/push any source changes you want to preserve. Clone afresh into the D location and rerun installation there; create a new `.venv` in the destination. Python virtual environments are tied to their creation paths. Keep the old checkout until the new one works. An existing D checkout can be updated in place:
-
-For an existing checkout, save/commit your own changes, then update:
+To migrate an older checkout, first commit/push any source changes you want to preserve. Clone afresh into the D location and rerun installation there; create a new `.venv` in the destination. Python virtual environments are tied to their creation paths. Keep the old checkout until the new one works. For an existing D checkout, save/commit your own changes, then update:
 
 ```bash
 cd /mnt/d/nanobot-gepa-mvp
@@ -119,6 +131,8 @@ Stop the old server before restarting after an update. GUI records remain in bro
 
 | Observation | Action |
 | --- | --- |
+| `Invalid username or token` / `Password authentication is not supported` | Use `gh auth login --hostname github.com --git-protocol https --web`, then `gh auth setup-git --hostname github.com`, under the Linux user doing the clone. Account passwords do not work for Git HTTPS. |
+| `gh repo view` cannot access the private repository | Check `gh auth status --hostname github.com` and authenticate with an account granted access to `edwei-2021/nanobot-gepa-mvp` before cloning. |
 | `Python executable not found` | Run `command -v python3.11`; provide the interpreter path with `--python`. |
 | Python 3.10 or older | Select an existing Python 3.11+; do not replace Ubuntu's system interpreter. |
 | WSL2 kernel not detected | Verify `wsl --list --verbose` in Windows. `--allow-non-wsl` is an explicit escape for Ubuntu 24.04 VM/container validation, not automatic WSL conversion. |
@@ -130,6 +144,9 @@ Stop the old server before restarting after an update. GUI records remain in bro
 
 ## References
 
+- GitHub command-line authentication: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#authenticating-with-the-command-line
+- GitHub CLI browser login: https://cli.github.com/manual/gh_auth_login
+- Configure Git credentials through GitHub CLI: https://cli.github.com/manual/gh_auth_setup-git
 - Node.js 22.23.3 LTS release and Linux binaries: https://nodejs.org/en/blog/release/v22.23.3
 - Python 3.11 venv / --without-pip: https://docs.python.org/3.11/library/venv.html
 - Microsoft WSL networking: https://learn.microsoft.com/en-us/windows/wsl/networking
