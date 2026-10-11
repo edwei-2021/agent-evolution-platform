@@ -4,6 +4,8 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
+Version **0.5.1** fixes the Integrations model-save button（模型設定儲存修正）. Form submit buttons now reach their submit handlers before rendering; failed saves preserve typed fields. The page displays the backend's saved model ID and settings revision. Save a model once, then navigate to LLM Skills. Existing Windows Ollama port 11435 and endpoint settings are retained; no dependency installation or repeated connection diagnostics are required. [Fix validation](docs/verification/model-settings-save-validation.md).
+
 GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.5.0 adds **actual Ollama Skill execution and training-based reflection**: fresh model calls, one candidate, trusted output scoring, polling process visibility, human approval and immutable prompt versions. Its engine is `ollama-prompt-reflection-v1`, implemented here; nanobot/GEPA SDK adapters remain planned. The earlier rule engine and synthetic demo remain separate. Windows Ollama defaults to 11435, GUI to 8765, both configurable. The WSL checkout and processing/temp/cache paths remain on D. No startup model calls or redundant Windows connection diagnostics are performed. This independent project does not modify MultiAgent-Evolution-Lab.
 
 ## WSL2 Ubuntu 24.04 / Python 3.11

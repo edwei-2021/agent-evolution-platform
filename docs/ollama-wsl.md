@@ -1,5 +1,11 @@
 # Windows Ollama Bridge (Windows Ollama 橋接)
 
+## Model-save fix in v0.5.1 (模型設定儲存修正)
+
+In v0.5.0, clicking Save triggered a delegated click handler that rendered the page before the browser could submit the form. The original form was detached, resetting typed values and preventing persistence. Version 0.5.1 routes form submit buttons to their submit handlers, removes redraws for unhandled buttons, and preserves draft fields during a request or after a failed save. This also fixes the same click path for model chat and other forms.
+
+After stopping the old GUI and updating with `git pull --ff-only`, restart `bash scripts/start-gui.sh`, open `http://localhost:8765/#integrations`, and refresh with Ctrl+Shift+R. Enter the exact model ID, click Save, and check **已儲存模型** (saved model) and the settings revision below the form. These values come from the backend response. Navigate to LLM Skills and start Smoke. Existing endpoint/port/timeouts remain in `.local/ollama/settings.json`; no Windows setup or connection diagnostics are needed. A failed save shows an error and retains the entered values; explicit Reload reads the backend settings and replaces the draft.
+
 Version 0.4.1 incorporates the user's working Windows 10 / WSL2 connection approach. It does not repeat host setup or automatically retest the Windows service. The provider transport is available for explicit single requests. Version 0.5.0 also connects it to [LLM Skill evolution](llm-skill-evolution.md); the older rule workflow remains independent.
 
 ## Recorded target evidence (實機驗證紀錄)

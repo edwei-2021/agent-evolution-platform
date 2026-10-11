@@ -236,13 +236,24 @@ class LlmWorkflowTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         client_uri = (root / 'dist/js/runtime-client.js').as_uri()
         agents_uri = (root / 'dist/js/agents.js').as_uri()
+        ollama_uri = (root / 'dist/js/ollama-ui.js').as_uri()
+        self.service.ollama.save({**self.service.ollama.state()['config'], 'model': ''}, 1)
         js = f"""
 import assert from 'node:assert/strict';
 import {{RuntimeClient}} from {json.dumps(client_uri)};
 import {{initialRegistry}} from {json.dumps(agents_uri)};
+import {{OllamaUI}} from {json.dumps(ollama_uri)};
 const base='http://127.0.0.1:{server.server_port}';
 const client=new RuntimeClient({{fetcher:(path,options)=>fetch(base+path,options)}});
 assert.equal(await client.refresh(),true);
+const provider=new OllamaUI({{fetcher:(path,options)=>fetch(base+path,options),token:()=>client.capabilities.csrfToken}});
+await provider.operate('reload');assert.equal(provider.data.config.model,'');
+provider.edit('model','qwen3-coder:30b');
+await provider.operate('save',{{...provider.data.config,model:'qwen3-coder:30b'}});
+assert.equal(provider.data.config.model,'qwen3-coder:30b');
+assert.match(provider.view(),/value="qwen3-coder:30b"/);
+const reopened=new OllamaUI({{fetcher:(path,options)=>fetch(base+path,options)}});
+await reopened.operate('reload');assert.equal(reopened.data.config.model,'qwen3-coder:30b');
 client.llmSeconds=60;await client.startLlm(initialRegistry());
 for(let i=0;i<160;i++){{
   assert.equal(await client.refresh(),true,client.error);
@@ -251,6 +262,8 @@ for(let i=0;i<160;i++){{
 }}
 assert.equal(client.data.llm.latestRun.status,'completed');
 assert.equal(client.data.llm.latestRun.llmResult.calls,15);
+assert.equal(client.data.llm.latestRun.llmConfig.provider.config.model,'qwen3-coder:30b');
+assert.equal(client.data.llm.latestRun.llmConfig.provider.revision,reopened.data.revision);
 await client.selectLlmRun(client.data.llm.latestRun.id);
 await client.approveLlm(client.data.llm.latestRun.id);
 assert.equal(client.data.llm.active.label,'L1');
@@ -264,6 +277,7 @@ console.log(JSON.stringify({{polls:client.pollCount,status:'PASS'}}));
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['status'], 'PASS')
             self.assertEqual(len(MockModel.calls), 15)
+            self.assertTrue(all(call['model'] == 'qwen3-coder:30b' for call in MockModel.calls))
         finally:
             server.shutdown(); server.server_close(); thread.join()
 

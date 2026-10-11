@@ -4,6 +4,20 @@ import {OllamaUI,ollamaView} from '../dist/js/ollama-ui.js';
 
 const data=()=>({schemaVersion:1,revision:1,config:{host:'',port:11435,model:'test:local',metadataTimeout:10,inferenceTimeout:600,maxTokens:256},openaiBaseUrl:'http://172.22.160.1:11435/v1',nativeBaseUrl:'http://172.22.160.1:11435',historicalEvidence:{observedAt:'2026-10-11T22:35:51+08:00',serverVersion:'0.40.2',modelIds:['test:local'],openaiBaseUrl:'http://172.22.160.1:11435/v1'},latest:null});
 const response=value=>({ok:true,json:async()=>value});
+test('save retains draft during redraw and failure while using only saved settings for inference',async()=>{
+ let fail=true;const frames=[];
+ const ui=new OllamaUI({onUpdate:()=>frames.push(ui.view()),fetcher:async(path)=>{
+  if(path.endsWith('/settings'))return fail?{ok:false,json:async()=>({error:'conflict'})}:response({...data(),revision:2,config:{...data().config,model:'qwen3-coder:30b'}});
+  return response(data());
+ }});
+ await ui.operate('reload');ui.edit('model','qwen3-coder:30b');ui.edit('inferenceTimeout','750');
+ await assert.rejects(ui.operate('save',{...ui.draft,inferenceTimeout:750}),/conflict/);
+ assert.equal(ui.data.config.model,'test:local');assert.equal(ui.draft.model,'qwen3-coder:30b');
+ assert.match(frames.at(-1),/value="qwen3-coder:30b"/);assert.match(frames.at(-1),/value="750"/);
+ assert.match(frames.at(-1),/已儲存模型：<code>test:local/);
+ fail=false;await ui.operate('save',{...ui.draft,inferenceTimeout:750});
+ assert.equal(ui.draft,null);assert.equal(ui.data.revision,2);assert.match(ui.view(),/已儲存模型：<code>qwen3-coder:30b/);
+});
 test('initialization and reading settings never request metadata or inference',async()=>{
  const calls=[];const ui=new OllamaUI({fetcher:async(path,options)=>{calls.push({path,options});return response(data());}});
  assert.equal(calls.length,0);await ui.operate('reload');

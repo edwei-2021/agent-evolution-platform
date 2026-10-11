@@ -63,6 +63,8 @@ function render(keepFocus=false){const focused=keepFocus&&document.activeElement
 function navigate(next){page=next;history.replaceState(null,'',`#${next}`);render();if(next==='integrations')ollama.operate('reload').catch(()=>{});}
 document.addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
+ // Let the browser dispatch submit before any rendering can detach the form.
+ if(b.form&&b.type==='submit')return;
  try{
  if(b.dataset.page) return navigate(b.dataset.page);
  if(b.dataset.ollama){await ollama.operate(b.dataset.ollama);return;}
@@ -91,12 +93,12 @@ document.addEventListener('click',async event=>{
  if(a==='go-evolution')return navigate('evolution');
  if(a==='release'){api.release();toast('已建立展示版本；尚未部署到 Runtime');}
  else if(['start','pause','resume','cancel'].includes(a))api.action(a);
- render();
+ if(a==='release'||['start','pause','resume','cancel'].includes(a))render();
  }catch(error){toast(error.message);}
 });
 document.querySelector('#experiment-form').addEventListener('submit',event=>{event.preventDefault();try{const fields=new FormData(event.target);api.create({name:fields.get('name'),budget:Number(fields.get('budget')),scenario:fields.get('scenario')});document.querySelector('dialog').close();navigate('evolution');toast('已建立實驗，按「啟動展示」開始');}catch(error){toast(error.message);}});
 document.addEventListener('submit',async event=>{if(event.target.id==='ollama-settings-form'||event.target.id==='ollama-chat-form'){event.preventDefault();const fields=new FormData(event.target);try{if(event.target.id==='ollama-settings-form'){const config={};for(const [key,value] of fields)config[key]=['host','model'].includes(key)?value:Number(value);await ollama.operate('save',config);toast('已儲存 Ollama 設定；沒有發出連線測試');}else{ollama.prompt=fields.get('prompt');await ollama.operate('chat');toast('單次模型請求已完成');}}catch(error){toast(error.message);}return;}if(event.target.id!=='skill-trial-form')return;event.preventDefault();try{await live.trySkill(new FormData(event.target).get('text'));render();toast('已使用本機啟用版本試跑');}catch(error){toast(error.message);}});
-document.addEventListener('input',event=>{if(event.target.matches('#ollama-chat-form textarea'))ollama.prompt=event.target.value;if(event.target.matches('[data-skill-input]'))live.trialInput=event.target.value;});
+document.addEventListener('input',event=>{if(event.target.matches('#ollama-settings-form input'))ollama.edit(event.target.name,event.target.value);if(event.target.matches('#ollama-chat-form textarea'))ollama.prompt=event.target.value;if(event.target.matches('[data-skill-input]'))live.trialInput=event.target.value;});
 document.querySelector('#import-file').addEventListener('change',async event=>{const file=event.target.files[0];try{if(!file)return;if(file.size>2000000)throw Error('資料檔案上限為 2 MB');const data=JSON.parse(await file.text());if(!window.confirm('匯入會取代目前瀏覽器的實驗、代理人與工作關係設定，是否繼續？'))return;api.import(data);render();toast('已匯入工作區；執行中的展示實驗已暫停');}catch(error){toast(`匯入失敗：${error.message}`);}finally{event.target.value='';}});
 document.addEventListener('change',event=>{if(event.target.matches('[data-llm-profile]'))live.llmProfile=event.target.value;if(event.target.matches('[data-llm-seconds]'))live.llmSeconds=Number(event.target.value);if(event.target.matches('[data-live-interval]'))live.setInterval(event.target.value);if(event.target.matches('[data-skill-limit]')){live.skillLimit=Number(event.target.value);render(true);}});
 window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(labels[next]){page=next;render();if(next==='integrations')ollama.operate('reload').catch(()=>{});}});
