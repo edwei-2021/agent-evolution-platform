@@ -4,11 +4,23 @@ GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
-GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.0 implements an interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.1.1 adds WSL2 environment inspection, installation and startup around the interactive **demo**, with no model calls and no real evolution worker. It is an independent project; it does not modify MultiAgent-Evolution-Lab.
+
+## WSL2 Ubuntu 24.04 / Python 3.11
+
+From a complete checkout in Ubuntu, inspect first, install missing prerequisites, then start:
+
+```bash
+bash scripts/install-wsl.sh --check --python python3.11
+bash scripts/install-wsl.sh --python python3.11
+bash scripts/start-gui.sh
+```
+
+The first command is read-only and returns exit code 1 when prerequisites or `.venv` are missing. Inspect its output before installing. Open `http://localhost:8080` in Windows. Installation reuses Python, fills missing APT tools, downloads verified project-local Node only when necessary, creates `.venv` without pip, and runs tests. Full instructions, private GitHub clone authentication and troubleshooting: [WSL installation guide](docs/wsl-install.md).
 
 ## Run locally
 
-No frontend dependencies or build step are required. Use Node.js 20+ for tests and Python 3 for the static server.
+No frontend dependencies or build step are required. Use a supported Linux Node major 22 / 24 / 26 for installer checks and Python 3.11+ for the static server. The WSL installer selects the interpreter; a standalone `npm run serve` uses whichever `python3` is on PATH.
 
 ```bash
 npm test
@@ -40,6 +52,12 @@ dist/js/app.js           Views and UI events
 dist/js/domain.js        Pure demo state machine and validation
 dist/js/adapter.js       Browser-local persistence adapter
 tests/domain.test.js     Lifecycle, release gate, import, persistence tests
+tests/setup_test.py      Offline installer and real HTTP server tests
+scripts/install-wsl.sh  Python selection and installer entry
+scripts/setup_wsl.py    Environment check, missing tools and verification
+scripts/start-gui.sh    Start with the project virtual environment
+scripts/serve_gui.py    Loopback HTTP server for public assets only
+docs/wsl-install.md     WSL2 installation and troubleshooting
 docs/architecture.md     Incremental implementation plan
 docs/api-contract.md     Proposed backend contract (not implemented)
 .openai/hosting.json     Private Site deployment identity
@@ -57,4 +75,4 @@ Implement FastAPI + SQLite with a job worker, nanobot execution adapter, trusted
 
 ## Verification
 
-`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. These checks provide no evidence of agent performance or evolution improvement.
+`npm test` verifies the domain state machine, budget termination, release gates and import/persistence boundaries. `python3 -m unittest discover -s tests -p '*_test.py'` verifies installer behavior and the HTTP server. JavaScript syntax and static asset references are also checked during delivery. Browser visual QA was unavailable in the build environment; inspect desktop and mobile layouts during the first review. WSL2 / Python 3.11 / live APT and Node downloads were not executed in the build environment; see [installation verification](docs/verification/wsl-install-validation.md). These checks provide no evidence of agent performance or evolution improvement.

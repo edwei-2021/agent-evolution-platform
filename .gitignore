@@ -3,3 +3,8 @@ node_modules/
 *.zip
 .env*
 !.env.example
+.venv/
+.tools/
+.local/
+__pycache__/
+*.py[cod]
