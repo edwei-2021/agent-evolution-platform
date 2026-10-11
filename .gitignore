@@ -8,3 +8,5 @@ node_modules/
 .local/
 __pycache__/
 *.py[cod]
+ollama-test-logs/
+ollama-wsl.env

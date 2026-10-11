@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "source": "user-provided terminal output; summarized, not an original diagnostic JSON",
+  "observedAt": "2026-10-11T22:35:51+08:00",
+  "command": "python3 test_windows_ollama.py --port 11435 --api-only",
+  "status": "METADATA_ONLY_PASS",
+  "endpoint": "http://172.22.160.1:11435",
+  "openaiBaseUrl": "http://172.22.160.1:11435/v1",
+  "serverVersion": "0.40.2",
+  "wslSourceIp": "172.22.166.226",
+  "pythonVersion": "3.11.9",
+  "kernel": "6.18.40.1-microsoft-standard-WSL2",
+  "proxyBypass": true,
+  "modelIds": [
+    "qwen3-coder:30b",
+    "qwen3-vl:4b-instruct",
+    "qwen3-vl:4b",
+    "huihui_ai/qwen3.5-abliterated:35b",
+    "gpt-oss:120b-cloud",
+    "scb10x/typhoon-ocr-7b:latest",
+    "opencoder:latest",
+    "deepseek-ocr:latest",
+    "snickers8523/llama3-taide-lx-8b-chat-alpha1-q4-0:latest",
+    "cwchang/llama3-taide-lx-8b-chat-alpha1:q5_k",
+    "cwchang/llama3-taide-lx-8b-chat-alpha1:latest",
+    "huihui_ai/qwq-abliterated:32b-Q3_K_M",
+    "qwen3:30b",
+    "gemma3:27b",
+    "gpt-oss:20b"
+  ],
+  "loadedModels": [],
+  "inferenceTested": false,
+  "exitCode": 0,
+  "elapsedSeconds": 0.559,
+  "requiredChecks": [
+    "TCP connection",
+    "Ollama version",
+    "Native model listing",
+    "OpenAI model listing"
+  ],
+  "optionalChecks": [
+    "Loaded models before inference"
+  ],
+  "diagnosticScriptSha256": "452127750d50541419c953f16ad031cfdcc1f465f887d5a95ddcb8800ec9375d",
+  "archiveSha256": "3a24c03b337b2d5002e9ceab530176c536d912940adea86ae92b9e77129fafc5"
+}

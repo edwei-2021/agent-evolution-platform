@@ -18,13 +18,19 @@ The same standard-library supervisor now dispatches either project-health tasks 
 
 The target is a small `normalize-support-title` fixture, with 20/10/20 distinct task/output groups. This dependency-free engine establishes the execution/evidence/version path before model integration. It does not replace the planned nanobot/GEPA free-form prompt optimizer or Python repair runner. See `docs/skill-evolution.md` for counts, gates and limitations.
 
+## Phase 2a extension: Windows Ollama provider (implemented in v0.4.1)
+
+`ollama_bridge.py` preserves the user-proven Windows 10 NAT approach: current IPv4 gateway, default port 11435, proxy bypass and long model-loading timeout. `configure_ollama.py` saves endpoint/model settings and shell exports without connectivity tests. The Integrations view reads settings and recorded user metadata evidence; metadata refresh and one OpenAI-compatible chat request require explicit actions. Per-request artifacts pin settings revision and actual results. Startup never probes Windows and provider actions never auto-retry. The uploaded diagnostic and ZIP tools are preserved in source control.
+
+The provider is separate from the existing rule-based Skill workflow. Worker/Reflector model execution, nanobot orchestration and GEPA candidate optimization are still planned. See [the integrated Ollama guide](ollama-wsl.md).
+
 ## Phase 2b: Real single-worker model evaluation (planned)
 
 Add a separately deployed FastAPI service, SQLite experiments/artifacts, and a durable worker. Sites hosts the browser GUI; it does not execute Python agents. Run the worker on a user-controlled server/VM with isolated task workspaces. Keep provider credentials server-side.
 
 First vertical slice: fixed `python-fix-and-verify` skill, one nanobot worker, fixed model/tools/workflow and one executable Python repair task. Record actual commands, outputs, usage and trusted test results. Use fresh sessions, workspace and memory per evaluation. Do not accept an agent's assertion of passing tests as evidence.
 
-Implement authentication, scoped workspace access and backend validation before enabling remote job submission. Runtime connectivity and provider/model configuration belong to a server-owned settings API; no browser API key storage. Use same-origin reverse proxy or narrowly scoped CORS and authenticated transport. This GUI has no live endpoint setting yet.
+Implement authentication, scoped workspace access and backend validation before enabling remote job submission. Runtime connectivity and provider/model configuration belong to a server-owned settings API; no browser API key storage. Use same-origin reverse proxy or narrowly scoped CORS and authenticated transport. The Ollama bridge now provides provider settings and explicit requests; nanobot task execution remains planned.
 
 ## Phase 3: GEPA skill evolution
 

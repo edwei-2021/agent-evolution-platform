@@ -295,3 +295,5 @@
 @media(max-width:1150px){.skill-role-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.skill-role-strip{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 17px 18px}.skill-chart{min-width:420px}.card:has(.skill-chart){overflow:auto}}
 @media(max-width:760px){.skill-trial-form{flex-direction:column;align-items:stretch}.skill-trial-result{padding:0 17px 17px}}
+
+.ollama-form{padding:20px 21px}.ollama-form label{display:grid;gap:8px;margin-bottom:16px}.ollama-form textarea{font:inherit;padding:12px;border:1px solid var(--line);border-radius:6px;width:100%;resize:vertical}.ollama-form .body-copy{padding:0}.ollama-form .card-actions{padding:12px 0}.ollama-output{margin:16px 21px 24px;padding:16px;background:#f6f7fb;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}

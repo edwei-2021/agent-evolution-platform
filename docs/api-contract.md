@@ -1,6 +1,6 @@
 # Runtime API and proposed evolution service contract
 
-v0.4.0 implements local runtime and measured declarative-skill endpoints. Simulation experiments/releases and registry editing remain browser-local; model-agent/GEPA endpoints below remain future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
+v0.4.1 adds explicit Ollama provider endpoints; v0.4.0 implements local runtime and measured declarative-skill endpoints. Simulation experiments/releases and registry editing remain browser-local; model-agent/GEPA endpoints below remain future integration seams. Do not point the current GUI at nanobot's chat endpoint or a GEPA process and expect evolution orchestration.
 
 ## Implemented local runtime API (已實作的本機執行 API)
 
@@ -75,3 +75,18 @@ The v0.3.0 `DemoAdapter` owns synchronous browser-local `saveAgent`, `removeAgen
 A real service must distinguish config revision from live execution telemetry. Connection state requires authenticated adapter evidence and timestamps, never a browser edit. Credentials belong to a server-side secret store; agent responses may carry a credential reference, not the secret. Tools are identifiers until an authorized runner validates an allowlist. GEPA belongs to the optimizer integration rather than the Runtime list. A graph expresses intended handoff relationships, while real task traces record actual handoffs and failures.
 
 Legacy workspace backups (schemaVersion 1) gain the starter registry when imported. Version 2 exports include the registry, experiments and releases together. The browser storage key remains unchanged for migration; demo and future real workspaces must remain separate.
+
+## Explicit Ollama provider (Ollama 模型服務介面)
+
+All routes use the existing loopback Host/Origin policy. POST requires JSON and `X-Lab-Token`; the token comes from `/api/v1/runtime/capabilities`. Settings, metadata and chat bodies require `expectedRevision`. Neither GET nor settings POST makes an Ollama network request.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/api/v1/llm/ollama` | Saved config/revision, resolved endpoint, historical user evidence and latest request record |
+| POST | `/api/v1/llm/ollama/settings` | Save `{config, expectedRevision}` atomically; increment revision |
+| POST | `/api/v1/llm/ollama/metadata` | Explicit native version/tags and OpenAI model-list requests |
+| POST | `/api/v1/llm/ollama/chat` | One chat completion using `{prompt, expectedRevision}` and saved config |
+
+Config fields: `host` (empty for WSL NAT discovery or an IPv4 override), `port` (11435), `model` (empty until selected), `metadataTimeout` (10), `inferenceTimeout` (600), `maxTokens` (256). Numeric settings are bounded integers. Invalid input returns 400; an outdated revision or simultaneous provider operation returns 409 without dispatch. A dispatched provider failure returns a persisted operation record with `status: FAIL` and `error`; this is not a successful inference. Records pin config/revision/endpoint and include timestamps, elapsed time, report path and actual output/usage when present. No automatic retry occurs.
+
+Provider status is separate from agent-framework connectivity. `modelConnected` remains false in runtime capabilities because the Skill/agent workflow does not execute models yet; `workerIntegrated` is false in the provider snapshot. Historical `METADATA_ONLY_PASS` does not become a live connection badge. The saved configuration is authoritative; imported browser registry/demo backups do not overwrite it.

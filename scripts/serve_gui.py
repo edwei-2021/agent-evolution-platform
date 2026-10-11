@@ -17,6 +17,14 @@ DIST = Path(__file__).resolve().parents[1] / 'dist'
 DEFAULT_PORT = 8765
 
 
+def ollama_bridge(runtime):
+    from ollama_bridge import OllamaBridge
+    with runtime.lock:
+        if not hasattr(runtime, 'ollama'):
+            runtime.ollama = OllamaBridge(runtime.root)
+        return runtime.ollama
+
+
 class GuiHandler(SimpleHTTPRequestHandler):
     def json_response(self, status, data):
         payload = json.dumps(data, ensure_ascii=False).encode()
@@ -62,6 +70,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, runtime.snapshot())
             elif path == '/api/v1/skills':
                 self.json_response(200, runtime.snapshot()['skills'])
+            elif path == '/api/v1/llm/ollama':
+                self.json_response(200, ollama_bridge(runtime).snapshot())
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)', path):
                 self.json_response(200, runtime.get_run(match[1]))
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md))', path):
@@ -74,6 +84,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(404, {'error': 'API route not found'})
         except KeyError as exc:
             self.json_response(404, {'error': str(exc)})
+        except (OSError, ValueError) as exc:
+            self.json_response(503, {'error': str(exc)})
 
     def do_POST(self):
         runtime = self.api_context(mutate=True)
@@ -89,6 +101,11 @@ class GuiHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
+            elif path == '/api/v1/llm/ollama/settings':
+                self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
+            elif path in ('/api/v1/llm/ollama/metadata', '/api/v1/llm/ollama/chat'):
+                result = ollama_bridge(runtime).run(path.rsplit('/', 1)[-1], body.get('expectedRevision'), body.get('prompt'))
+                self.json_response(200, result)
             elif path == '/api/v1/skills/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId'), task='skill-evolution', options={'maxCandidates': body.get('maxCandidates'), 'expectedRevision': body.get('expectedRevision')}))
             elif path == '/api/v1/skills/execute':
@@ -112,6 +129,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
             self.json_response(404, {'error': str(exc)})
         except RuntimeError as exc:
             self.json_response(409, {'error': str(exc)})
+        except OSError as exc:
+            self.json_response(503, {'error': str(exc)})
 
     def send_head(self):
         target = Path(self.translate_path(self.path)).resolve()
@@ -158,7 +177,7 @@ def main(argv=None):
             server.server_close()
             print(f'Cannot start local runtime: {exc}', file=sys.stderr)
             return 1
-    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nPress Ctrl+C to stop. No LLM or GEPA calls.', flush=True)
+    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. Skill evolution remains rule-based; no automatic LLM or GEPA calls.', flush=True)
     with server:
         try:
             server.serve_forever()

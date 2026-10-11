@@ -158,3 +158,7 @@ Stop the old server before restarting after an update. GUI records remain in bro
 ## Measured skill phase (本機技能實驗)
 
 Version 0.4.0 adds no dependencies. Stop the old service, pull, run the doctor with your existing Python 3.11, restart, then hard-refresh `http://localhost:8765/#skills`. See [the skill workflow guide](skill-evolution.md) for candidates, trusted review, local activation/rollback and trials. `.local/` contains authoritative measured versions; browser JSON export does not include them.
+
+## Existing Windows Ollama connection (既有 Windows Ollama 連線)
+
+Version 0.4.1 incorporates the supplied, working Windows 10 / WSL2 connection on **11435**. The GUI port stays **8765**. Do not repeat Windows installation, bind changes, firewall configuration or diagnostics for the already working setup. Follow [the integrated Ollama guide](ollama-wsl.md) to save settings offline and access explicit Web operations. `iproute2` is now an installation prerequisite for current NAT gateway discovery. All settings, exports and provider reports remain under `/mnt/d/nanobot-gepa-mvp/.local/ollama/`.

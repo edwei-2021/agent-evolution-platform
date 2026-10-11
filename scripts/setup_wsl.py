@@ -20,7 +20,7 @@ from serve_gui import DEFAULT_PORT
 ROOT = Path(__file__).resolve().parents[1]
 NODE_VERSION = '22.23.3'
 APT_PACKAGES = {'git': 'git', 'curl': 'curl', 'ca-certificates': None,
-                'xz-utils': 'xz', 'tar': 'tar'}
+                'xz-utils': 'xz', 'tar': 'tar', 'iproute2': 'ip'}
 SUPPORTED_NODE_MAJORS = {22, 24, 26}
 
 
@@ -105,10 +105,10 @@ def check_environment(root=ROOT, allow_non_wsl=False):
             importlib.import_module(module)
         except ImportError:
             errors.append(f'Python {module} support is unavailable; repair the selected interpreter through its provider.')
-    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js', 'js/runtime-client.js', 'js/runtime-view.js', 'js/skill-view.js']:
+    for name in ['index.html', 'styles.css', 'js/app.js', 'js/adapter.js', 'js/domain.js', 'js/runtime-client.js', 'js/runtime-view.js', 'js/skill-view.js', 'js/ollama-ui.js']:
         if not (root / 'dist' / name).is_file():
             errors.append(f'Missing frontend asset: dist/{name}. Use a complete repository checkout.')
-    for name in ['serve_gui.py', 'runtime_service.py', 'native_agents.py', 'skill_engine.py', 'skill_agents.py', 'skill_store.py']:
+    for name in ['serve_gui.py', 'runtime_service.py', 'native_agents.py', 'skill_engine.py', 'skill_agents.py', 'skill_store.py', 'ollama_bridge.py', 'configure_ollama.py', 'test_windows_ollama.py']:
         if not (root / 'scripts' / name).is_file():
             errors.append(f'Missing runtime source: scripts/{name}. Use a complete repository checkout.')
     for name in ['SKILL.md', 'dataset.json']:
