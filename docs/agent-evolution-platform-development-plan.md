@@ -2,8 +2,8 @@
 ## 1. Revision and Execution Baseline
 - Plan revision: 2.0; assessment date: 2026-10-12 (Asia/Taipei).
 - Product name: Agent Evolution Platform (代理人演化平台).
-- Current repository: `edwei-2021/nanobot-gepa-mvp`.
-- Target repository name: `edwei-2021/agent-evolution-platform`; the rename is a repository administration operation, separate from this documentation commit.
+- Current repository: `edwei-2021/agent-evolution-platform` (renamed from `edwei-2021/nanobot-gepa-mvp` on 2026-10-12).
+- Repository rename: completed and verified; stable repository ID `1414023692`, main branch and public visibility retained.
 - Reviewed implementation baseline: v0.7.1, commit `19f6a4fa3a3b4da400e59b4c692d56b68711f29f`.
 - This revision supersedes the uploaded six-phase development specification as the execution roadmap. Historical guides remain valid for their version-specific features.
 - Evidence basis: repository README, GEPA guide, accelerated delivery plan, GEPA evidence verifier, and baseline commit metadata. Existing test reports are historical evidence; no new runtime regression or Windows/GPU test was performed for this planning revision.
@@ -210,10 +210,10 @@ Required checks:
 **Complete platform:** P5 workflow evolution/attribution/joint release and P6 validated multi-runtime operations pass.
 
 **Repository transition checklist:**
-1. Commit this plan and README navigation under the current repository.
-2. Rename the existing repository to agent-evolution-platform; preserve identity, history and visibility.
-3. Verify new repository name/URL and actual hosting source binding.
-4. Update canonical repository links after successful rename; leave old commit history intact.
+1. Completed: commit this plan and README navigation.
+2. Completed: rename the existing repository to agent-evolution-platform; identity, history and visibility retained.
+3. Repository name/URL verified. The hosting configuration retains its existing project ID; verify the provider-side source binding before the next Site deployment.
+4. Completed: update README canonical repository/clone links; old commit history remains intact.
 5. Existing WSL checkout may remain on D under its current directory. After rename, run:
 ```bash
 cd /mnt/d/nanobot-gepa-mvp
