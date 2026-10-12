@@ -1,5 +1,7 @@
 # Accelerated Delivery Plan (加速開發規劃)
 
+> Historical v0.7.1 delivery record. Future sequencing is superseded by the [revised Agent Evolution Platform development plan](agent-evolution-platform-development-plan.md), including mandatory Intermediate Phase M. Keep the check commands and implemented operational behavior below; user-authored tasks belong to M5, and multi-file execution requires M4 isolation first.
+
 ## Release sequence (版本順序)
 
 Each release has one concrete outcome and a small acceptance gate. Preserve **all v0.7.0 features** in the regression suite: saved model settings, explicit preload, rule/LLM Skill experiments, bounded nanobot repair, actual GEPA, independent final evaluation, human approval/rollback, progress and module logs.
