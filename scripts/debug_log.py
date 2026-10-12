@@ -10,6 +10,7 @@ MODULES = ('api', 'gui', 'runtime', 'ollama', 'llm', 'skills', 'nanobot','gepa',
            'coordinator', 'worker', 'reflector', 'evaluator', 'reviewer')
 LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
 RETENTION = 10000
+BATCH_LIMIT = 128
 
 
 def redact(value):
@@ -34,6 +35,7 @@ class DebugLog:
         self.path = Path(root) / '.local/debug.sqlite3'
         self.retention = retention
         self.available = True
+        self._keeper = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.connect() as db:
@@ -48,21 +50,52 @@ class DebugLog:
         db = None
         try:
             db = sqlite3.connect(self.path, timeout=5)
+            # Supplementary debug logs use WAL NORMAL, not per-record FULL
+            # fsync. Authoritative run/evaluation/release stores are separate.
+            if db.execute('PRAGMA journal_mode').fetchone()[0] == 'wal':
+                db.execute('PRAGMA synchronous=NORMAL')
             with db: yield db
         except sqlite3.Error as exc: raise OSError('Debug journal storage failed: ' + str(exc)) from exc
         finally:
             if db is not None: db.close()
 
     def append(self, module, level, message, run_id=None, details=None):
-        if module not in MODULES or level not in LEVELS:
-            raise ValueError('Unknown log module or level')
-        if not self.available: return False
-        encoded = json.dumps(safe_details(details or {}), ensure_ascii=False)
-        if len(encoded) > 4096: encoded = json.dumps({'truncated': True, 'preview': encoded[:3500]}, ensure_ascii=False)
+        return self.append_many([{'module':module,'level':level,'message':message,'run_id':run_id,'details':details}])
+
+    def keep_open(self):
+        """Keep one idle connection for the supervisor lifetime, avoiding a
+        last-connection checkpoint on every cross-process append. No active
+        transaction or shared cursor is held by this connection.
+        """
+        if self.available and self._keeper is None:
+            try:
+                self._keeper = sqlite3.connect(self.path,timeout=5,check_same_thread=False)
+            except sqlite3.Error:
+                self._keeper = None
+
+    def close(self):
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
+    def append_many(self, records):
+        if not isinstance(records,list) or not 1 <= len(records) <= BATCH_LIMIT:
+            raise ValueError('Use 1..128 debug records per transaction')
+        rows=[]
+        for record in records:
+            if not isinstance(record,dict) or set(record)-{'module','level','message','run_id','details'}:
+                raise ValueError('Invalid debug record')
+            if record.get('module') not in MODULES or record.get('level') not in LEVELS:
+                raise ValueError('Unknown log module or level')
+            encoded=json.dumps(safe_details(record.get('details') or {}),ensure_ascii=False)
+            if len(encoded)>4096:
+                encoded=json.dumps({'truncated':True,'preview':encoded[:3500]},ensure_ascii=False)
+            rows.append((datetime.now(timezone.utc).isoformat(),record['module'],record['level'],
+                         record.get('run_id'),redact(record['message'])[:2048],encoded))
+        if not self.available:return False
         try:
             with self.connect() as db:
-                db.execute('INSERT INTO logs(at,module,level,run_id,message,details) VALUES (?,?,?,?,?,?)',
-                    (datetime.now(timezone.utc).isoformat(), module, level, run_id, redact(message)[:2048], encoded))
+                db.executemany('INSERT INTO logs(at,module,level,run_id,message,details) VALUES (?,?,?,?,?,?)',rows)
                 db.execute('DELETE FROM logs WHERE id <= COALESCE((SELECT id FROM logs ORDER BY id DESC LIMIT 1 OFFSET ?), 0)', (self.retention,))
         except (OSError, sqlite3.Error):
             # Debugging storage must not change model scoring or dispatch behavior.

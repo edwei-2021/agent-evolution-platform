@@ -171,3 +171,19 @@ git pull --ff-only
 The probe retains the original 20-second workflow test expectation, uses only a loopback mock model, and bounds the test harness to 120 seconds. Its report and test log are stored under .local/test-reports/LLM-CHECK-...; on failure it also captures role states/log tails, mock request count and periodic Python thread stacks. These distinguish process startup, progress I/O, lock waits and model transport. A timeout is not silently converted to a pass.
 
 Progress reads now release the supervisor mutex before filesystem access. A disconnected HTTP client closes the response without attempting a second error response. These defects are regression-tested; the user's WSL timeout still requires the local probe result. The installer prints Python case names and stops on the first failure. Optional GEPA/nanobot skips in the base GUI environment are not equivalent to an SDK acceptance pass.
+
+### Journal commit latency identified by a thread snapshot
+
+A user WSL probe completed nine mock calls in approximately 2–6 ms each, while the supervisor stack was in DebugLog.append transaction exit during role-log capture. This identifies synchronous journal I/O as an observed latency source, not evidence of a model hang or proof of a deadlock.
+
+The debug journal now uses bounded append_many transactions (1..128 records), one retention operation per batch, WAL synchronous=NORMAL and one idle supervisor-lifetime connection. This avoids per-record FULL fsync and repeatedly checkpointing on the last connection close. Role log capture and log-tail reads occur outside the supervisor mutex. Redaction, ordered IDs, bounds, restart visibility and all captured line counts remain tested. Explicit close releases the keeper during shutdown.
+
+The policy applies only to supplementary debug.sqlite3. Run/evaluation/release stores and the authoritative M ledger are not changed. With NORMAL, a power loss may discard recent supplementary log transactions; this is not the durability policy for release evidence.
+
+```bash
+git pull --ff-only
+.venv/bin/python scripts/measure_debug_journal.py
+.venv/bin/python scripts/check_llm_first_failure.py
+```
+
+The measurement compares current single-record writes with one batch on the actual project filesystem, including final close/checkpoint. Both paths must retain the same record count. It sends no model requests and does not measure the pre-fix FULL policy or predict GPU speed. If the single-case probe remains failed, inspect the new state/thread logs instead of raising the test deadline.

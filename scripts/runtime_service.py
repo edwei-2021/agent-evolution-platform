@@ -69,6 +69,7 @@ class RuntimeService:
         self.closed = False
         from debug_log import DebugLog
         self.logs = DebugLog(self.root)
+        self.logs.keep_open()
         self.browser_log_times = []
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, request_id TEXT UNIQUE, data TEXT NOT NULL, created TEXT NOT NULL)')
@@ -353,14 +354,15 @@ class RuntimeService:
                                     timed_out = True
                                     timeout_error = f'Model call #{call["id"]} exceeded its {call["timeoutSeconds"]}s time limit; no further requests were sent'
                                     self.stop_process()
+                            tail = self.tail(log)
                             with self.lock:
-                                agent.update(updatedAt=now(), processAlive=self.process.poll() is None, logTail=self.tail(log))
+                                agent.update(updatedAt=now(), processAlive=self.process.poll() is None, logTail=tail)
                                 self.persist()
                             log_offset = self.capture_log(agent, log, log_offset)
                         code = self.process.wait()
+                    tail = self.tail(log)
+                    self.capture_log(agent, log, log_offset)
                     with self.lock:
-                        tail = self.tail(log)
-                        self.capture_log(agent, log, log_offset)
                         error = timeout_error if timed_out else (tail.strip().splitlines()[-1][:1500] if tail.strip() else 'Process exited with an error') if code and not self.cancel_event.is_set() else None
                         agent.update(status='cancelled' if self.cancel_event.is_set() else 'failed' if timed_out or code else 'completed', exitCode=code, processAlive=False, endedAt=now(), updatedAt=now(), logTail=tail, error=error)
                         if provider_leased and agent['status'] in ('failed', 'cancelled'):
@@ -420,10 +422,16 @@ class RuntimeService:
     def capture_log(self, agent, path, offset):
         with path.open('rb') as stream:
             stream.seek(offset); data = stream.read(65536); offset += len(data)
+        records=[]
         for line in data.decode(errors='replace').splitlines():
             if line.strip():
-                self.logs.append(agent['role'], 'ERROR' if line.startswith(('Traceback', 'ValueError:', 'TimeoutError:', 'RuntimeError:')) else 'DEBUG',
-                    line, self.current['id'], {'source': 'subprocess', 'artifact': path.name, 'truncated': len(line) > 2048})
+                records.append({'module':agent['role'],
+                    'level':'ERROR' if line.startswith(('Traceback','ValueError:','TimeoutError:','RuntimeError:')) else 'DEBUG',
+                    'message':line,'run_id':self.current['id'],
+                    'details':{'source':'subprocess','artifact':path.name,'truncated':len(line)>2048}})
+        from debug_log import BATCH_LIMIT
+        for start in range(0,len(records),BATCH_LIMIT):
+            self.logs.append_many(records[start:start+BATCH_LIMIT])
         return offset
 
     def close(self):
@@ -439,5 +447,6 @@ class RuntimeService:
             self.thread.join(timeout=3)
         self.ollama.close()
         self.logs.append('runtime', 'INFO', 'Local runtime service stopped')
+        self.logs.close()
         fcntl.flock(self.lock_file, fcntl.LOCK_UN)
         self.lock_file.close()
