@@ -1,4 +1,18 @@
-# nanobot GEPA MVP
+# Agent Evolution Platform
+
+Evolution platform for bounded nanobot/GEPA Skill experiments, with a roadmap toward declarative workflow evolution and multiple runtimes (代理人演化平台).
+
+## Current status and authoritative roadmap
+
+The implemented runtime baseline is **v0.7.1**. This documentation revision does not change the application version or certify new runtime tests.
+
+Read the [revised development plan](docs/agent-evolution-platform-development-plan.md) for completed capabilities, remaining gaps, and the mandatory **Intermediate Phase M — Compatibility and Trust Hardening** before completing the production release path.
+
+The plan supersedes earlier next-milestone scheduling: begin with canonical contracts and compatibility fixtures, then durable evidence and evaluator isolation, followed by dataset/comparison and complete release hardening. Existing Ollama configuration, preload, experiments, progress, logs and versions remain supported. OpenEvolve and additional runtimes follow these gates.
+
+The repository rename target is `edwei-2021/agent-evolution-platform`. This is the existing repository's target name, not a second project. Verify the administrative rename before changing local Git remotes or hosting source bindings. Current GitHub visibility is public; the private hosted GUI has separate access controls.
+
+## Existing implementation and operational guides
 
 GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
 
@@ -181,7 +195,8 @@ Version **0.7.0** adds actual **GEPA 0.1.4 + nanobot 0.3.5** execution at `http:
 
 ## Next milestone
 
-Local monitoring, rule/model Skill evolution, warmup/logging and the first bounded nanobot SDK Python runner are implemented. The real GEPA adapter now evolves Skill bodies over grouped synthetic repair tasks, with independent post-selection evaluation and immutable local versions. Next, add user-authored grouped tasks and richer trace inspection; authenticated remote execution and broader containerized Python work remain later milestones. The local rule engine is a dependency-free integration foundation, not a GEPA implementation. Keep model secrets server-side and preserve trusted release/rollback gates.
+Follow the revised development plan above. Complete Intermediate Phase M incrementally while retaining v0.7.1 capabilities: canonical contracts, durable event/lifecycle recovery, isolated evaluator, versioned datasets, safe feedback, per-task regression gates and complete release manifests. Then close Phase 4 and begin declarative workflow evolution.
+
 
 ## Verification
 
