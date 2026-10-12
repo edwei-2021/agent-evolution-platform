@@ -39,6 +39,25 @@ The migration dry-run changes nothing. Apply checks stopped-service locks, same-
 
 If already using /mnt/d/agent-evolution-platform, omit the move commands. A different desired path may be passed explicitly. File paths in installers/start scripts derive from the checkout root.
 
+### Windows drive rename denied
+
+If the root directory rename returns Permission denied, retain the original checkout and backup. Use the verified-copy path; it keeps source service locks during the copy, omits non-relocatable virtual environments, verifies state hashes and SQLite integrity, updates the new origin, then exposes the destination. It never deletes the source.
+
+```bash
+cd /mnt/d/nanobot-gepa-mvp
+git pull --ff-only
+cd /mnt/d
+python3.11 nanobot-gepa-mvp/scripts/migrate_wsl.py \
+  --destination /mnt/d/agent-evolution-platform --copy --apply
+cd /mnt/d/agent-evolution-platform
+bash scripts/install-wsl.sh --python python3.11
+bash scripts/install-nanobot.sh
+bash scripts/install-m.sh
+npm ci --ignore-scripts
+```
+
+Use only the new checkout after success; keep the old one until acceptance passes. If copy fails, migration-copy-error.json identifies retained staging/backup paths. Do not merge into an existing destination or remove source data to retry. Windows permissions and open handles can still block reads or writes; copied files are not a permission bypass.
+
 ## 3. Checks and expected results (驗收及預期結果)
 
 ```bash
