@@ -45,6 +45,7 @@ export function validateRuntime(data){
   }
   if(data.llm!==undefined)validateLlmWorkspace(data.llm);
   if(data.repair!==undefined)validateRepairWorkspace(data.repair);
+  if(data.gepa!==undefined)validateGepaWorkspace(data.gepa);
   return data;
 }
 const validPrompt=v=>v&&v.name==='normalize-support-title'&&typeof v.description==='string'&&typeof v.body==='string'&&v.body.length>0&&v.body.length<=3000&&/^[a-f0-9]{64}$/.test(v.hash);
@@ -83,6 +84,30 @@ export function validateRepairWorkspace(w){
  if(w?.engine!=='nanobot-python-repair-v1'||typeof w.sdk?.available!=='boolean'||!Array.isArray(w.runs)||w.runs.length>10)throw Error('Python 修復工作台不正確');
  if(w.latestRun)validateRepairRun(w.latestRun);return w;
 }
+const validGepaSkill=s=>s?.name==='python-fix-and-verify'&&typeof s.description==='string'&&typeof s.body==='string'&&s.body.length>0&&s.body.length<=8000&&/^[a-f0-9]{64}$/.test(s.hash);
+export function validateGepaRun(run){
+ validateRuntime({schemaVersion:1,mode:'native-tools',serviceId:'validation',serverTime:new Date().toISOString(),runs:[],latestRun:run});
+ const c=run.gepaConfig,p=run.gepaProgress,r=run.gepaResult;
+ if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>1688||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>80||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
+ for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
+ if(p){
+  if(p.engine!=='gepa-nanobot-repair-v1')throw Error('GEPA 進度不正確');
+  for(const [key,max] of [['calls',c.callBudget],['completedCalls',p.calls],['failedCalls',p.calls],['metricEvaluations',c.metricBudget],['proposals',c.proposalBudget],['rollouts',c.metricBudget+2*(c.counts.validation+c.counts.heldout)]])if(!Number.isInteger(p[key])||p[key]<0||p[key]>max)throw Error('GEPA 計數不正確');
+  if(p.lastCall){const t=p.lastCall;if(!Number.isInteger(t.id)||t.id<1||t.id>p.calls||!['running','completed','failed','cancelled'].includes(t.status))throw Error('GEPA 呼叫狀態不正確');for(const key of ['startedAt','finishedAt','deadlineEpoch','timeoutSeconds','chunks','outputChars','reasoningChars','toolArgumentChars'])if(t[key]!==undefined&&(!Number.isFinite(t[key])||t[key]<0))throw Error('GEPA 模型進度不正確');}
+  if(p.selectedSkill&&!validGepaSkill(p.selectedSkill))throw Error('GEPA 候選格式不正確');
+ }
+ if(r){
+  if(r.engine!=='gepa-nanobot-repair-v1'||r.checksPassed!==true||typeof r.eligible!=='boolean'||!validGepaSkill(r.selectedSkill)||!validGepaSkill(r.baselineSkill)||!/^[a-f0-9]{64}$/.test(r.evidenceHash))throw Error('GEPA 證據不正確');
+  for(const label of ['baseline','selected'])for(const split of ['validation','heldout']){const m=r.final?.[label]?.[split];if(!m||m.total!==c.counts[split]||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('GEPA 評測格式不正確');}
+  const eligible=r.selectedSkill.hash!==r.baselineSkill.hash&&r.final.selected.validation.passed>r.final.baseline.validation.passed&&r.final.selected.heldout.passed>=r.final.baseline.heldout.passed;
+  if(r.eligible!==eligible)throw Error('GEPA 核准門檻與證據不一致');
+ }
+ return run;
+}
+export function validateGepaWorkspace(w){
+ if(w?.schemaVersion!==1||w.engine!=='gepa-nanobot-repair-v1'||!Number.isInteger(w.revision)||w.revision<1||!Array.isArray(w.versions)||!w.versions.length||w.versions.length>100||w.versions.some(v=>!/^GSV-[A-Za-z0-9-]+$/.test(v.id)||!validGepaSkill(v.skill))||new Set(w.versions.map(v=>v.id)).size!==w.versions.length||w.active?.id!==w.activeVersionId||!w.versions.some(v=>v.id===w.activeVersionId)||!validGepaSkill(w.active?.skill)||typeof w.sdk?.available!=='boolean'||typeof w.optimizer?.available!=='boolean'||!Array.isArray(w.runs)||w.runs.length>10)throw Error('GEPA 工作台格式不正確');
+ if(w.latestRun)validateGepaRun(w.latestRun);return w;
+}
 export function telemetryFor(runtime,id){return runtime?.data?.latestRun?.agents.find(a=>a.id===id)||null;}
 export function telemetryLabel(runtime,id){
   const agent=telemetryFor(runtime,id);
@@ -90,10 +115,10 @@ export function telemetryLabel(runtime,id){
 }
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
-  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;}
-  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError};}
-  async request(path,{method='GET',body}={}){
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;this.gepaProfile='smoke';this.gepaMetrics=8;this.gepaProposals=2;this.gepaTaskCalls=6;this.gepaSeconds=1800;this.gepaCallSeconds=120;this.selectedGepaRun=null;this.pendingGepaSubmission=null;}
+  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError,gepaProfile:this.gepaProfile,gepaMetrics:this.gepaMetrics,gepaProposals:this.gepaProposals,gepaTaskCalls:this.gepaTaskCalls,gepaSeconds:this.gepaSeconds,gepaCallSeconds:this.gepaCallSeconds,selectedGepaRun:this.selectedGepaRun};}
+  async request(path,{method='GET',body,timeoutMs=8000}={}){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       const response=await this.fetcher(path,{method,cache:'no-store',credentials:'same-origin',signal:controller.signal,headers:method==='POST'?{'Content-Type':'application/json','X-Lab-Token':this.capabilities?.csrfToken||''}:{},...(body?{body:JSON.stringify(body)}:{})});
       let data;try{data=await response.json();}catch{throw Error('此網址沒有本機執行 API，請使用 WSL 的 localhost 介面');}
@@ -112,7 +137,7 @@ export class RuntimeClient{
       }
       const data=validateRuntime(await this.request('/api/v1/runtime'));
       if(data.serviceId!==this.capabilities.serviceId){this.capabilities=null;throw Error('服務已重新啟動；下次 polling 會重新取得連線資訊');}
-      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;this.selectedRepairRun=null;this.repairEvidence=null;}
+      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;this.selectedRepairRun=null;this.selectedGepaRun=null;this.repairEvidence=null;}
       if(this.selectedSkillRun){
         if(this.selectedSkillRun.id===data.skills?.latestRun?.id)this.selectedSkillRun=data.skills.latestRun;
         else if(['queued','running'].includes(this.selectedSkillRun.status))this.selectedSkillRun=null;
@@ -121,6 +146,8 @@ export class RuntimeClient{
       if(this.pendingLlmSubmission?.requestId===data.latestRun?.requestId)this.pendingLlmSubmission=null;
       if(this.selectedRepairRun&&this.selectedRepairRun.id===data.repair?.latestRun?.id)this.selectedRepairRun=data.repair.latestRun;
       if(this.pendingRepairSubmission?.requestId===data.latestRun?.requestId)this.pendingRepairSubmission=null;
+      if(this.selectedGepaRun&&this.selectedGepaRun.id===data.gepa?.latestRun?.id)this.selectedGepaRun=data.gepa.latestRun;
+      if(this.pendingGepaSubmission?.requestId===data.latestRun?.requestId)this.pendingGepaSubmission=null;
       this.data=data;this.error=null;this.lastSuccess=new Date().toISOString();
       if(this.pendingRequestId===data.latestRun?.requestId)this.pendingRequestId=null;
       return true;
@@ -210,6 +237,18 @@ export class RuntimeClient{
     }catch(error){this.repairEvidenceError=error.message;throw error;}
     finally{this.actionBusy=false;this.onUpdate();}
   }
+  async startGepa(registry){
+    return this.skillMutation(async()=>{
+      if(!this.data.gepa?.sdk.available||!this.data.gepa?.optimizer.available)throw Error('請安裝 nanobot 與 GEPA');
+      if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision};}
+      try{await this.request('/api/v1/gepa/runs',{method:'POST',body:this.pendingGepaSubmission});}
+      catch(error){if(error.status>=400&&error.status<500)this.pendingGepaSubmission=null;throw error;}
+      this.pendingGepaSubmission=null;this.selectedGepaRun=null;
+    },'gepa');
+  }
+  async approveGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/runs/${encodeURIComponent(id)}/approve`,{method:'POST',body:{expectedRevision:this.data.gepa.revision},timeoutMs:120000}),'gepa');}
+  async activateGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/versions/${encodeURIComponent(id)}/activate`,{method:'POST',body:{expectedRevision:this.data.gepa.revision}}),'gepa');}
+  async selectGepaRun(id){this.selectedGepaRun=id?validateGepaRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.onUpdate();}
   async selectLlmRun(id){this.selectedLlmRun=id?validateLlmRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.onUpdate(this.snapshot());}
   async selectSkillRun(id){
     this.selectedSkillRun=id?validateSkillRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;

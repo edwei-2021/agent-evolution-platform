@@ -22,7 +22,7 @@ The target is a small `normalize-support-title` fixture, with 20/10/20 distinct 
 
 `ollama_bridge.py` preserves the user-proven Windows 10 NAT approach: current IPv4 gateway, default port 11435, proxy bypass and long model-loading timeout. `configure_ollama.py` saves endpoint/model settings and shell exports without connectivity tests. The Integrations view reads settings and recorded user metadata evidence; metadata refresh and one OpenAI-compatible chat request require explicit actions. Per-request artifacts pin settings revision and actual results. Startup never probes Windows and provider actions never auto-retry. The uploaded diagnostic and ZIP tools are preserved in source control.
 
-The provider is separate from the existing rule-based Skill workflow. Worker/Reflector model execution, nanobot orchestration and GEPA candidate optimization are still planned. See [the integrated Ollama guide](ollama-wsl.md).
+The provider is separate from the existing rule-based Skill workflow. Later phases add Worker/Reflector execution, bounded nanobot orchestration and GEPA candidate optimization; those implementations are described below. See [the integrated Ollama guide](ollama-wsl.md).
 
 ## Phase 2b: Bounded model Skill evaluation (implemented in v0.5.0)
 
@@ -38,13 +38,13 @@ Implemented vertical slice: fixed `python-fix-and-verify`, one integer-clamp tas
 
 Implement authentication, scoped workspace access and backend validation before enabling remote job submission. Runtime connectivity and provider/model configuration belong to a server-owned settings API; no browser API key storage. Use same-origin reverse proxy or narrowly scoped CORS and authenticated transport. Remote FastAPI submission, durable remote workers and arbitrary repository execution remain planned. The local SDK task already uses the existing Host/Origin/CSRF boundary, shared provider/workflow slots, no provider retries and supervised deadline/cancellation controls.
 
-## Phase 3: GEPA skill evolution
+## Phase 3: GEPA Skill evolution (implemented in v0.7.0)
 
-Pin nanobot and GEPA versions after verifying their actual SDK contracts. Optimize only the skill body; freeze name and description, model, tools, memory snapshot and workflow. Group near-duplicate tasks before splitting the dataset. Initial plan: 20 training / 10 validation / 20 held-out tasks; search budget 80 evaluations. These are plans, not supplied datasets.
+The real version-pinned GEPA 0.1.4 optimizer owns reflective mutation, minibatch acceptance, Pareto selection and final candidate choice. `gepa_sdk.Adapter` bridges it to fresh nanobot 0.3.5 SDK rollouts through the existing bounded tools and trusted AST evaluator. Only `skill_body` evolves. The server freezes the active GEPA baseline, model/provider revision, tools, session policy, SDK/code/dataset provenance and budgets before dispatch.
 
-Return objective trusted-test success and actionable trace feedback to GEPA. Enforce timeout/token/cost limits at the runner and experiment level. The optimizer's own budget is not a substitute for agent-call limits. Keep held-out test data inaccessible to candidate generation. Evaluate the selected candidate only after search; small samples warrant limited conclusions.
+The grouped synthetic benchmark provides 20 training / 10 validation / 20 final tasks (Smoke 4/2/4), with parameter variants kept in one operation-family split. Training traces alone reach the reflective proposer. The adapter rejects final task IDs during search. Search uses at most 80 task evaluations with an additional hard preflight cap because GEPA stops between iterations. A separately enforced global model-call budget includes reserved independent final work and proposal requests; whole-run/per-call deadlines and process cancellation remain supervised.
 
-A real release requires reproducible evidence, improvement criteria and explicit human review. Rejection when no candidate improves is a successful experiment outcome. Store skill hash, dataset/split hashes, evaluator revision, runtime revision, model config, memory snapshot, optimizer seed and parent version. New tasks use the activated version; running tasks retain their pinned version. Rollback moves the active pointer without deleting evidence.
+After validation selection freezes, baseline and selected Skills each receive fresh validation/final executions. Reviewer replay checks actual requests, tool writes, trusted cases, candidate/selection accounting and evidence hashes. `gepa_store.py` keeps separate immutable versions and revisioned human approval/rollback. Validation must improve and final task success must not regress. Local synthetic results do not establish external benchmark quality. See [GEPA guide](gepa-evolution.md). Authenticated remote submission and arbitrary repository execution remain later work.
 
 ## Phase 4: Additional adapters and workflow evolution
 

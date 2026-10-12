@@ -6,11 +6,11 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from repair_fixture import VISIBLE, HIDDEN, validate_source
 
-def evaluate(source, split):
+def evaluate(source, split, fixture=None):
     tree=validate_source(source)
     namespace={'__builtins__':{'min':min,'max':max,'ValueError':ValueError}}
     exec(compile(tree,'solution.py','exec'),namespace)
-    rows=VISIBLE if split=='visible' else HIDDEN
+    rows=fixture[split] if fixture is not None else VISIBLE if split=='visible' else HIDDEN
     records=[]
     for inputs,expected in rows:
         try:
@@ -25,9 +25,11 @@ def evaluate(source, split):
 def main():
     resource.setrlimit(resource.RLIMIT_CPU,(2,2));resource.setrlimit(resource.RLIMIT_AS,(256*1024*1024,256*1024*1024))
     try:
-        data=json.loads(sys.stdin.read(12000))
+        raw=sys.stdin.read(100001)
+        if len(raw)>100000:raise ValueError('Evaluator input exceeds size limit')
+        data=json.loads(raw)
         if data.get('split') not in ('visible','hidden'):raise ValueError('Unknown evaluation split')
-        result=evaluate(data['source'],data['split'])
+        result=evaluate(data['source'],data['split'],data.get('fixture'))
     except Exception as exc: result={'error':str(exc)}
     print(json.dumps(result,ensure_ascii=False))
     return int('error' in result)

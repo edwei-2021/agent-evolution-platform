@@ -75,9 +75,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 from setup_wsl import find_node
                 from repair_runtime import sdk_status
                 sdk = sdk_status(runtime.root)
-                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
+                from gepa_runtime import gepa_status
+                optimizer = gepa_status(runtime.root)
+                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': optimizer['available'], 'gepaVersion': optimizer['version'], 'gepaWorkerAvailable': optimizer['available'], 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())
+            elif path == '/api/v1/gepa':
+                self.json_response(200, runtime.snapshot()['gepa'])
             elif path == '/api/v1/repair':
                 self.json_response(200, runtime.snapshot()['repair'])
             elif path == '/api/v1/skills':
@@ -152,6 +156,16 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, ollama_bridge(runtime).cancel_warmup(match[1]))
             elif path == '/api/v1/llm/ollama/settings':
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
+            elif path == '/api/v1/gepa/runs':
+                fields={'registry','requestId','profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
+                if set(body)!=fields:raise ValueError('Unexpected GEPA submission fields')
+                self.json_response(202, runtime.start(body['registry'],body['requestId'],'gepa-evolution',{k:body[k] for k in fields-{'registry','requestId'}}))
+            elif match := re.fullmatch(r'/api/v1/gepa/runs/(RUN-[A-Za-z0-9-]+)/approve',path):
+                if set(body)!={'expectedRevision'}:raise ValueError('Unexpected approval fields')
+                self.json_response(200,runtime.gepa.approve(match[1],body['expectedRevision']))
+            elif match := re.fullmatch(r'/api/v1/gepa/versions/(GSV-[A-Za-z0-9-]+)/activate',path):
+                if set(body)!={'expectedRevision'}:raise ValueError('Unexpected activation fields')
+                self.json_response(200,runtime.gepa.activate(match[1],body['expectedRevision']))
             elif path == '/api/v1/repair/runs':
                 if set(body)!={'registry','requestId','maxSeconds','callTimeoutSeconds','callBudget','providerRevision'}:raise ValueError('Unexpected repair submission fields')
                 options = {key: body.get(key) for key in ('maxSeconds', 'callTimeoutSeconds', 'callBudget', 'providerRevision')}

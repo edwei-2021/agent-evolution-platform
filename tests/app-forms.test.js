@@ -110,6 +110,14 @@ test('app form events preserve settings through click, submit, navigation and LL
   const query=new URL('http://localhost'+logCalls.at(-1).path).searchParams;assert.equal(query.get('q'),'timeout & model');assert.equal(query.get('level'),'ERROR');
   globalThis.document.activeElement=null;
  });
+ await t.test('GEPA navigation, profile and Start use real app handlers with pinned revisions',async()=>{
+  const skill={name:'python-fix-and-verify',description:'Bounded repair',body:'Read, repair, test.',hash:'a'.repeat(64)};
+  runtime.gepa={schemaVersion:1,engine:'gepa-nanobot-repair-v1',revision:1,activeVersionId:'GSV-baseline',active:{id:'GSV-baseline',skill},versions:[{id:'GSV-baseline',label:'G0',skill,runId:null}],sdk:{available:true,version:'0.3.5'},optimizer:{available:true,version:'0.1.4'},latestRun:null,runs:[]};
+  runtime.provider.busy=false;
+  await click(button(null,{page:'gepa'}));await click(button(null,{liveRefresh:''}));assert.match(html,/GEPA 技能最佳化/);
+  await click(button(null,{gepaStart:''}));const starts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(starts.length,1);
+  const body=JSON.parse(starts[0].options.body);assert.equal(body.profile,'smoke');assert.equal(body.metricBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.expectedRevision,1);
+ });
  await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
   runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';
   runtime.repair={engine:'nanobot-python-repair-v1',sdk:{available:true,version:'0.3.5'},latestRun:null,runs:[]};

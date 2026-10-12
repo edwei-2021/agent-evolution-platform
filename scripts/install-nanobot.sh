@@ -15,4 +15,5 @@ if [[ ! -d "$LAB_ROOT/.venv-nanobot" ]]; then "$LAB_PYTHON" -m venv --copies "$L
 "$LAB_ROOT/.venv-nanobot/bin/python" -m pip install --disable-pip-version-check -r "$LAB_ROOT/requirements-nanobot.txt"
 "$LAB_ROOT/.venv-nanobot/bin/python" -c 'from nanobot import Nanobot; import importlib.metadata; assert importlib.metadata.version("nanobot-ai") == "0.3.5"; print("nanobot SDK 0.3.5 imported; no model requests sent.")'
 
+"$LAB_ROOT/.venv-nanobot/bin/python" -c 'import gepa,importlib.metadata; assert importlib.metadata.version("gepa") == "0.1.4"; print("GEPA 0.1.4 imported; no model requests sent.")'
 "$LAB_ROOT/.venv-nanobot/bin/python" -c 'import tiktoken; tiktoken.get_encoding("cl100k_base"); print("Tokenizer cache ready; no Ollama requests sent.")'

@@ -57,10 +57,10 @@ class BoundedProvider(LLMProvider):
         return await self.chat(messages,tools)
     async def chat_with_retry(self,messages,tools=None,**kwargs):return await self.chat(messages,tools)
 
-async def run_sdk(directory,config):
+async def run_sdk(directory,config,runner=None):
     version=importlib.metadata.version('nanobot-ai')
     if version!=SDK_VERSION:raise RuntimeError('Unsupported nanobot SDK version: '+version)
-    runner=RepairRunner(directory,config);registry=ToolRegistry()
+    runner=runner or RepairRunner(directory,config);registry=ToolRegistry()
     for name in TOOLS:registry.register(BoundedTool(runner,name))
     loop=BoundedLoop(bus=MessageBus(),provider=BoundedProvider(runner),workspace=runner.workspace,
         model=config['provider']['config']['model'],max_iterations=config['callBudget'],context_window_tokens=32768,
@@ -68,7 +68,7 @@ async def run_sdk(directory,config):
         session_manager=SessionManager(runner.workspace,sessions_root=directory/'sdk-sessions'),
         idle_compact_check_interval_seconds=0)
     async with Nanobot(loop) as bot:
-        result=await bot.run(SKILL['body']+'\n\n'+PROMPT,session_key='repair:'+directory.name,ephemeral=True)
+        result=await bot.run(config['skill']['body']+'\n\n'+config.get('fixture',{}).get('prompt',PROMPT),session_key='repair:'+directory.name,ephemeral=True)
     report={'sdkVersion':version,'stopReason':result.stop_reason,'error':result.error,'content':result.content,
         'toolsUsed':result.tools_used,'usage':result.usage.to_dict() if result.usage is not None else None,'messages':result.messages,'sessionKey':'repair:'+directory.name,
         'grantedTools':list(TOOLS)}

@@ -1,5 +1,5 @@
 import {escapeHtml as esc} from './agent-view.js';
-const modules=['api','gui','runtime','ollama','llm','skills','nanobot','coordinator','worker','reflector','evaluator','reviewer'];
+const modules=['api','gui','runtime','ollama','llm','skills','nanobot','gepa','coordinator','worker','reflector','evaluator','reviewer'];
 const time=value=>new Date(value).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false});
 export function logsResultsView(state){
  const data=state.data;
