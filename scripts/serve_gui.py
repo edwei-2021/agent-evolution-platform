@@ -40,11 +40,16 @@ class GuiHandler(SimpleHTTPRequestHandler):
             if step.run_id is None and isinstance(data.get('id'),str):step.run_id=data['id']
             step.finish('failed' if status>=400 else 'completed',data.get('error'))
         payload = json.dumps(data, ensure_ascii=False).encode()
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            # Client disconnected. Do not enter do_GET's OSError handler and
+            # try to send a second HTTP response on the same closed socket.
+            self.close_connection = True
 
     def api_context(self, mutate=False):
         runtime = getattr(self.server, 'runtime', None)

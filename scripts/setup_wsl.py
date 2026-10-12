@@ -240,7 +240,9 @@ def run_tests(root=ROOT):
     if not node:
         raise RuntimeError('A supported Linux Node runtime is required for tests.')
     run([node['path'], '--test', *sorted((root / 'tests').glob('*.test.js'))], cwd=root)
-    run([root / '.venv/bin/python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', '*_test.py'], cwd=root)
+    # Show the exact case and stop after the first failure. Continuing dozens
+    # of workflow cases hides the initial problem on a slow WSL drive.
+    run([root / '.venv/bin/python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', '*_test.py', '-v', '-f'], cwd=root)
 
 
 def main(argv=None):

@@ -157,3 +157,17 @@ Back up the stopped service's entire .local/m (DB, CAS, signing key) and existin
 | DBG-M-007 | uv/npm locks, TypeScript/lint, API request ID, legacy release log | Fix failed dependency/check; rerun affected checks then acceptance |
 
 No Windows/GPU speed or model-quality result is inferred from loopback tests. Docker behavior, production cutover, optimizer search resume and actual user WSL execution remain explicit closure work.
+
+### First mock LLM workflow timeout during WSL installation
+
+If installation reports LLM workflow did not finish, stop at that failed gate. Update the checkout and run the single-case probe before repeating all tests:
+
+```bash
+cd /mnt/d/agent-evolution-platform
+git pull --ff-only
+.venv/bin/python scripts/check_llm_first_failure.py
+```
+
+The probe retains the original 20-second workflow test expectation, uses only a loopback mock model, and bounds the test harness to 120 seconds. Its report and test log are stored under .local/test-reports/LLM-CHECK-...; on failure it also captures role states/log tails, mock request count and periodic Python thread stacks. These distinguish process startup, progress I/O, lock waits and model transport. A timeout is not silently converted to a pass.
+
+Progress reads now release the supervisor mutex before filesystem access. A disconnected HTTP client closes the response without attempting a second error response. These defects are regression-tested; the user's WSL timeout still requires the local probe result. The installer prints Python case names and stops on the first failure. Optional GEPA/nanobot skips in the base GUI environment are not equivalent to an SDK acceptance pass.

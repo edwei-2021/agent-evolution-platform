@@ -131,11 +131,15 @@ class RuntimeService:
                          {'task': self.current.get('task'), 'agentId': agent['id'] if agent else None})
 
     def get_run(self, identifier):
-        with self.lock, self.connect() as db:
+        # This is a database snapshot, not a reference to mutable self.current.
+        # Keep slow SQLite/progress-file reads out of the supervisor mutex so
+        # frequent polling cannot block process state updates or cancellation.
+        with self.connect() as db:
             row = db.execute('SELECT data FROM runs WHERE id=?', (identifier,)).fetchone()
             if not row:
                 raise KeyError('Run not found')
-            return self.decorate(json.loads(row[0]))
+            run = json.loads(row[0])
+        return self.decorate(run)
 
     def decorate(self, run):
         end = run.get('endedAt') or now()
