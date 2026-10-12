@@ -10,11 +10,11 @@ Read the [revised development plan](docs/agent-evolution-platform-development-pl
 
 The plan supersedes earlier next-milestone scheduling: begin with canonical contracts and compatibility fixtures, then durable evidence and evaluator isolation, followed by dataset/comparison and complete release hardening. Existing Ollama configuration, preload, experiments, progress, logs and versions remain supported. OpenEvolve and additional runtimes follow these gates.
 
-The repository rename target is `edwei-2021/agent-evolution-platform`. This is the existing repository's target name, not a second project. Verify the administrative rename before changing local Git remotes or hosting source bindings. Current GitHub visibility is public; the private hosted GUI has separate access controls.
+The existing repository was renamed to `edwei-2021/agent-evolution-platform` on 2026-10-12; repository identity and history are retained. Existing checkouts can keep their directory and update the Git origin URL. Current GitHub visibility is public; the private hosted GUI has separate access controls.
 
 ## Existing implementation and operational guides
 
-GitHub: https://github.com/edwei-2021/nanobot-gepa-mvp
+GitHub: https://github.com/edwei-2021/agent-evolution-platform
 
 Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
@@ -34,10 +34,10 @@ GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.5
 
 In the WSL2 Ubuntu terminal, clone into `/mnt/d/nanobot-gepa-mvp` (Windows `D:\nanobot-gepa-mvp`), inspect first, install missing prerequisites, then start:
 
-This repository is private. Before cloning, authenticate Git inside WSL through the [GitHub CLI browser-login instructions](docs/wsl-install.md#2-obtain-the-independent-project). The connected GitHub account in ChatGPT does not authenticate the WSL terminal, and GitHub account passwords cannot be used for HTTPS Git operations.
+This repository is currently public. For authenticated contributions from WSL, use the [GitHub CLI browser-login instructions](docs/wsl-install.md#2-obtain-the-independent-project). The connected GitHub account in ChatGPT does not authenticate the WSL terminal, and GitHub account passwords cannot be used for HTTPS Git operations.
 
 ```bash
-git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git /mnt/d/nanobot-gepa-mvp
+git clone https://github.com/edwei-2021/agent-evolution-platform.git /mnt/d/nanobot-gepa-mvp
 cd /mnt/d/nanobot-gepa-mvp
 bash scripts/install-wsl.sh --check --python python3.11
 bash scripts/install-wsl.sh --python python3.11
