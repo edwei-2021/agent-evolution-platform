@@ -57,7 +57,7 @@ class StreamAccumulator:
                 'finish_reason': self.finish}], 'usage': self.usage}
 
 
-def stream_chat(base, settings, payload, on_update):
+def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAccumulator):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     request = urllib.request.Request(base + '/v1/chat/completions',
         data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ def stream_chat(base, settings, payload, on_update):
                 return json.loads(raw), None
             if response.headers.get_content_type() != 'text/event-stream':
                 raise ValueError('Expected an SSE or JSON model response')
-            accumulator = StreamAccumulator()
+            accumulator = accumulator_factory()
             size, event_lines = 0, []
             while True:
                 if time.monotonic() >= deadline:

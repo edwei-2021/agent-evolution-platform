@@ -110,4 +110,12 @@ test('app form events preserve settings through click, submit, navigation and LL
   const query=new URL('http://localhost'+logCalls.at(-1).path).searchParams;assert.equal(query.get('q'),'timeout & model');assert.equal(query.get('level'),'ERROR');
   globalThis.document.activeElement=null;
  });
+ await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
+  runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';
+  runtime.repair={engine:'nanobot-python-repair-v1',sdk:{available:true,version:'0.3.5'},latestRun:null,runs:[]};
+  await click(button(null,{page:'repair'}));await click(button(null,{liveRefresh:''}));
+  assert.match(html,/Python 修復實驗/);await click(button(null,{repairStart:''}));
+  const starts=calls.filter(c=>c.path==='/api/v1/repair/runs');assert.equal(starts.length,1);
+  const body=JSON.parse(starts[0].options.body);assert.equal(body.callBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.registry.agents.length,5);
+ });
 });

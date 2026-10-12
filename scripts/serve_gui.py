@@ -73,9 +73,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
         try:
             if path == '/api/v1/runtime/capabilities':
                 from setup_wsl import find_node
-                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': bool(shutil.which('nanobot')), 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
+                from repair_runtime import sdk_status
+                sdk = sdk_status(runtime.root)
+                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': importlib.util.find_spec('gepa') is not None, 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())
+            elif path == '/api/v1/repair':
+                self.json_response(200, runtime.snapshot()['repair'])
             elif path == '/api/v1/skills':
                 self.json_response(200, runtime.snapshot()['skills'])
             elif path == '/api/v1/llm/ollama':
@@ -99,7 +103,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, {'runId': match[1], 'role': match[2], 'content': raw.decode(errors='replace'), 'truncated': size > 200000, 'totalBytes': size})
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)', path):
                 self.json_response(200, runtime.get_run(match[1]))
-            elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md))', path):
+            elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md|py|patch))', path):
                 run = runtime.get_run(match[1])
                 target = (runtime.local / 'runs' / match[1] / match[2]).resolve()
                 if match[2] not in run['artifacts'] or not target.is_relative_to((runtime.local / 'runs').resolve()) or not target.is_file():
@@ -148,6 +152,10 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, ollama_bridge(runtime).cancel_warmup(match[1]))
             elif path == '/api/v1/llm/ollama/settings':
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
+            elif path == '/api/v1/repair/runs':
+                if set(body)!={'registry','requestId','maxSeconds','callTimeoutSeconds','callBudget','providerRevision'}:raise ValueError('Unexpected repair submission fields')
+                options = {key: body.get(key) for key in ('maxSeconds', 'callTimeoutSeconds', 'callBudget', 'providerRevision')}
+                self.json_response(202, runtime.start(body.get('registry'), body.get('requestId'), 'nanobot-repair', options))
             elif path == '/api/v1/llm/skills/runs':
                 options = {key: body.get(key) for key in ('profile', 'maxSeconds', 'expectedRevision', 'providerRevision')}
                 if 'callTimeoutSeconds' in body:

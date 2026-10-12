@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import sqlite3
 
-MODULES = ('api', 'gui', 'runtime', 'ollama', 'llm', 'skills',
+MODULES = ('api', 'gui', 'runtime', 'ollama', 'llm', 'skills', 'nanobot',
            'coordinator', 'worker', 'reflector', 'evaluator', 'reviewer')
 LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
 RETENTION = 10000

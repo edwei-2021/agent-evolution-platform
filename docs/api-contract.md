@@ -131,3 +131,14 @@ LLM submission accepts optional `callTimeoutSeconds` (integer 10–3600, default
 - `GET /api/v1/debug/runs/{runId}/{role}`: read a fixed role log from a stored run. Returns `{runId,role,content,truncated,totalBytes}`; preview is the last 200,000 bytes, including active/pre-upgrade runs. Invalid/external paths are rejected. Reading does not rerun roles or models.
 
 Journal records contain `{id,at,module,level,runId,message,details}`. IDs are stable and monotonically increasing; retention removes old rows rather than resetting IDs. Original UTC timestamps remain in JSONL export. Common secret patterns and structured prompt/content/reasoning fields are redacted. Routine successful polling and journal reads do not create repeated API records. Journal storage is bounded and independent of evaluation evidence.
+
+
+## Bounded nanobot Python repair (v0.6.0／Python 修復)
+
+`GET /api/v1/repair` and `/api/v1/runtime.repair` expose SDK availability, latest `nanobot-repair` run and the last ten repair runs. SDK inspection is local and does not dispatch model requests. Capabilities additionally reports `nanobotInstalled`, `nanobotSdkVersion` and `pythonRepairAvailable` for the optional pinned environment; these describe SDK availability, not a gateway/network heartbeat.
+
+`POST /api/v1/repair/runs` accepts exactly `{registry,requestId,maxSeconds,callTimeoutSeconds,callBudget,providerRevision}`. Whole time: 60–7200 seconds; call time: 10–3600 seconds; model calls: 2–12; all are integers, with frozen provider revision. Unknown fields are rejected. The server owns the fixed Skill, task, tools, evaluator and SDK selection. Missing/wrong SDK or stale provider revisions fail before model dispatch. Existing localhost Host/Origin/CSRF, immutable submission IDs and shared workflow/provider slots apply. Generic runtime cancellation and history routes are reused.
+
+A repair run adds `repairConfig`, `repairProgress` and independently verified `repairResult`. Progress includes phase, dispatched/completed/failed calls, tool count and last request timing/chunk/text/reasoning/tool-argument character counts. The result distinguishes trusted workflow verification from `repairPassed`; a completed workflow may record an unsuccessful repair. Baseline/candidate visible/hidden counts have fixed denominators of six, with candidate/patch/evidence hashes and SDK version. No approval/activation route exists for this task result.
+
+The artifact allowlist now also permits fixed `.py` and `.patch` filenames belonging to the selected run, subject to the same path/preview checks. API previews are read-only text; complete source/patch bytes remain in local files. Frontend evidence loading reads only baseline, frozen candidate, bounded tool trace and patch and marks truncated previews. `nanobot` is an additional module journal filter. No GET reruns SDK or model evaluation.

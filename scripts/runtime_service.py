@@ -20,6 +20,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ('coordinator', 'worker', 'evaluator', 'reflector', 'reviewer')
 TASKS = {'coordinator': 'Inspect assets and record hashes', 'worker': 'Run JavaScript regression tests', 'evaluator': 'Run trusted Python installer tests', 'reflector': 'Analyze actual test evidence', 'reviewer': 'Review evidence and hash artifacts'}
+MODEL_TASKS = ('llm-evolution', 'nanobot-repair')
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
@@ -87,6 +88,8 @@ class RuntimeService:
         self.ollama = OllamaBridge(self.root)
         self.ollama.recover_warmup()
         self.llm = LlmStore(self)
+        from repair_store import RepairStore
+        self.repair = RepairStore(self)
         self.logs.append('runtime', 'INFO', 'Local runtime service started', details={'serviceId': self.service_id})
 
     @staticmethod
@@ -95,6 +98,9 @@ class RuntimeService:
 
     @staticmethod
     def native_command(role, path):
+        if (path / 'repair-config.json').is_file():
+            config = json.loads((path / 'repair-config.json').read_text())
+            return [config['sdk']['python'], str(ROOT / 'scripts/repair_agents.py'), '--role', role, '--run-dir', str(path)]
         filename = 'llm_agents.py' if (path / 'llm-config.json').is_file() else 'skill_agents.py' if (path / 'skill-config.json').is_file() else 'native_agents.py'
         return [sys.executable, str(ROOT / 'scripts' / filename), '--role', role, '--run-dir', str(path)]
 
@@ -148,6 +154,11 @@ class RuntimeService:
                     run['llmProgress'] = json.loads(path.read_text())
                 except (ValueError, OSError):
                     pass
+        if run.get('task') == 'nanobot-repair':
+            path = self.local / 'runs' / run['id'] / 'repair-progress.json'
+            if path.is_file():
+                try: run['repairProgress'] = json.loads(path.read_text())
+                except (ValueError, OSError): pass
         if run['status'] in ('failed', 'cancelled', 'interrupted'):
             run['error'] = next((a['error'] for a in run['agents'] if a.get('error')), None)
         return run
@@ -155,7 +166,8 @@ class RuntimeService:
     def close_model_call(self, directory, status, error):
         """Finalize evidence only after the worker is stopped; no concurrent writer."""
         from skill_engine import write
-        path = directory / 'llm-progress.json'
+        prefix = 'repair' if (directory / 'repair-config.json').exists() else 'llm'
+        path = directory / (prefix + '-progress.json')
         if not path.exists():
             return
         state = json.loads(path.read_text())
@@ -164,13 +176,13 @@ class RuntimeService:
             return
         call.update(status=status, error=error, finishedAt=time.time(),
                     elapsedMs=round((time.time() - call['startedAt']) * 1000, 3))
-        calls_path = directory / 'llm-calls.json'
+        calls_path = directory / (prefix + '-calls.json')
         calls = json.loads(calls_path.read_text())
         calls[-1].update({k: v for k, v in call.items() if k not in ('request', 'response')})
         write(calls_path, calls)
         state['failedCalls'] = sum(c['status'] == 'failed' for c in calls)
         write(path, state)
-        self.logs.append('llm', 'ERROR' if status == 'failed' else 'WARNING',
+        self.logs.append('nanobot' if prefix == 'repair' else 'llm', 'ERROR' if status == 'failed' else 'WARNING',
             f'Model call #{call["id"]} {status}: {error}', directory.name,
             {'elapsedMs': call['elapsedMs'], 'timeoutSeconds': call.get('timeoutSeconds')})
 
@@ -192,14 +204,18 @@ class RuntimeService:
             llm_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'llm-evolution'][:10]
             llm_workspace = self.llm.snapshot()
             llm_workspace.update(latestRun=self.decorate(llm_runs[0]) if llm_runs else None, runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in llm_runs])
-        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace,
+        with self.lock, self.connect() as db:
+            repair_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'nanobot-repair'][:10]
+        from repair_runtime import sdk_status
+        repair_workspace = {'engine': 'nanobot-python-repair-v1', 'sdk': sdk_status(self.root), 'latestRun': self.decorate(repair_runs[0]) if repair_runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in repair_runs]}
+        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace, 'repair': repair_workspace,
                 'provider': {'revision': self.ollama.state()['revision'], 'config': self.ollama.state()['config'], 'busy': self.ollama.operation.locked(), 'warmup': self.ollama.warmup_status()}}
 
     def start(self, registry, request_id, task='project-health', options=None):
         agents = validate_bindings(registry)
         if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', request_id):
             raise ValueError('Invalid idempotency request ID')
-        if task not in ('project-health', 'skill-evolution', 'llm-evolution') or (task == 'project-health' and options is not None):
+        if task not in ('project-health', 'skill-evolution', 'llm-evolution', 'nanobot-repair') or (task == 'project-health' and options is not None):
             raise ValueError('Unsupported fixed workflow')
         submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
         with self.lock:
@@ -214,11 +230,12 @@ class RuntimeService:
                 return self.decorate(existing)
             if self.current and self.current['status'] not in TERMINAL:
                 raise RuntimeError('A workflow is already running; cancel or wait before starting another')
-            config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else None
+            config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else self.repair.freeze(options) if task == 'nanobot-repair' else None
             from skill_agents import TASKS as SKILL_TASKS
             from llm_engine import TASKS as LLM_TASKS
-            tasks = LLM_TASKS if task == 'llm-evolution' else SKILL_TASKS if config else TASKS
-            if task == 'llm-evolution':
+            from repair_engine import TASKS as REPAIR_TASKS
+            tasks = REPAIR_TASKS if task == 'nanobot-repair' else LLM_TASKS if task == 'llm-evolution' else SKILL_TASKS if config else TASKS
+            if task in MODEL_TASKS:
                 if not self.ollama.operation.acquire(blocking=False):
                     raise RuntimeError('An Ollama request is already running; wait first')
                 agents.sort(key=lambda a: ('coordinator', 'worker', 'reflector', 'evaluator', 'reviewer').index(a['role']))
@@ -228,19 +245,19 @@ class RuntimeService:
                 directory.mkdir(parents=True)
                 (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
                 if config:
-                    (directory / ('llm-config.json' if task == 'llm-evolution' else 'skill-config.json')).write_text(json.dumps(config, indent=2, ensure_ascii=False))
+                    (directory / ('repair-config.json' if task == 'nanobot-repair' else 'llm-config.json' if task == 'llm-evolution' else 'skill-config.json')).write_text(json.dumps(config, indent=2, ensure_ascii=False))
                 timestamp = now()
-                self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'ollama-skill-role' if task == 'llm-evolution' else 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
+                self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'nanobot-sdk-role' if task == 'nanobot-repair' else 'ollama-skill-role' if task == 'llm-evolution' else 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
                 if config:
-                    self.current['llmConfig' if task == 'llm-evolution' else 'skillConfig'] = config
-                self.event(None, f'Queued actual {task} workflow; ' + ('explicit model calls, no GEPA adapter' if task == 'llm-evolution' else 'no LLM or GEPA calls'))
+                    self.current['repairConfig' if task == 'nanobot-repair' else 'llmConfig' if task == 'llm-evolution' else 'skillConfig'] = config
+                self.event(None, f'Queued actual {task} workflow; ' + ('explicit model calls, no GEPA adapter' if task in MODEL_TASKS else 'no LLM or GEPA calls'))
                 self.persist()
                 self.cancel_event.clear()
                 self.thread = threading.Thread(target=self.execute, args=(directory,), daemon=True)
                 self.thread.start()
                 return copy.deepcopy(self.current)
             except Exception:
-                if task == 'llm-evolution':
+                if task in MODEL_TASKS:
                     self.ollama.operation.release()
                 raise
 
@@ -273,7 +290,7 @@ class RuntimeService:
             return copy.deepcopy(self.current)
 
     def execute(self, directory):
-        provider_leased = self.current.get('task') == 'llm-evolution'
+        provider_leased = self.current.get('task') in MODEL_TASKS
         workflow_started = time.monotonic()
         try:
             with self.lock:
@@ -302,12 +319,13 @@ class RuntimeService:
                         while self.process.poll() is None:
                             if self.cancel_event.wait(0.25):
                                 self.stop_process()
-                            elif (self.current.get('task') == 'llm-evolution' and time.monotonic() - workflow_started > self.current['llmConfig']['maxSeconds']) or (self.current.get('task') != 'llm-evolution' and time.monotonic() - started > self.stage_timeout):
+                            elif (self.current.get('task') in MODEL_TASKS and time.monotonic() - workflow_started > (self.current.get('llmConfig') or self.current['repairConfig'])['maxSeconds']) or (self.current.get('task') not in MODEL_TASKS and time.monotonic() - started > self.stage_timeout):
                                 timed_out = True
                                 timeout_error = 'Workflow time limit exceeded' if provider_leased else 'Stage timed out'
                                 self.stop_process()
                             elif provider_leased:
-                                call = self.decorate(copy.deepcopy(self.current)).get('llmProgress', {}).get('lastCall')
+                                observed = self.decorate(copy.deepcopy(self.current))
+                                call = (observed.get('llmProgress') or observed.get('repairProgress', {})).get('lastCall')
                                 if call and call.get('status') == 'running' and call.get('deadlineEpoch', float('inf')) <= time.time():
                                     timed_out = True
                                     timeout_error = f'Model call #{call["id"]} exceeded its {call["timeoutSeconds"]}s time limit; no further requests were sent'
@@ -346,8 +364,8 @@ class RuntimeService:
                 if review.exists():
                     result = json.loads(review.read_text())
                     self.current['checksPassed'] = result['checksPassed']
-                    if self.current.get('task') in ('skill-evolution', 'llm-evolution'):
-                        self.current['llmResult' if self.current['task'] == 'llm-evolution' else 'skillResult'] = result
+                    if self.current.get('task') in ('skill-evolution', 'llm-evolution', 'nanobot-repair'):
+                        self.current['repairResult' if self.current['task'] == 'nanobot-repair' else 'llmResult' if self.current['task'] == 'llm-evolution' else 'skillResult'] = result
                     if not self.current['checksPassed'] and self.current['status'] == 'completed':
                         self.current['status'] = 'failed'
                         self.event(None, 'Workflow finished but trusted checks failed')

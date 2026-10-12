@@ -30,13 +30,13 @@ The provider is separate from the existing rule-based Skill workflow. Worker/Ref
 
 Smoke/Full use 3/2/2 and 20/10/20 fixed splits, at most 15/101 calls, and a configurable whole-run deadline. The provider slot and workflow slot prevent local concurrent model work. This self-contained reflection engine is not a GEPA implementation; no external SDK is imported. See [the model Skill guide](llm-skill-evolution.md).
 
-## Phase 2c: nanobot SDK task execution (planned)
+## Phase 2c: Bounded nanobot SDK task execution (implemented in v0.6.0)
 
-Add a separately deployed FastAPI service, SQLite experiments/artifacts, and a durable worker. Sites hosts the browser GUI; it does not execute Python agents. Run the worker on a user-controlled server/VM with isolated task workspaces. Keep provider credentials server-side.
+The first local slice reuses the existing localhost supervisor and SQLite history. `repair_store.py` freezes one fixed Skill, fixture/code provenance, model/provider revision, SDK version and budgets. `repair_sdk.py` imports the real 0.3.5 SDK through a caller-owned `AgentLoop` and three bounded tools. `repair_agents.py` surrounds its single Worker turn with preparation, deterministic trace summary, independent evaluation and reviewer replay. The private Site ships the frontend; Python workers execute in WSL. Provider settings remain server-owned.
 
-First vertical slice: fixed `python-fix-and-verify` skill, one nanobot worker, fixed model/tools/workflow and one executable Python repair task. Record actual commands, outputs, usage and trusted test results. Use fresh sessions, workspace and memory per evaluation. Do not accept an agent's assertion of passing tests as evidence.
+Implemented vertical slice: fixed `python-fix-and-verify`, one integer-clamp task, six visible/six final cases, fresh workspace/session, and only read/write solution plus fixed visible tests. Shell, network, spawn and other default SDK tools are never registered. `repair_evaluator.py` accepts a small pure-function AST subset and runs with an isolated interpreter/resource limits; this is not an arbitrary-code OS sandbox. Candidate source freezes before final tests. Reviewer replays requests/writes and recomputes measurements; a model's assertion of passing tests is not evidence. See [the runner guide](nanobot-repair.md).
 
-Implement authentication, scoped workspace access and backend validation before enabling remote job submission. Runtime connectivity and provider/model configuration belong to a server-owned settings API; no browser API key storage. Use same-origin reverse proxy or narrowly scoped CORS and authenticated transport. The Ollama bridge now provides provider settings and explicit requests; nanobot task execution remains planned.
+Implement authentication, scoped workspace access and backend validation before enabling remote job submission. Runtime connectivity and provider/model configuration belong to a server-owned settings API; no browser API key storage. Use same-origin reverse proxy or narrowly scoped CORS and authenticated transport. Remote FastAPI submission, durable remote workers and arbitrary repository execution remain planned. The local SDK task already uses the existing Host/Origin/CSRF boundary, shared provider/workflow slots, no provider retries and supervised deadline/cancellation controls.
 
 ## Phase 3: GEPA skill evolution
 

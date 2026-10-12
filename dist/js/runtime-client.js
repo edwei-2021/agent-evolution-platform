@@ -35,7 +35,7 @@ export function validateRuntime(data){
       if(!a||typeof a.id!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(a.id)||ids.has(a.id)||typeof a.name!=='string'||a.name.length>80||!Object.hasOwn(LIVE_STATUSES,a.status)||!validTime(a.updatedAt)||!(a.pid===null||Number.isInteger(a.pid)&&a.pid>0)||!(a.processAlive===null||typeof a.processAlive==='boolean')||typeof a.logTail!=='string'||a.logTail.length>20000)throw Error('代理人執行資料格式不正確');
       ids.add(a.id);
     }
-    if(r.events.some(e=>!validTime(e.at)||typeof e.text!=='string'||e.text.length>2000)||r.artifacts.some(name=>typeof name!=='string'||!/^[-A-Za-z0-9_]+\.(json|log|md)$/.test(name)))throw Error('執行紀錄格式不正確');
+    if(r.events.some(e=>!validTime(e.at)||typeof e.text!=='string'||e.text.length>2000)||r.artifacts.some(name=>typeof name!=='string'||!/^[-A-Za-z0-9_]+\.(json|log|md|py|patch)$/.test(name)))throw Error('執行紀錄格式不正確');
   }
   if(data.skills!==undefined)validateSkills(data.skills);
   if(data.provider!==undefined){
@@ -44,6 +44,7 @@ export function validateRuntime(data){
     if(w&&(!/^WARM-[A-Za-z0-9-]+$/.test(w.id)||!['RUNNING','PRELOAD_PASS','FAIL','CANCELLED','INTERRUPTED'].includes(w.status)||!validTime(w.startedAt)||w.finishedAt&&!validTime(w.finishedAt)||!Number.isFinite(w.elapsedSeconds)||w.elapsedSeconds<0||!Number.isInteger(w.timeoutSeconds)||typeof w.config?.model!=='string'))throw Error('模型暖機狀態不正確');
   }
   if(data.llm!==undefined)validateLlmWorkspace(data.llm);
+  if(data.repair!==undefined)validateRepairWorkspace(data.repair);
   return data;
 }
 const validPrompt=v=>v&&v.name==='normalize-support-title'&&typeof v.description==='string'&&typeof v.body==='string'&&v.body.length>0&&v.body.length<=3000&&/^[a-f0-9]{64}$/.test(v.hash);
@@ -69,6 +70,19 @@ export function validateLlmWorkspace(w){
  if(w.latestRun)validateLlmRun(w.latestRun);
  return w;
 }
+export function validateRepairRun(run){
+ validateRuntime({schemaVersion:1,mode:'native-tools',serviceId:'validation',serverTime:new Date().toISOString(),runs:[],latestRun:run});
+ const c=run.repairConfig,p=run.repairProgress,r=run.repairResult;
+ if(run.task!=='nanobot-repair'||c?.engine!=='nanobot-python-repair-v1'||c.sdk?.version!=='0.3.5'||c.skill?.name!=='python-fix-and-verify'||!Number.isInteger(c.callBudget)||c.callBudget<2||c.callBudget>12||typeof c.provider?.config?.model!=='string')throw Error('Python 修復設定不正確');
+ if(p&&(p.engine!=='nanobot-python-repair-v1'||!Number.isInteger(p.calls)||p.calls<0||p.calls>c.callBudget||!Number.isInteger(p.completedCalls)||p.completedCalls<0||p.completedCalls>p.calls||!Number.isInteger(p.toolCalls)||p.toolCalls<0||p.toolCalls>24))throw Error('Python 修復進度不正確');
+ if(p?.lastCall){const t=p.lastCall;if(!Number.isInteger(t.id)||t.id<1||t.id>p.calls||!['running','completed','failed','cancelled'].includes(t.status))throw Error('修復模型呼叫狀態不正確');for(const name of ['startedAt','finishedAt','lastChunkAt','deadlineEpoch','timeoutSeconds','chunks','outputChars','reasoningChars','toolArgumentChars'])if(t[name]!==undefined&&(!Number.isFinite(t[name])||t[name]<0))throw Error('修復模型回應進度不正確');}
+ if(r){if(typeof r.repairPassed!=='boolean'||r.sdkVersion!=='0.3.5'||!/^[a-f0-9]{64}$/.test(r.evidenceHash))throw Error('Python 修復證據不正確');for(const group of [r.baseline,r.candidate])for(const split of ['visible','hidden']){const m=group?.[split];if(!m||m.total!==6||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('Python 修復評測不正確');}if(r.repairPassed!==['visible','hidden'].every(split=>r.candidate[split].passed===6))throw Error('修復結果與測試計數不一致');}
+ return run;
+}
+export function validateRepairWorkspace(w){
+ if(w?.engine!=='nanobot-python-repair-v1'||typeof w.sdk?.available!=='boolean'||!Array.isArray(w.runs)||w.runs.length>10)throw Error('Python 修復工作台不正確');
+ if(w.latestRun)validateRepairRun(w.latestRun);return w;
+}
 export function telemetryFor(runtime,id){return runtime?.data?.latestRun?.agents.find(a=>a.id===id)||null;}
 export function telemetryLabel(runtime,id){
   const agent=telemetryFor(runtime,id);
@@ -76,8 +90,8 @@ export function telemetryLabel(runtime,id){
 }
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
-  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;}
-  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun};}
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;}
+  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError};}
   async request(path,{method='GET',body}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
     try{
@@ -98,13 +112,15 @@ export class RuntimeClient{
       }
       const data=validateRuntime(await this.request('/api/v1/runtime'));
       if(data.serviceId!==this.capabilities.serviceId){this.capabilities=null;throw Error('服務已重新啟動；下次 polling 會重新取得連線資訊');}
-      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;}
+      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;this.selectedRepairRun=null;this.repairEvidence=null;}
       if(this.selectedSkillRun){
         if(this.selectedSkillRun.id===data.skills?.latestRun?.id)this.selectedSkillRun=data.skills.latestRun;
         else if(['queued','running'].includes(this.selectedSkillRun.status))this.selectedSkillRun=null;
       }
       if(this.selectedLlmRun&&this.selectedLlmRun.id===data.llm?.latestRun?.id)this.selectedLlmRun=data.llm.latestRun;
       if(this.pendingLlmSubmission?.requestId===data.latestRun?.requestId)this.pendingLlmSubmission=null;
+      if(this.selectedRepairRun&&this.selectedRepairRun.id===data.repair?.latestRun?.id)this.selectedRepairRun=data.repair.latestRun;
+      if(this.pendingRepairSubmission?.requestId===data.latestRun?.requestId)this.pendingRepairSubmission=null;
       this.data=data;this.error=null;this.lastSuccess=new Date().toISOString();
       if(this.pendingRequestId===data.latestRun?.requestId)this.pendingRequestId=null;
       return true;
@@ -172,6 +188,28 @@ export class RuntimeClient{
   }
   async approveLlm(id){return this.skillMutation(()=>this.request(`/api/v1/llm/skills/runs/${encodeURIComponent(id)}/approve`,{method:'POST',body:{expectedRevision:this.data.llm.revision}}),'llm');}
   async activateLlm(id){return this.skillMutation(()=>this.request(`/api/v1/llm/skills/versions/${encodeURIComponent(id)}/activate`,{method:'POST',body:{expectedRevision:this.data.llm.revision}}),'llm');}
+  async startRepair(registry){
+    if(this.actionBusy)throw Error('操作正在處理');
+    if(!this.capabilities||this.error||!this.data?.repair?.sdk?.available)throw Error('本機 SDK 尚未可用；請安裝並更新狀態');
+    this.actionBusy=true;this.onUpdate();
+    try{
+      if(!this.pendingRepairSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingRepairSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),maxSeconds:this.repairSeconds,callTimeoutSeconds:this.repairCallSeconds,callBudget:this.repairBudget,providerRevision:provider.revision};}
+      try{await this.request('/api/v1/repair/runs',{method:'POST',body:this.pendingRepairSubmission});this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairEvidence=null;await this.refresh();}
+      catch(error){if(error.status&&error.status<500)this.pendingRepairSubmission=null;throw error;}
+    }finally{this.actionBusy=false;this.onUpdate();}
+  }
+  async selectRepairRun(id){this.selectedRepairRun=id?validateRepairRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.repairEvidence=null;this.repairEvidenceError=null;this.onUpdate();}
+  async readRepairEvidence(id){
+    this.actionBusy=true;this.repairEvidenceError=null;this.onUpdate();
+    try{
+      const names=['repair-baseline.py','repair-candidate.py','repair-tools.json','repair-change.patch'];
+      const files=await Promise.all(names.map(n=>this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}/artifacts/${n}`)));
+      if(files.some(f=>f.truncated))throw Error('證據預覽超限；請在 WSL 檢閱完整檔案');
+      const tools=JSON.parse(files[2].content);if(!Array.isArray(tools)||tools.length>24||tools.some(t=>!Number.isInteger(t.id)||t.id<1||t.id>24||!['completed','failed'].includes(t.status)||!['read_solution','write_solution','run_tests'].includes(t.name)))throw Error('工具 trace 不正確');
+      this.repairEvidence={runId:id,baseline:files[0].content,candidate:files[1].content,tools,patch:files[3].content};
+    }catch(error){this.repairEvidenceError=error.message;throw error;}
+    finally{this.actionBusy=false;this.onUpdate();}
+  }
   async selectLlmRun(id){this.selectedLlmRun=id?validateLlmRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.onUpdate(this.snapshot());}
   async selectSkillRun(id){
     this.selectedSkillRun=id?validateSkillRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;
