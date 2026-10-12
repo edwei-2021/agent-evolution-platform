@@ -1,0 +1,22 @@
+[project]
+name = "agent-evolution-platform"
+version = "0.8.0"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "pydantic>=2.10,<3", "uvicorn>=0.30,<1", "cryptography>=44", "httpx>=0.28,<1"]
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.9", "mypy>=1.14"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests_m"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]
+

@@ -14,7 +14,7 @@ Confirm that the Ubuntu 24.04 distribution has `VERSION` = `2`. Open that Ubuntu
 
 ## 2. Obtain the independent project
 
-Use `/mnt/d/nanobot-gepa-mvp` as the project root (Windows `D:\nanobot-gepa-mvp`). Confirm `/mnt/d` is mounted and writable. The repository is private: the connected GitHub account in ChatGPT does not authenticate Git inside WSL. Authenticate in WSL before cloning.
+Use `/mnt/d/agent-evolution-platform` as the project root (Windows `D:\agent-evolution-platform`). Confirm `/mnt/d` is mounted and writable. The repository is currently public; authenticated contributions still require WSL Git credentials: the connected GitHub account in ChatGPT does not authenticate Git inside WSL. Authenticate in WSL before cloning.
 
 Install Git and GitHub CLI, then start browser authentication. When running as `root`, omit `sudo` from the APT commands:
 
@@ -31,35 +31,35 @@ Configure Git to use the authenticated CLI, verify repository access, then clone
 ```bash
 gh auth setup-git --hostname github.com
 gh auth status --hostname github.com
-gh repo view edwei-2021/nanobot-gepa-mvp --json nameWithOwner,isPrivate
-git clone https://github.com/edwei-2021/nanobot-gepa-mvp.git /mnt/d/nanobot-gepa-mvp
-cd /mnt/d/nanobot-gepa-mvp
+gh repo view edwei-2021/agent-evolution-platform --json nameWithOwner,isPrivate
+git clone https://github.com/edwei-2021/agent-evolution-platform.git /mnt/d/agent-evolution-platform
+cd /mnt/d/agent-evolution-platform
 ```
 
 Run authentication, credential setup and clone as the same Linux user: `root` and a regular Ubuntu user have separate credential configuration. GitHub account passwords are not accepted for HTTPS Git operations. If using manual HTTPS authentication, the username is the GitHub login (`edwei-2021`), and the password prompt requires a personal access token. The browser flow above avoids manually copying a token. Do not put tokens in clone URLs, project files or logs.
 
-An existing Git HTTPS credential manager or configured SSH authentication is also supported. For SSH, replace the clone URL with `git@github.com:edwei-2021/nanobot-gepa-mvp.git`. Alternatively, download the repository ZIP through your signed-in GitHub browser and extract it into `/mnt/d/nanobot-gepa-mvp`; installation report version metadata will be null until a Git checkout is used.
+An existing Git HTTPS credential manager or configured SSH authentication is also supported. For SSH, replace the clone URL with `git@github.com:edwei-2021/agent-evolution-platform.git`. Alternatively, download the repository ZIP through your signed-in GitHub browser and extract it into `/mnt/d/agent-evolution-platform`; installation report version metadata will be null until a Git checkout is used.
 
 Project paths follow the checkout location:
 
 | Data or processing | Default location |
 | --- | --- |
-| Git checkout and public assets | `/mnt/d/nanobot-gepa-mvp` and `dist/` |
-| Project Python environment | `/mnt/d/nanobot-gepa-mvp/.venv/` |
-| Downloaded Node runtime and staging | `/mnt/d/nanobot-gepa-mvp/.tools/` |
-| Installer/test/GUI temporary files | `/mnt/d/nanobot-gepa-mvp/.local/tmp/` |
-| Subprocess cache locations | `/mnt/d/nanobot-gepa-mvp/.local/cache/` |
-| Environment report | `/mnt/d/nanobot-gepa-mvp/.local/environment.json` |
-| Measured Skill versions and runtime history | `/mnt/d/nanobot-gepa-mvp/.local/runtime.sqlite3` |
-| Frozen Skill/run evidence | `/mnt/d/nanobot-gepa-mvp/.local/runs/` |
-| GUI launch working directory | `/mnt/d/nanobot-gepa-mvp` |
+| Git checkout and public assets | `/mnt/d/agent-evolution-platform` and `dist/` |
+| Project Python environment | `/mnt/d/agent-evolution-platform/.venv/` |
+| Downloaded Node runtime and staging | `/mnt/d/agent-evolution-platform/.tools/` |
+| Installer/test/GUI temporary files | `/mnt/d/agent-evolution-platform/.local/tmp/` |
+| Subprocess cache locations | `/mnt/d/agent-evolution-platform/.local/cache/` |
+| Environment report | `/mnt/d/agent-evolution-platform/.local/environment.json` |
+| Measured Skill versions and runtime history | `/mnt/d/agent-evolution-platform/.local/runtime.sqlite3` |
+| Frozen Skill/run evidence | `/mnt/d/agent-evolution-platform/.local/runs/` |
+| GUI launch working directory | `/mnt/d/agent-evolution-platform` |
 
-Installer subprocesses receive project-local TMPDIR/TMP/TEMP and cache settings. APT packages and the existing base Python remain managed by Ubuntu; the installer does not relocate the operating system. GUI demo records still use browser localStorage; export JSON to a directory under `D:\nanobot-gepa-mvp` when a file backup on D is needed. Runtime directories are excluded from Git.
+Installer subprocesses receive project-local TMPDIR/TMP/TEMP and cache settings. APT packages and the existing base Python remain managed by Ubuntu; the installer does not relocate the operating system. GUI demo records still use browser localStorage; export JSON to a directory under `D:\agent-evolution-platform` when a file backup on D is needed. Runtime directories are excluded from Git.
 
 To migrate an older checkout, first commit/push any source changes you want to preserve. Clone afresh into the D location and rerun installation there; create a new `.venv` in the destination. Python virtual environments are tied to their creation paths. Keep the old checkout until the new one works. For an existing D checkout, save/commit your own changes, then update:
 
 ```bash
-cd /mnt/d/nanobot-gepa-mvp
+cd /mnt/d/agent-evolution-platform
 git pull --ff-only
 ```
 
@@ -104,7 +104,7 @@ Repeat the same command safely: supported existing tools and a compatible `.venv
 ## 5. Start the GUI
 
 ```bash
-cd /mnt/d/nanobot-gepa-mvp
+cd /mnt/d/agent-evolution-platform
 bash scripts/start-gui.sh
 ```
 
@@ -123,7 +123,7 @@ Open **執行監控** and choose **執行專案檢查** to launch the fixed real
 ## Update and repeat checks
 
 ```bash
-cd /mnt/d/nanobot-gepa-mvp
+cd /mnt/d/agent-evolution-platform
 git pull --ff-only
 bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh
@@ -136,7 +136,7 @@ Stop the old server before restarting after an update. GUI records remain in bro
 | Observation | Action |
 | --- | --- |
 | `Invalid username or token` / `Password authentication is not supported` | Use `gh auth login --hostname github.com --git-protocol https --web`, then `gh auth setup-git --hostname github.com`, under the Linux user doing the clone. Account passwords do not work for Git HTTPS. |
-| `gh repo view` cannot access the private repository | Check `gh auth status --hostname github.com` and authenticate with an account granted access to `edwei-2021/nanobot-gepa-mvp` before cloning. |
+| `gh repo view` cannot access the private repository | Check `gh auth status --hostname github.com` and authenticate with an account granted access to `edwei-2021/agent-evolution-platform` before cloning. |
 | `Python executable not found` | Run `command -v python3.11`; provide the interpreter path with `--python`. |
 | Python 3.10 or older | Select an existing Python 3.11+; do not replace Ubuntu's system interpreter. |
 | WSL2 kernel not detected | Verify `wsl --list --verbose` in Windows. `--allow-non-wsl` is an explicit escape for Ubuntu 24.04 VM/container validation, not automatic WSL conversion. |
@@ -161,4 +161,4 @@ Version 0.4.0 adds no dependencies. Stop the old service, pull, run the doctor w
 
 ## Existing Windows Ollama connection (既有 Windows Ollama 連線)
 
-Version 0.4.1 incorporates the supplied, working Windows 10 / WSL2 connection on **11435**. The GUI port stays **8765**. Do not repeat Windows installation, bind changes, firewall configuration or diagnostics for the already working setup. Follow [the integrated Ollama guide](ollama-wsl.md) to save settings offline and access explicit Web operations. `iproute2` is now an installation prerequisite for current NAT gateway discovery. All settings, exports and provider reports remain under `/mnt/d/nanobot-gepa-mvp/.local/ollama/`.
+Version 0.4.1 incorporates the supplied, working Windows 10 / WSL2 connection on **11435**. The GUI port stays **8765**. Do not repeat Windows installation, bind changes, firewall configuration or diagnostics for the already working setup. Follow [the integrated Ollama guide](ollama-wsl.md) to save settings offline and access explicit Web operations. `iproute2` is now an installation prerequisite for current NAT gateway discovery. All settings, exports and provider reports remain under `/mnt/d/agent-evolution-platform/.local/ollama/`.

@@ -2,6 +2,10 @@
 
 Evolution platform for bounded nanobot/GEPA Skill experiments, with a roadmap toward declarative workflow evolution and multiple runtimes (代理人演化平台).
 
+## Intermediate Phase M delivery
+
+New service components, Ubuntu migration, strict M1–M7 checks and debug support bundles are available. Read [the M operator guide](docs/intermediate-m.md) before moving an existing checkout or running acceptance. Component checks do not certify full phase completion; Docker/production closure remains explicit. The legacy GUI stays v0.7.1.
+
 ## Current status and authoritative roadmap
 
 The implemented runtime baseline is **v0.7.1**. This documentation revision does not change the application version or certify new runtime tests.
@@ -32,13 +36,13 @@ GUI-first skill evolution workspace（技能演化 Web 工作台）. Version 0.5
 
 ## WSL2 Ubuntu 24.04 / Python 3.11
 
-In the WSL2 Ubuntu terminal, clone into `/mnt/d/nanobot-gepa-mvp` (Windows `D:\nanobot-gepa-mvp`), inspect first, install missing prerequisites, then start:
+In the WSL2 Ubuntu terminal, clone into `/mnt/d/agent-evolution-platform` (Windows `D:\agent-evolution-platform`), inspect first, install missing prerequisites, then start:
 
 This repository is currently public. For authenticated contributions from WSL, use the [GitHub CLI browser-login instructions](docs/wsl-install.md#2-obtain-the-independent-project). The connected GitHub account in ChatGPT does not authenticate the WSL terminal, and GitHub account passwords cannot be used for HTTPS Git operations.
 
 ```bash
-git clone https://github.com/edwei-2021/agent-evolution-platform.git /mnt/d/nanobot-gepa-mvp
-cd /mnt/d/nanobot-gepa-mvp
+git clone https://github.com/edwei-2021/agent-evolution-platform.git /mnt/d/agent-evolution-platform
+cd /mnt/d/agent-evolution-platform
 bash scripts/install-wsl.sh --check --python python3.11
 bash scripts/install-wsl.sh --python python3.11
 bash scripts/start-gui.sh
@@ -72,7 +76,7 @@ Open `http://localhost:8766` when using that port.
 The user has already verified Windows 10 Ollama metadata access from WSL2. This version incorporates that approach without repeating Windows setup or connection attempts: NAT gateway discovery, configurable port 11435, proxy bypass, metadata/inference socket timeouts 10/600 seconds and 256 output tokens. The supplied `--api-only` result proves metadata connectivity, not model generation.
 
 ```bash
-cd /mnt/d/nanobot-gepa-mvp
+cd /mnt/d/agent-evolution-platform
 python3.11 scripts/configure_ollama.py --port 11435 --export-env
 source .local/ollama/client.env
 bash scripts/start-gui.sh

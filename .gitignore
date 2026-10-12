@@ -12,3 +12,12 @@ ollama-test-logs/
 ollama-wsl.env
 
 .venv-nanobot/
+.venv-m/
+.venv*.before-migration-*/
+.migration-backups/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+/pytest-of-root/
+/data-gym-cache/
+/tmp*/

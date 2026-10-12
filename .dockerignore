@@ -1,0 +1,10 @@
+.git
+.local
+.venv*
+.migration-backups
+.tools
+node_modules
+__pycache__
+*.tar.gz
+*.zip
+.env*

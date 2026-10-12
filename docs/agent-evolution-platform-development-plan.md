@@ -62,6 +62,9 @@ Keep the original six phases as target capability groups. Insert mandatory **Int
 No implementation phase is declared complete solely because a version exists. Record gate evidence against exact source, dependency and dataset hashes.
 
 ## 5. Intermediate Phase M — Required Missing Work (中間階段：待補做項目)
+
+Implementation update: additive M programs, scripts and per-step checks are delivered in [the M operator guide](intermediate-m.md), with [validation limits](verification/intermediate-m-validation.md). M1–M3 local machine gates pass; M4 is blocked in the development environment by missing Docker, and dependent acceptance gates remain blocked. M5–M7 component tests are separate from phase acceptance. Full canonical GUI/production migration, GEPA optimizer search resume and Git release reconciliation remain closure work; do not mark M complete.
+
 Deliver small compatible releases. Keep existing settings, saved versions, runs, explicit warmup, progress/log views and cancellation usable throughout.
 
 | Step | Required implementation | Machine-executed gate | Failure code |
@@ -214,7 +217,7 @@ Required checks:
 2. Completed: rename the existing repository to agent-evolution-platform; identity, history and visibility retained.
 3. Repository name/URL verified. The hosting configuration retains its existing project ID; verify the provider-side source binding before the next Site deployment.
 4. Completed: update README canonical repository/clone links; old commit history remains intact.
-5. Existing WSL checkout may remain on D under its current directory. After rename, run:
+5. Existing WSL checkout can remain on D; the delivered migrate_wsl.py script now supports a checked move to /mnt/d/agent-evolution-platform with state backup and virtual-environment rebuild. See intermediate-m.md before moving. After rename, run:
 ```bash
 cd /mnt/d/nanobot-gepa-mvp
 git remote set-url origin https://github.com/edwei-2021/agent-evolution-platform.git

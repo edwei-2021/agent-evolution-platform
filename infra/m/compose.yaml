@@ -1,0 +1,30 @@
+services:
+  api:
+    image: aep-control:m
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes: [m-state:/app/.local]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/api/m/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+  worker:
+    image: aep-control:m
+    command: [python, -m, platform_m.worker]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes: [m-state:/app/.local]
+    healthcheck:
+      test: [CMD, python, -c, "import pathlib,time; assert time.time()-float(pathlib.Path('/app/.local/m/worker.heartbeat').read_text())<10"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+volumes:
+  m-state:

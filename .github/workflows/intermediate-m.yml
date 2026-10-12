@@ -1,0 +1,27 @@
+name: Intermediate M component and isolation checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  components:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python -m pip install uv==0.12.23
+      - run: UV_PROJECT_ENVIRONMENT=.venv-m uv sync --locked
+      - run: uv venv .venv-nanobot && uv pip install --python .venv-nanobot/bin/python -r requirements-nanobot.txt
+      - run: npm ci --ignore-scripts
+      - run: bash scripts/build-m-images.sh
+      - run: .venv-m/bin/python scripts/check_m.py --profile acceptance
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intermediate-m-debug-support
+          path: .local/m/support/
+          retention-days: 14
