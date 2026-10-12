@@ -66,6 +66,9 @@ class RuntimeService:
         self.cancel_event = threading.Event()
         self.current = None
         self.closed = False
+        from debug_log import DebugLog
+        self.logs = DebugLog(self.root)
+        self.browser_log_times = []
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, request_id TEXT UNIQUE, data TEXT NOT NULL, created TEXT NOT NULL)')
             rows = db.execute('SELECT id, data FROM runs').fetchall()
@@ -82,7 +85,9 @@ class RuntimeService:
         from ollama_bridge import OllamaBridge
         from llm_store import LlmStore
         self.ollama = OllamaBridge(self.root)
+        self.ollama.recover_warmup()
         self.llm = LlmStore(self)
+        self.logs.append('runtime', 'INFO', 'Local runtime service started', details={'serviceId': self.service_id})
 
     @staticmethod
     def timestamp():
@@ -110,6 +115,9 @@ class RuntimeService:
     def event(self, agent, message):
         self.current['events'].append({'at': now(), 'agentId': agent['id'] if agent else None, 'text': message})
         self.current['events'] = self.current['events'][-200:]
+        level = 'ERROR' if message.startswith(('Failed:', 'Supervisor error:')) or 'status: failed' in message or message.startswith('failed;') else 'WARNING' if 'cancel' in message.lower() else 'INFO'
+        self.logs.append(agent['role'] if agent else 'runtime', level, message, self.current['id'],
+                         {'task': self.current.get('task'), 'agentId': agent['id'] if agent else None})
 
     def get_run(self, identifier):
         with self.lock, self.connect() as db:
@@ -162,6 +170,9 @@ class RuntimeService:
         write(calls_path, calls)
         state['failedCalls'] = sum(c['status'] == 'failed' for c in calls)
         write(path, state)
+        self.logs.append('llm', 'ERROR' if status == 'failed' else 'WARNING',
+            f'Model call #{call["id"]} {status}: {error}', directory.name,
+            {'elapsedMs': call['elapsedMs'], 'timeoutSeconds': call.get('timeoutSeconds')})
 
     def snapshot(self):
         with self.lock, self.connect() as db:
@@ -181,7 +192,8 @@ class RuntimeService:
             llm_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'llm-evolution'][:10]
             llm_workspace = self.llm.snapshot()
             llm_workspace.update(latestRun=self.decorate(llm_runs[0]) if llm_runs else None, runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in llm_runs])
-        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace}
+        return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace,
+                'provider': {'revision': self.ollama.state()['revision'], 'config': self.ollama.state()['config'], 'busy': self.ollama.operation.locked(), 'warmup': self.ollama.warmup_status()}}
 
     def start(self, registry, request_id, task='project-health', options=None):
         agents = validate_bindings(registry)
@@ -271,6 +283,7 @@ class RuntimeService:
                 if self.cancel_event.is_set():
                     break
                 log = directory / (agent['role'] + '.log')
+                log_offset = 0
                 with self.lock:
                     agent.update(status='running', startedAt=now(), updatedAt=now())
                     self.event(agent, 'Starting: ' + agent['task'])
@@ -302,9 +315,11 @@ class RuntimeService:
                             with self.lock:
                                 agent.update(updatedAt=now(), processAlive=self.process.poll() is None, logTail=self.tail(log))
                                 self.persist()
+                            log_offset = self.capture_log(agent, log, log_offset)
                         code = self.process.wait()
                     with self.lock:
                         tail = self.tail(log)
+                        self.capture_log(agent, log, log_offset)
                         error = timeout_error if timed_out else (tail.strip().splitlines()[-1][:1500] if tail.strip() else 'Process exited with an error') if code and not self.cancel_event.is_set() else None
                         agent.update(status='cancelled' if self.cancel_event.is_set() else 'failed' if timed_out or code else 'completed', exitCode=code, processAlive=False, endedAt=now(), updatedAt=now(), logTail=tail, error=error)
                         if provider_leased and agent['status'] in ('failed', 'cancelled'):
@@ -359,6 +374,15 @@ class RuntimeService:
             stream.seek(max(0, path.stat().st_size - 8192))
             return stream.read(8192).decode(errors='replace')
 
+    def capture_log(self, agent, path, offset):
+        with path.open('rb') as stream:
+            stream.seek(offset); data = stream.read(65536); offset += len(data)
+        for line in data.decode(errors='replace').splitlines():
+            if line.strip():
+                self.logs.append(agent['role'], 'ERROR' if line.startswith(('Traceback', 'ValueError:', 'TimeoutError:', 'RuntimeError:')) else 'DEBUG',
+                    line, self.current['id'], {'source': 'subprocess', 'artifact': path.name, 'truncated': len(line) > 2048})
+        return offset
+
     def close(self):
         with self.lock:
             if self.closed:
@@ -370,5 +394,7 @@ class RuntimeService:
         if self.thread and self.thread.is_alive():
             self.stop_process()
             self.thread.join(timeout=3)
+        self.ollama.close()
+        self.logs.append('runtime', 'INFO', 'Local runtime service stopped')
         fcntl.flock(self.lock_file, fcntl.LOCK_UN)
         self.lock_file.close()

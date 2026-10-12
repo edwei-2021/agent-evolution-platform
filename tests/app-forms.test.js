@@ -33,6 +33,12 @@ test('app form events preserve settings through click, submit, navigation and LL
   if(path.endsWith('/capabilities'))value={schemaVersion:1,mode:'native-tools',serviceId:runtime.serviceId,csrfToken:'a-valid-local-session-token'};
   else if(path==='/api/v1/runtime')value=runtime;
   else if(path==='/api/v1/llm/ollama')value=saved;
+  else if(path.startsWith('/api/v1/debug/logs?'))value={schemaVersion:1,records:[],retained:0,matched:0,retentionLimit:10000,nextBefore:null,modules:['api','gui','llm'],levels:['DEBUG','INFO','WARNING','ERROR']};
+  else if(path==='/api/v1/llm/ollama/warmup'){
+   const body=JSON.parse(options.body);assert.equal(body.expectedRevision,saved.revision);
+   value={id:'WARM-forms',revision:saved.revision,status:'RUNNING',startedAt:stamp,elapsedSeconds:0,timeoutSeconds:600,config:saved.config};
+   runtime.provider={revision:saved.revision,config:saved.config,busy:true,warmup:value};
+  }
   else if(path.endsWith('/settings')){
    const body=JSON.parse(options.body);
    if(failure){ok=false;value={error:'Settings revision conflict'};}
@@ -85,6 +91,23 @@ test('app form events preserve settings through click, submit, navigation and LL
   await click(button(null,{liveRefresh:''}));
   assert.equal(renders,before);assert.equal(focused.isConnected,true);
   assert.match(nodes.get('[data-execution-progress]').outerHTML,/aria-label="實驗進度"/);
+  globalThis.document.activeElement=null;
+ });
+ await t.test('warmup button submits the saved model independently of an unsaved draft',async()=>{
+  await click(button(null,{page:'llm'}));await click(button(null,{modelWarmup:''}));
+  const warmups=calls.filter(c=>c.path==='/api/v1/llm/ollama/warmup');assert.equal(warmups.length,1);
+  assert.equal(runtime.provider.warmup.config.model,'qwen3-coder:30b');assert.match(html,/等待模型暖機完成/);
+  assert.equal(calls.filter(c=>c.path==='/api/v1/llm/skills/runs').length,1);
+ });
+ await t.test('Log navigation and search use the real app handlers while preserving focused filter inputs',async()=>{
+  await click(button(null,{page:'logs'}));for(let i=0;i<20;i++)await Promise.resolve();assert.match(html,/模組 Log/);
+  const search=form('debug-log-form',{module:'llm',level:'ERROR',q:'timeout & model',runId:'RUN-one'});
+  globalThis.document.activeElement={matches:()=>true};const before=renders;
+  await submit(search);for(let i=0;i<20;i++)await Promise.resolve();
+  assert.equal(search.isConnected,true);assert.equal(renders,before);
+  assert.match(nodes.get('[data-log-results]').outerHTML,/符合篩選/);
+  const logCalls=calls.filter(c=>c.path.startsWith('/api/v1/debug/logs?'));
+  const query=new URL('http://localhost'+logCalls.at(-1).path).searchParams;assert.equal(query.get('q'),'timeout & model');assert.equal(query.get('level'),'ERROR');
   globalThis.document.activeElement=null;
  });
 });

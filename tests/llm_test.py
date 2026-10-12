@@ -37,6 +37,7 @@ def finish(service, identifier):
 
 class MockModel(BaseHTTPRequestHandler):
     calls = []
+    warmups = []
     mode = 'improve'
     block = None
     stream_block = None
@@ -46,6 +47,10 @@ class MockModel(BaseHTTPRequestHandler):
 
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path == '/api/generate':
+            self.warmups.append(request)
+            raw=json.dumps({'model':request['model'],'done':True,'load_duration':400000000}).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         self.calls.append(request); self.entered.set()
         if self.block: self.block.wait(5)
         system = request['messages'][0]['content']
@@ -89,7 +94,7 @@ class MockModel(BaseHTTPRequestHandler):
 class LlmWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.service = RuntimeService(self.temp.name)
-        MockModel.calls = []; MockModel.mode = 'improve'; MockModel.block = None; MockModel.stream_block = None; MockModel.entered.clear()
+        MockModel.calls = []; MockModel.warmups = []; MockModel.mode = 'improve'; MockModel.block = None; MockModel.stream_block = None; MockModel.entered.clear()
         self.model = ThreadingHTTPServer(('127.0.0.1', 0), MockModel)
         self.thread = threading.Thread(target=self.model.serve_forever, daemon=True); self.thread.start()
         self.service.ollama.save({**DEFAULTS, 'host': '127.0.0.1', 'port': self.model.server_port,
@@ -357,6 +362,14 @@ assert.equal(provider.data.config.model,'qwen3-coder:30b');
 assert.match(provider.view(),/value="qwen3-coder:30b"/);
 const reopened=new OllamaUI({{fetcher:(path,options)=>fetch(base+path,options)}});
 await reopened.operate('reload');assert.equal(reopened.data.config.model,'qwen3-coder:30b');
+await client.warmModel();
+for(let i=0;i<100;i++){{
+  assert.equal(await client.refresh(),true,client.error);
+  if(client.data.provider.warmup.status!=='RUNNING')break;
+  await new Promise(resolve=>setTimeout(resolve,30));
+}}
+assert.equal(client.data.provider.warmup.status,'PRELOAD_PASS');
+assert.equal(client.data.provider.warmup.config.model,'qwen3-coder:30b');
 client.llmSeconds=60;await client.startLlm(initialRegistry());
 for(let i=0;i<160;i++){{
   assert.equal(await client.refresh(),true,client.error);
@@ -381,6 +394,9 @@ console.log(JSON.stringify({{polls:client.pollCount,status:'PASS'}}));
             self.assertEqual(json.loads(result.stdout)['status'], 'PASS')
             self.assertEqual(len(MockModel.calls), 15)
             self.assertTrue(all(call['model'] == 'qwen3-coder:30b' for call in MockModel.calls))
+            self.assertEqual(MockModel.warmups, [{'model':'qwen3-coder:30b','prompt':'','stream':False,'keep_alive':'15m'}])
+            llm_logs=self.service.logs.list(module='llm')
+            self.assertEqual(sum('started' in r['message'] for r in llm_logs['records']),15)
         finally:
             server.shutdown(); server.server_close(); thread.join()
 

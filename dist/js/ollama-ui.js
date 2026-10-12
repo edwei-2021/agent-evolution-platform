@@ -1,4 +1,5 @@
 // Reads local saved settings only. Ollama HTTP requests require an explicit click.
+import {warmupView} from './warmup-view.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function ollamaView(state){
  const {data,error,busy,prompt,draft}=state;
@@ -6,7 +7,7 @@ export function ollamaView(state){
  const c=draft||data.config,e=data.historicalEvidence,r=data.latest;
  const current=r?.revision===data.revision&&r.endpoint===data.nativeBaseUrl;
  const ids=current&&r.modelIds?r.modelIds:e.modelIds;
- const disabled=busy?'disabled':'';
+ const disabled=busy||data.busy?'disabled':'';
  const field=(name,label,type='text',extra='')=>`<label>${label}<input name="${name}" type="${type}" value="${esc(c[name])}" ${extra} ${disabled}></label>`;
  return `<section class="card spaced"><div class="card-heading"><div><h2>Windows Ollama 連線設定</h2><p>設定存於 WSL 專案；讀取設定與啟動 GUI 不會呼叫 Windows API。</p></div><span class="soft-tag">OPENAI COMPATIBLE</span></div>
  <div class="small-notice"><strong>已提供的實機證據：API 連通成功，推論尚未測試。</strong><br>${esc(e.observedAt)} · Ollama ${esc(e.serverVersion)} · ${e.modelIds.length} 個模型 · ${esc(e.openaiBaseUrl)}。這是歷史紀錄，尚未代表目前模型可推論。</div>
@@ -22,7 +23,8 @@ export function ollamaView(state){
  <p class="body-copy">目前解析的 API：<code>${esc(data.openaiBaseUrl||data.discoveryError)}</code><br>Proxy：所有橋接請求皆略過。GUI port 預設 8765，與 Ollama port 分開設定。</p>
  <div class="actions card-actions"><button type="submit" class="button primary" ${disabled}>儲存設定</button><button type="button" class="button secondary" data-ollama="reload" ${disabled}>重新讀取設定</button><button type="button" class="button secondary" data-ollama="metadata" ${disabled}>手動更新模型清單</button></div></form>
  <div class="small-notice">已儲存模型：<code>${esc(data.config.model||'尚未設定')}</code> · 設定版本 ${data.revision}。<br>更新模型清單與試跑使用已儲存設定。名稱含 cloud 的模型可能使用遠端服務；請自行選擇已安裝模型。「LLM 技能實驗」會使用此模型；本機規則技能保持獨立。</div>
- <form id="ollama-chat-form" class="ollama-form"><label>單次模型試跑（按下才送出）<textarea name="prompt" required maxlength="4000" rows="3" ${disabled}>${esc(prompt)}</textarea></label><div class="actions card-actions"><button type="submit" class="button secondary" ${busy||!data.config.model?'disabled':''}>送出一次推論</button><span>${busy?'操作處理中；請勿重複送出':'不會自動測試或重試'}</span></div></form>
+ <form id="ollama-chat-form" class="ollama-form"><label>單次模型試跑（按下才送出）<textarea name="prompt" required maxlength="4000" rows="3" ${disabled}>${esc(prompt)}</textarea></label><div class="actions card-actions"><button type="submit" class="button secondary" ${busy||data.busy||!data.config.model?'disabled':''}>送出一次推論</button><span>${busy?'操作處理中；請勿重複送出':'不會自動測試或重試'}</span></div></form>
+ ${warmupView(data,{disabled:busy})}
  ${r?`<div class="small-notice">最近請求：${esc(r.status)} · ${esc(r.finishedAt)} · ${r.elapsedMs} ms · ${current?'目前已儲存設定':'先前設定，請勿視為目前連線狀態'}<br><code>${esc(r.reportPath)}</code></div><pre class="ollama-output">${esc(r.error||r.content||JSON.stringify(r.modelIds,null,2))}</pre>`:''}</section>`;
 }
 

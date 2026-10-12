@@ -134,6 +134,8 @@ class Runner:
                      lastCall={k: v for k, v in record.items() if k not in ('request', 'response', 'streamEvents')},
                      callBudget=self.config['callBudget'])
         publish()
+        self.client.logs.append('llm', 'INFO', f'Model call #{record["id"]} started', self.directory.name,
+            {'model': settings['model'], 'timeoutSeconds': settings['inferenceTimeout'], 'kind': kind, **context})
         print(f'Model call {record["id"]}/{self.config["callBudget"]} started: {kind}; '
               f'model={settings["model"]}; timeout={settings["inferenceTimeout"]}s; {context}', flush=True)
         started = time.monotonic()
@@ -168,6 +170,9 @@ class Runner:
             record.update(elapsedMs=round((time.monotonic() - started) * 1000, 3), finishedAt=time.time())
             write(self.calls_path, self.calls)
             publish()
+            self.client.logs.append('llm', 'ERROR' if record['status'] == 'failed' else 'INFO',
+                f'Model call #{record["id"]} {record["status"]}' + (': ' + record['error'] if record.get('error') else ''), self.directory.name,
+                {k: record[k] for k in ('elapsedMs','chunks','outputChars','reasoningChars','firstChunkAt','lastChunkAt') if k in record})
         print(f'Model call {record["id"]}/{self.config["callBudget"]}: {kind}; {record["elapsedMs"]} ms', flush=True)
         return record
 

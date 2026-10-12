@@ -79,6 +79,7 @@ class LlmStore:
                          'evidence': result}
                 db.execute('INSERT INTO llm_versions VALUES (?, ?, ?)', (value['id'], identifier, json.dumps(value)))
                 db.execute('UPDATE llm_state SET revision=?, active_id=?', (expected + 1, value['id']))
+            self.service.logs.append('llm', 'INFO', 'Approved model skill version', identifier, {'versionId': value['id'], 'revision': expected + 1})
             return self.snapshot()
 
     def activate(self, identifier, expected):
@@ -91,4 +92,5 @@ class LlmStore:
                 validate_skill(json.loads(row[0])['skill'])
                 if self.snapshot()['activeVersionId'] != identifier:
                     db.execute('UPDATE llm_state SET revision=?, active_id=?', (expected + 1, identifier))
+                    self.service.logs.append('llm', 'INFO', 'Activated model skill version', details={'versionId': identifier, 'revision': expected + 1})
             return self.snapshot()

@@ -29,6 +29,7 @@ class SkillStore:
             raise ValueError('Use maxCandidates 1–4 and the current expectedRevision')
         self.check_revision(options['expectedRevision'])
         from skill_engine import provenance
+        self.service.logs.append('skills', 'INFO', 'Rule skill experiment configuration frozen', details={'maxCandidates': options['maxCandidates'], 'revision': options['expectedRevision']})
         return {'schemaVersion': 1, 'maxCandidates': options['maxCandidates'], 'baseline': self.snapshot()['active'], 'provenance': provenance()}
 
     def check_revision(self, expected):
@@ -69,6 +70,7 @@ class SkillStore:
         db.execute('UPDATE skill_state SET active_id=?, revision=? WHERE singleton=1 AND revision=?', (identifier, revision + 1, revision))
         value = {'revision': revision + 1, 'action': action, 'from': previous, 'to': identifier, 'at': self.service.timestamp()}
         db.execute('INSERT INTO skill_actions VALUES (?, ?)', (revision + 1, json.dumps(value)))
+        self.service.logs.append('skills', 'INFO', action, details={'versionId': identifier, 'previousVersionId': previous, 'revision': revision + 1})
 
     def activate(self, identifier, expected):
         with self.service.lock:

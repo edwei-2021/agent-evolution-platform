@@ -10,10 +10,13 @@ import os
 from pathlib import Path
 import platform
 import shlex
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
+import uuid
 from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
@@ -72,6 +75,11 @@ class OllamaBridge:
         self.path = self.root / '.local/ollama/settings.json'
         self.lock = threading.RLock()
         self.operation = threading.Lock()
+        from debug_log import DebugLog
+        self.logs = DebugLog(self.root)
+        self.warmup_thread = None
+        self.warmup_cancel = threading.Event()
+        self.closing = False
         self.evidence_path = Path(__file__).resolve().parents[1] / 'docs/verification/ollama-user-evidence.json'
 
     def state(self):
@@ -98,6 +106,7 @@ class OllamaBridge:
                     'discoveryError': error, 'proxyBypass': True,
                     'historicalEvidence': json.loads(self.evidence_path.read_text()),
                     'latest': json.loads(latest.read_text()) if latest.exists() else None,
+                    'warmup': self.warmup_status(),
                     'busy': self.operation.locked(), 'workerIntegrated': True}
 
     def save(self, config, revision):
@@ -107,7 +116,111 @@ class OllamaBridge:
             if type(revision) is not int or revision != state['revision']:
                 raise RuntimeError('Ollama settings changed; reload before saving')
             atomic_write(self.path, json.dumps({'revision': revision + 1, 'config': config}, indent=2) + '\n')
+            self.logs.append('ollama', 'INFO', 'Saved provider settings', details={'revision': revision + 1, 'model': config['model'], 'port': config['port']})
             return self.snapshot()
+
+    def warmup_status(self):
+        path = self.path.parent / 'warmup.json'
+        if not path.exists(): return None
+        value = json.loads(path.read_text())
+        end = datetime.fromisoformat(value['finishedAt']).timestamp() if value.get('finishedAt') else time.time()
+        value['elapsedSeconds'] = round(max(0, end - datetime.fromisoformat(value['startedAt']).timestamp()), 1)
+        return value
+
+    def recover_warmup(self):
+        with self.lock:
+            value = self.warmup_status()
+            if value and value['status'] == 'RUNNING':
+                value.update(status='INTERRUPTED', finishedAt=datetime.now(timezone.utc).isoformat(),
+                    error='GUI service restarted; previous preload state is unconfirmed')
+                atomic_write(self.path.parent / 'warmup.json', json.dumps(value))
+                self.logs.append('ollama', 'WARNING', value['error'], value['id'])
+
+    def start_warmup(self, revision, keep_alive_minutes=15):
+        if type(keep_alive_minutes) is not int or not 1 <= keep_alive_minutes <= 60:
+            raise ValueError('keepAliveMinutes must be an integer between 1 and 60')
+        if not self.operation.acquire(blocking=False):
+            raise RuntimeError('An Ollama request or model experiment is already running')
+        try:
+            with self.lock:
+                state = self.state()
+                if self.closing: raise RuntimeError('Provider service is stopping')
+                if type(revision) is not int or revision != state['revision']: raise RuntimeError('Ollama settings changed; refresh first')
+                if not state['config']['model']: raise ValueError('Select and save a model first')
+                job = {'id': 'WARM-' + str(uuid.uuid4()), 'revision': revision, 'config': state['config'],
+                    'endpoint': self.endpoint(state['config']), 'keepAliveMinutes': keep_alive_minutes,
+                    'timeoutSeconds': state['config']['inferenceTimeout'],
+                    'startedAt': datetime.now(timezone.utc).isoformat(), 'status': 'RUNNING'}
+                atomic_write(self.path.parent / 'warmup.json', json.dumps(job))
+                self.warmup_cancel.clear()
+                self.logs.append('ollama', 'INFO', 'Model preload started', job['id'],
+                    {'model': job['config']['model'], 'timeoutSeconds': job['timeoutSeconds'], 'keepAliveMinutes': keep_alive_minutes})
+                self.warmup_thread = threading.Thread(target=self._warmup, args=(job,), daemon=True)
+                self.warmup_thread.start()
+                return self.warmup_status()
+        except Exception:
+            self.operation.release(); raise
+
+    def cancel_warmup(self, identifier):
+        with self.lock:
+            job = self.warmup_status()
+            if not job or job['id'] != identifier: raise KeyError('Model preload not found')
+            if job['status'] == 'RUNNING':
+                if not self.warmup_thread or not self.warmup_thread.is_alive(): raise RuntimeError('Preload is not owned by this service')
+                self.warmup_cancel.set()
+                self.logs.append('ollama', 'WARNING', 'Preload cancellation requested; no model unload request sent', identifier)
+            return job
+
+    def _warmup(self, job):
+        directory = self.path.parent
+        config_path, result_path = directory / (job['id'] + '-config.json'), directory / (job['id'] + '-result.json')
+        process = None
+        started = time.monotonic()
+        def stop():
+            if process and process.poll() is None:
+                try: os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError: pass
+                try: process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    try: os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError: pass
+                    process.wait(timeout=1)
+        try:
+            atomic_write(config_path, json.dumps(job))
+            if self.warmup_cancel.is_set():
+                job.update(status='CANCELLED', error='Preload cancelled before dispatch')
+            else:
+                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('warmup_worker.py')), str(config_path), str(result_path)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                job['pid'] = process.pid
+                with self.lock: atomic_write(directory / 'warmup.json', json.dumps(job))
+                while process.poll() is None:
+                    if self.warmup_cancel.wait(.1):
+                        stop(); job.update(status='CANCELLED', error='Local preload stopped; Ollama may still be loading the dispatched request'); break
+                    if time.monotonic() - started >= job['timeoutSeconds']:
+                        stop(); job.update(status='FAIL', error=f'Model preload exceeded its {job["timeoutSeconds"]}s absolute limit; no retry sent'); break
+                if job['status'] == 'RUNNING':
+                    result = json.loads(result_path.read_text()) if result_path.exists() else {'error': 'Preload worker ended without a result'}
+                    if process.returncode or result.get('error'): job.update(status='FAIL', error=result.get('error', 'Preload worker failed'))
+                    else: job.update(status='PRELOAD_PASS', **result)
+        except Exception as exc:
+            stop(); job.update(status='FAIL', error=str(exc))
+        finally:
+            try:
+                job.update(finishedAt=datetime.now(timezone.utc).isoformat(), elapsedMs=round((time.monotonic() - started) * 1000, 3))
+                with self.lock: atomic_write(directory / 'warmup.json', json.dumps(job))
+                self.logs.append('ollama', 'INFO' if job['status'] == 'PRELOAD_PASS' else 'WARNING' if job['status'] == 'CANCELLED' else 'ERROR',
+                    'Model preload ' + job['status'] + (': ' + job['error'] if job.get('error') else ''), job['id'],
+                    {k: job[k] for k in ('elapsedMs','loadDurationMs','totalDurationMs','responseModel') if k in job})
+            finally:
+                try:
+                    config_path.unlink(missing_ok=True); result_path.unlink(missing_ok=True)
+                except OSError: pass
+                finally: self.operation.release()
+
+    def close(self):
+        with self.lock: self.closing = True; self.warmup_cancel.set()
+        if self.warmup_thread: self.warmup_thread.join(timeout=3)
 
     def export_environment(self, target):
         with self.lock:
@@ -160,6 +273,7 @@ class OllamaBridge:
                 raise ValueError('Select a model and supply a prompt of 1..4000 characters')
             base = self.endpoint(config)
             record.update(revision=revision, config=config, endpoint=base)
+            self.logs.append('ollama', 'INFO', kind + ' request started', details={'revision': revision, 'model': config['model']})
             if kind == 'metadata':
                 version = self.request(base, '/api/version', config)
                 tags = self.request(base, '/api/tags', config)
@@ -198,6 +312,7 @@ class OllamaBridge:
                     with self.lock:
                         atomic_write(self.path.parent / name, json.dumps(record, ensure_ascii=False, indent=2) + '\n')
                         atomic_write(self.path.parent / 'latest.json', json.dumps(record, ensure_ascii=False, indent=2) + '\n')
+                        self.logs.append('ollama', 'ERROR' if record['status'] == 'FAIL' else 'INFO', kind + ' ' + record['status'] + (': ' + record['error'] if record.get('error') else ''), details={'elapsedMs': record['elapsedMs'], 'model': config['model']})
             finally:
                 self.operation.release()
         if 'config' not in record:

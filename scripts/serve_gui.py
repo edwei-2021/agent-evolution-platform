@@ -11,7 +11,8 @@ import re
 import shutil
 import sys
 import tempfile
-from urllib.parse import urlsplit
+import time
+from urllib.parse import urlsplit, parse_qs
 
 DIST = Path(__file__).resolve().parents[1] / 'dist'
 DEFAULT_PORT = 8765
@@ -27,6 +28,13 @@ def ollama_bridge(runtime):
 
 class GuiHandler(SimpleHTTPRequestHandler):
     def json_response(self, status, data):
+        runtime = getattr(self.server, 'runtime', None)
+        path = urlsplit(self.path).path
+        if runtime and hasattr(runtime, 'logs') and path != '/api/v1/debug/logs' and (self.command == 'POST' or status >= 400):
+            match = re.search(r'(?:RUN|WARM)-[A-Za-z0-9-]+', path)
+            runtime.logs.append('api', 'ERROR' if status >= 500 else 'WARNING' if status >= 400 else 'INFO',
+                f'{self.command} {path[:180]} → {status}', match[0] if match else data.get('id'),
+                {'status': status, 'error': data.get('error')})
         payload = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -72,8 +80,23 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, runtime.snapshot()['skills'])
             elif path == '/api/v1/llm/ollama':
                 self.json_response(200, ollama_bridge(runtime).snapshot())
+            elif path == '/api/v1/debug/logs':
+                values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(values) - {'module','level','runId','q','before','limit'} or any(len(v) != 1 for v in values.values()):
+                    raise ValueError('Invalid log query parameters')
+                get = lambda key, default='': values.get(key, [default])[0]
+                self.json_response(200, runtime.logs.list(module=get('module'), level=get('level'), run_id=get('runId'), query=get('q'),
+                    before=int(get('before')) if get('before') else None, limit=int(get('limit', '100'))))
             elif path == '/api/v1/llm/skills':
                 self.json_response(200, runtime.snapshot()['llm'])
+            elif match := re.fullmatch(r'/api/v1/debug/runs/(RUN-[A-Za-z0-9-]+)/(coordinator|worker|reflector|evaluator|reviewer)', path):
+                runtime.get_run(match[1])
+                target = (runtime.local / 'runs' / match[1] / (match[2] + '.log')).resolve()
+                if not target.is_relative_to((runtime.local / 'runs').resolve()) or not target.is_file():
+                    raise KeyError('Role log is not available yet')
+                with target.open('rb') as stream:
+                    size = target.stat().st_size; stream.seek(max(0, size - 200000)); raw = stream.read(200000)
+                self.json_response(200, {'runId': match[1], 'role': match[2], 'content': raw.decode(errors='replace'), 'truncated': size > 200000, 'totalBytes': size})
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)', path):
                 self.json_response(200, runtime.get_run(match[1]))
             elif match := re.fullmatch(r'/api/v1/runtime/runs/(RUN-[A-Za-z0-9-]+)/artifacts/([A-Za-z0-9_-]+\.(?:json|log|md))', path):
@@ -88,7 +111,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
         except KeyError as exc:
             self.json_response(404, {'error': str(exc)})
         except (OSError, ValueError) as exc:
-            self.json_response(503, {'error': str(exc)})
+            self.json_response(400 if path == '/api/v1/debug/logs' and isinstance(exc, ValueError) else 503, {'error': str(exc)})
 
     def do_POST(self):
         runtime = self.api_context(mutate=True)
@@ -104,6 +127,25 @@ class GuiHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
+            elif path == '/api/v1/debug/logs':
+                from debug_log import LEVELS
+                if set(body) != {'level','message','page'} or body.get('level') not in LEVELS or not isinstance(body.get('message'), str) or not 1 <= len(body['message']) <= 2048 or not isinstance(body.get('page'), str) or len(body['page']) > 80:
+                    raise ValueError('Invalid browser log record')
+                with runtime.lock:
+                    stamp = time.monotonic()
+                    runtime.browser_log_times = [t for t in runtime.browser_log_times if stamp - t < 60]
+                    if len(runtime.browser_log_times) >= 60:
+                        self.json_response(429, {'error': 'Browser log rate limit reached'}); return
+                    runtime.browser_log_times.append(stamp)
+                    recorded = runtime.logs.append('gui', body['level'], body['message'], details={'page': body['page'], 'source': 'browser'})
+                if not recorded:
+                    self.json_response(503, {'error': 'Local debug journal write failed'}); return
+                self.json_response(202, {'recorded': True})
+            elif path == '/api/v1/llm/ollama/warmup':
+                if set(body) - {'expectedRevision','keepAliveMinutes'}: raise ValueError('Invalid preload fields')
+                self.json_response(202, ollama_bridge(runtime).start_warmup(body.get('expectedRevision'), body.get('keepAliveMinutes', 15)))
+            elif match := re.fullmatch(r'/api/v1/llm/ollama/warmup/(WARM-[A-Za-z0-9-]+)/cancel', path):
+                self.json_response(200, ollama_bridge(runtime).cancel_warmup(match[1]))
             elif path == '/api/v1/llm/ollama/settings':
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
             elif path == '/api/v1/llm/skills/runs':

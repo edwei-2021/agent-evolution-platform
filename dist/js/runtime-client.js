@@ -38,6 +38,11 @@ export function validateRuntime(data){
     if(r.events.some(e=>!validTime(e.at)||typeof e.text!=='string'||e.text.length>2000)||r.artifacts.some(name=>typeof name!=='string'||!/^[-A-Za-z0-9_]+\.(json|log|md)$/.test(name)))throw Error('執行紀錄格式不正確');
   }
   if(data.skills!==undefined)validateSkills(data.skills);
+  if(data.provider!==undefined){
+    const p=data.provider,w=p?.warmup;
+    if(!p||!Number.isInteger(p.revision)||typeof p.config?.model!=='string'||!Number.isInteger(p.config.inferenceTimeout)||typeof p.busy!=='boolean')throw Error('模型服務狀態不正確');
+    if(w&&(!/^WARM-[A-Za-z0-9-]+$/.test(w.id)||!['RUNNING','PRELOAD_PASS','FAIL','CANCELLED','INTERRUPTED'].includes(w.status)||!validTime(w.startedAt)||w.finishedAt&&!validTime(w.finishedAt)||!Number.isFinite(w.elapsedSeconds)||w.elapsedSeconds<0||!Number.isInteger(w.timeoutSeconds)||typeof w.config?.model!=='string'))throw Error('模型暖機狀態不正確');
+  }
   if(data.llm!==undefined)validateLlmWorkspace(data.llm);
   return data;
 }
@@ -106,6 +111,13 @@ export class RuntimeClient{
     }catch(error){this.error=error.name==='AbortError'?'執行服務逾時；保留最後快照並繼續重試':error.message;this.capabilities=null;return false;}
     finally{this.busy=false;this.onUpdate(this.snapshot());}
   }
+  async warmModel(){
+    if(this.actionBusy)throw Error('操作正在處理');
+    this.actionBusy=true;this.onUpdate();
+    try{const provider=await this.request('/api/v1/llm/ollama');await this.request('/api/v1/llm/ollama/warmup',{method:'POST',body:{expectedRevision:provider.revision,keepAliveMinutes:15}});await this.refresh();}
+    finally{this.actionBusy=false;this.onUpdate();}
+  }
+  async cancelWarmup(id){await this.request(`/api/v1/llm/ollama/warmup/${encodeURIComponent(id)}/cancel`,{method:'POST',body:{}});await this.refresh();}
   schedule(){clearTimeout(this.timer);if(this.enabled)this.timer=setTimeout(async()=>{await this.refresh();this.schedule();},this.interval);}
   async start(){this.enabled=true;await this.refresh();this.schedule();}
   stop(){this.enabled=false;clearTimeout(this.timer);this.onUpdate(this.snapshot());}
