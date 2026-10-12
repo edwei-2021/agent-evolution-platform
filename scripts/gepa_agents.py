@@ -1,10 +1,12 @@
 """Fixed supervised GEPA stages; final tasks never enter candidate generation."""
+from step_trace import traced
 import argparse
 import json
 from pathlib import Path
 from gepa_engine import TASKS, progress, verify
 from skill_engine import write
 
+@traced('gepa','role.execute')
 def run(role,directory):
     cfg=json.loads((directory/'gepa-config.json').read_text());progress(directory,phase=role)
     if role=='coordinator':

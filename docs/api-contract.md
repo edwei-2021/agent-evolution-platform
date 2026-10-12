@@ -155,3 +155,12 @@ Runs have task `gepa-evolution`, frozen gepaConfig, gepaProgress and terminal ge
 `POST /api/v1/gepa/runs/{runId}/approve` accepts only expectedRevision. It requires completed eligible evidence and an unchanged baseline, replays all tests/traces without model calls, and creates/activates a GSV version. `POST /api/v1/gepa/versions/{versionId}/activate` accepts only expectedRevision and switches future GEPA runs. These operations do not alter the fixed repair page, LLM/rule policies, external Skills or Git files.
 
 Root `gepa-*.json` and `gepa-selection.md` artifacts use the existing read-only bounded artifact API. Nested rollout/reflection evidence remains in WSL. Cancellation uses the existing runtime cancel route and stops the actual SDK process group. Every POST retains Host/Origin/CSRF checks. Module logs add `gepa`; child nanobot records use the parent Run ID for filtering.
+
+
+## Structured step history (v0.7.1)
+
+`GET /api/v1/debug/steps/{RUN-id}` is read-only and retains the existing local Host/Origin boundary. Validate the Run before reading the journal. Return schemaVersion 1, runId/runStatus, serverTime, returnedEvents/matchedEvents, truncated and at most 500 observed step spans. Each span contains a unique 32-hex id, name/module/status, startedAt/finishedAt (nullable for partial history), durationMs and optional role/stage/taskId/artifactId/toolName/error. Terminal status comes from explicit step events; a terminal Run with an inner start but no end uses `unreported`. No source, prompt, command body or model text is added to this endpoint. Retention and read limits do not fabricate missing events.
+
+Events use STEP_STARTED / STEP_COMPLETED / STEP_FAILED / STEP_CANCELLED / STEP_INTERRUPTED in the existing journal with stepId and parent Run correlation. Tests use CHECK identifiers on the module Log page; test reports remain project-local. API mutations and all supervisor role processes are traced. Existing model, GEPA, tool and evidence records remain independent of these debug spans; log failures cannot change scoring/dispatch.
+
+Trusted repair verification accepts a bounded internal batch of at most 32 source/split jobs, runs one isolated evaluator process and recomputes reviewer/approval evidence each time. This internal helper is not a public code-execution endpoint and does not reuse model sessions or omit final task evaluations.

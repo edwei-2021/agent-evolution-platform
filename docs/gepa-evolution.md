@@ -82,3 +82,8 @@ The accepted AST is the existing small pure-function subset, evaluated with an i
 Next: add user-authored grouped tasks and richer trace inspection against this measured contract; arbitrary multi-file repository execution requires a separate container/security design. Authenticated remote workers and external-agent Skill publication remain later work.
 
 Primary API references: [GEPA v0.1.4](https://github.com/gepa-ai/gepa/releases/tag/v0.1.4), [pinned adapter protocol](https://github.com/gepa-ai/gepa/blob/v0.1.4/src/gepa/core/adapter.py), [pinned optimize API](https://github.com/gepa-ai/gepa/blob/v0.1.4/src/gepa/api.py).
+
+
+## v0.7.1 operational update (執行流程更新)
+
+All GEPA contracts above remain in place. Per-operation start/end/error/time spans now support the step viewer. Trusted source/split checks batch inside one fresh verification process; reviewer/approval still recompute the evidence and final model tasks stay independent. See [accelerated plan](accelerated-plan.md). No package update is required for this patch release.

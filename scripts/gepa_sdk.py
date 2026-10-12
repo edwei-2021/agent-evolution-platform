@@ -1,4 +1,5 @@
 """Actual pinned GEPA optimizer with serial fresh nanobot evaluations."""
+from step_trace import traced
 import asyncio
 import importlib.metadata
 import json
@@ -35,6 +36,7 @@ class Session:
         self.ledger=json.loads((directory/'gepa-rollouts.json').read_text())
         self.calls=json.loads((directory/'gepa-calls.json').read_text())
         self.proposals=json.loads((directory/'gepa-proposals.json').read_text());self.fatal=None
+    @traced('gepa','rollout')
     def rollout(self,task,body,stage):
         if time.time()>=self.cfg['deadlineEpoch']:raise RuntimeError('GEPA workflow time budget exhausted')
         identifier=f'R{len(self.ledger)+1:04d}';child=self.directory/'rollouts'/identifier;child.mkdir(parents=True)
@@ -80,6 +82,7 @@ class Adapter:
             self.session.fatal=str(exc);write(self.session.directory/'gepa-failure.json',{'error':str(exc)})
             DebugLog(self.session.cfg['logRoot']).append('gepa','ERROR','Proposal failed: '+str(exc),self.session.directory.name)
             raise
+    @traced('gepa','proposal')
     def _propose(self,candidate,reflective_dataset,components_to_update):
         session=self.session
         if components_to_update!=['skill_body'] or set(reflective_dataset)!={'skill_body'}:raise ValueError('Unexpected proposal component')
@@ -99,6 +102,7 @@ class Adapter:
         write(session.directory/'gepa-proposals.json',session.proposals);progress(session.directory,proposals=len(session.proposals))
         return {'skill_body':body}
 
+@traced('gepa','search')
 def search(directory,cfg):
     if importlib.metadata.version('gepa')!=GEPA_VERSION:raise RuntimeError('Unexpected GEPA SDK version')
     logs=DebugLog(cfg['logRoot']);logs.append('gepa','INFO','Real GEPA search started',directory.name,{'metricBudget':cfg['metricBudget'],'profile':cfg['profile']})
@@ -119,6 +123,7 @@ def search(directory,cfg):
     progress(directory,phase='selection-frozen',selectedSkill=selected,validationScores=report['validationScores'])
     logs.append('gepa','INFO','Validation-selected Skill frozen before final tasks',directory.name,{'bestIndex':result.best_idx,'metricEvaluations':report['metricCalls']})
 
+@traced('gepa','final-evaluation')
 def evaluate_final(directory,cfg):
     selected=json.loads((directory/'gepa-selection.json').read_text())['skill'];data=dataset(cfg['profile']);session=Session(directory,cfg)
     for split in ('validation','heldout'):

@@ -1,4 +1,5 @@
 """Five supervised roles for one bounded, actual model Skill reflection run."""
+from step_trace import traced
 import argparse
 import json
 from pathlib import Path
@@ -10,6 +11,7 @@ def load(directory, filename):
     return json.loads((directory / filename).read_text())
 
 
+@traced('llm','role.execute')
 def run_role(role, directory):
     config = load(directory, 'llm-config.json')
     if config['provenance'] != provenance(config['profile']):

@@ -126,6 +126,10 @@ class GepaWorkflowTests(unittest.TestCase):
         Model.mode='stream';run=self.start();done=self.finish(run['id']);self.assertEqual(done['status'],'completed',done.get('error'))
         result=done['gepaResult'];self.assertTrue(result['eligible']);self.assertEqual(result['gepaVersion'],'0.1.4');self.assertLessEqual(result['metricEvaluations'],8)
         self.assertEqual(result['final']['selected']['validation'],{'passed':2,'total':2});self.assertEqual(result['final']['selected']['heldout'],{'passed':4,'total':4})
+        from step_trace import snapshot as steps_snapshot
+        steps=steps_snapshot(self.service,done['id'])['steps']
+        self.assertTrue({'search','final-evaluation','role.process','trusted-tests.batch','sdk.turn','model.call','tool.execute'}<={s['name'] for s in steps})
+        self.assertTrue(all(s['status']=='completed' for s in steps))
         self.assertEqual(result['calls'],len(Model.calls));self.assertFalse(self.service.ollama.operation.locked())
         self.assertEqual(self.service.gepa.snapshot()['activeVersionId'],'GSV-baseline');self.assertEqual(self.service.llm.snapshot()['activeVersionId'],'LSV-baseline')
         directory=self.service.local/'runs'/run['id'];self.assertEqual(verify(directory),result)

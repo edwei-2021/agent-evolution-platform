@@ -1,4 +1,5 @@
 """Bounded prompt reflection with actual Ollama outputs; not a GEPA adapter."""
+from step_trace import traced
 import hashlib
 import json
 from pathlib import Path
@@ -44,7 +45,7 @@ def provenance(profile):
             'datasetHash': digest(data), 'splitSizes': {k: len(v) for k, v in data.items()},
             'splitHashes': {k: digest(v) for k, v in data.items()},
             'codeHashes': {name: hashlib.sha256((ROOT / 'scripts' / name).read_bytes()).hexdigest()
-                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'ollama_bridge.py', 'runtime_service.py')}}
+                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'ollama_bridge.py', 'runtime_service.py','step_trace.py')}}
 
 
 def messages(value, text):
@@ -114,6 +115,7 @@ class Runner:
         self.calls = json.loads(self.calls_path.read_text()) if self.calls_path.exists() else []
         self.client = OllamaBridge(self.directory.parents[2])
 
+    @traced('llm','model.call')
     def call(self, kind, request_messages, **context):
         if len(self.calls) >= self.config['callBudget'] or time.time() >= self.config['deadlineEpoch']:
             raise RuntimeError('LLM call/time budget exhausted')
@@ -176,6 +178,7 @@ class Runner:
         print(f'Model call {record["id"]}/{self.config["callBudget"]}: {kind}; {record["elapsedMs"]} ms', flush=True)
         return record
 
+    @traced('llm','tasks.evaluate')
     def evaluate(self, value, rows, candidate, split):
         records = []
         for row in rows:
@@ -184,6 +187,7 @@ class Runner:
         return records
 
 
+@traced('llm','evidence.verify')
 def verify(directory):
     """Re-score recorded outputs without new model calls or deterministic substitutes."""
     directory = Path(directory)

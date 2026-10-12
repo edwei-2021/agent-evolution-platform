@@ -110,6 +110,11 @@ test('app form events preserve settings through click, submit, navigation and LL
   const query=new URL('http://localhost'+logCalls.at(-1).path).searchParams;assert.equal(query.get('q'),'timeout & model');assert.equal(query.get('level'),'ERROR');
   globalThis.document.activeElement=null;
  });
+ await t.test('step trace navigation and refresh use read-only app handlers',async()=>{
+  runtime.runs=[{id:'RUN-steps',status:'completed',createdAt:'2026-10-12T08:00:00Z'}];
+  await click(button(null,{page:'steps'}));assert.match(html,/逐步執行紀錄/);await click(button(null,{stepRefresh:''}));
+  assert.equal(calls.filter(c=>c.path==='/api/v1/gepa/runs').length,0);
+ });
  await t.test('GEPA navigation, profile and Start use real app handlers with pinned revisions',async()=>{
   const skill={name:'python-fix-and-verify',description:'Bounded repair',body:'Read, repair, test.',hash:'a'.repeat(64)};
   runtime.gepa={schemaVersion:1,engine:'gepa-nanobot-repair-v1',revision:1,activeVersionId:'GSV-baseline',active:{id:'GSV-baseline',skill},versions:[{id:'GSV-baseline',label:'G0',skill,runId:null}],sdk:{available:true,version:'0.3.5'},optimizer:{available:true,version:'0.1.4'},latestRun:null,runs:[]};

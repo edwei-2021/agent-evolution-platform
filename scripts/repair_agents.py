@@ -1,4 +1,5 @@
 """Five supervised stages around one bounded nanobot SDK repair worker."""
+from step_trace import traced
 import argparse
 import asyncio
 import difflib
@@ -8,6 +9,7 @@ from repair_fixture import BASELINE, SKILL, PROMPT
 from repair_engine import TASKS, provenance, progress, trusted_test, verify
 from skill_engine import write
 
+@traced('nanobot','role.execute')
 def run_role(role,directory):
     cfg=json.loads((directory/'repair-config.json').read_text())
     if cfg['provenance']!=provenance():raise ValueError('Frozen repair provenance changed')

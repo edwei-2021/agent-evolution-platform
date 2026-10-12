@@ -12,6 +12,7 @@ from repair_transport import ToolAccumulator
 from llm_transport import stream_chat
 from debug_log import DebugLog
 from repair_runtime import SDK_VERSION
+from step_trace import traced,context,Step
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='nanobot-python-repair-v1'
@@ -21,7 +22,7 @@ TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':
 def provenance():
     return {'engine':ENGINE,'taskId':TASK_ID,'fixtureHash':digest({'baseline':BASELINE,'visible':VISIBLE,'hidden':HIDDEN,'prompt':PROMPT}),
             'skillHash':digest(SKILL),'sdkVersion':SDK_VERSION,'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest()
-            for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py')}}
+            for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','step_trace.py')}}
 
 def progress(directory,**changes):
     path=directory/'repair-progress.json'
@@ -29,12 +30,19 @@ def progress(directory,**changes):
     data.update(changes);write(path,data);return data
 
 def trusted_test(source,split,fixture=None):
+    return trusted_test_batch([{'source':source,'split':split,**({'fixture':fixture} if fixture is not None else {})}])[0]
+
+def trusted_test_batch(jobs):
+    if not isinstance(jobs,list) or not 1<=len(jobs)<=32:raise ValueError('Use 1..32 trusted evaluation jobs')
+    payload=json.dumps({'jobs':jobs})
+    if len(payload)>1000000:raise ValueError('Evaluation batch exceeds size limit')
     command=[sys.executable,'-I','-S',str(ROOT/'scripts/repair_evaluator.py')]
-    result=subprocess.run(command,input=json.dumps({'source':source,'split':split,**({'fixture':fixture} if fixture is not None else {})}),text=True,capture_output=True,timeout=5)
+    result=subprocess.run(command,input=payload,text=True,capture_output=True,timeout=5)
     try: data=json.loads(result.stdout)
     except ValueError:raise ValueError('Trusted evaluator returned no structured evidence')
     if result.returncode or data.get('error'):raise ValueError(data.get('error','Trusted evaluator failed'))
-    return data
+    if not isinstance(data.get('results'),list) or len(data['results'])!=len(jobs):raise ValueError('Trusted evaluator batch accounting failed')
+    return data['results']
 
 class RepairRunner:
     def __init__(self,directory,config):
@@ -48,6 +56,7 @@ class RepairRunner:
         target=self.workspace/path
         if target.is_symlink() or target.resolve()!=self.workspace.resolve()/'solution.py':raise ValueError('External paths and symlinks are forbidden')
         return target
+    @traced('nanobot','tool.execute')
     def tool(self,name,arguments):
         if name not in TOOLS or not isinstance(arguments,dict):raise ValueError('Unsupported repair tool')
         if len(self.tools)>=24:raise RuntimeError('Tool execution budget exhausted')
@@ -67,6 +76,7 @@ class RepairRunner:
             self.publish(toolCalls=len(self.tools),lastTool={'name':name,'status':record['status']})
             self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO','Tool '+name+' '+record['status'],self.config.get('correlationRunId',self.directory.name))
 
+    @traced('nanobot','model.call')
     def call(self,messages,tools):
         cfg=self.config
         if len(self.calls)>=cfg['callBudget'] or time.time()>=cfg['deadlineEpoch']:raise RuntimeError('Repair model call/time budget exhausted')
@@ -110,6 +120,7 @@ def evidence(directory):
     names=('repair-config.json','repair-calls.json','repair-tools.json','repair-sdk-result.json','repair-baseline.py','repair-candidate.py','repair-reflection.json')
     return digest({n:hashlib.sha256((directory/n).read_bytes()).hexdigest() for n in names})
 
+@traced('nanobot','evidence.verify')
 def verify(directory,expected_config=None):
     cfg=json.loads((directory/'repair-config.json').read_text())
     if cfg['provenance']!=provenance() or (expected_config is None and (cfg['skill']!=SKILL or 'fixture' in cfg)) or (expected_config is not None and cfg!=expected_config):raise ValueError('Repair code, fixture or skill provenance changed')
@@ -132,7 +143,7 @@ def verify(directory,expected_config=None):
     for c in calls:
         for t in c['response']['choices'][0]['message'].get('tool_calls',[]):
             requested.append((t['function']['name'],json.loads(t['function']['arguments']),c['finishedAt']))
-    request_position=0
+    request_position=0;tool_tests=[]
     for i,t in enumerate(tools):
         if t['id']!=i+1 or t['name'] not in TOOLS:raise ValueError('Invalid tool trace')
         while request_position<len(requested) and requested[request_position][:2]!=(t['name'],t['arguments']):request_position+=1
@@ -143,14 +154,25 @@ def verify(directory,expected_config=None):
                 if t['arguments']['path']!='solution.py':raise ValueError('Tool path drift')
                 validate_source(t['arguments']['source']);replay=t['arguments']['source']
             elif t['name']=='read_solution' and (t['arguments']!={'path':'solution.py'} or t['result']!=replay):raise ValueError('Read evidence drift')
-            elif t['name']=='run_tests' and (t['arguments'] or json.loads(t['result'])!=trusted_test(replay,'visible',fixture)):raise ValueError('Visible test evidence drift')
+            elif t['name']=='run_tests':
+                if t['arguments']:raise ValueError('Visible test arguments drift')
+                tool_tests.append((replay,json.loads(t['result'])))
     if replay!=candidate:raise ValueError('Candidate differs from recorded writes')
     sdk=json.loads((directory/'repair-sdk-result.json').read_text())
     if sdk['sdkVersion']!=SDK_VERSION or sdk.get('error') or sdk['stopReason']!='completed' or sdk['grantedTools']!=list(TOOLS):raise ValueError('SDK did not complete successfully')
     initial='\n'.join(m.get('content','') for m in calls[0]['request']['messages'] if isinstance(m.get('content'),str))
     if prompt not in initial or cfg['skill']['body'] not in initial:raise ValueError('Initial task or fixed Skill drift')
-    baseline={split:trusted_test(baseline_source,split,fixture) for split in ('visible','hidden')}
-    after={split:trusted_test(candidate,split,fixture) for split in ('visible','hidden')}
+    # One fresh bounded process per verification. Deduplicate only identical
+    # source/split jobs inside this verification, never model or final runs.
+    queries=[(baseline_source,'visible'),(baseline_source,'hidden'),(candidate,'visible'),(candidate,'hidden')]+[(body,'visible') for body,_ in tool_tests]
+    unique=list(dict.fromkeys(queries));jobs=[{'source':body,'split':split,**({'fixture':fixture} if fixture is not None else {})} for body,split in unique]
+    logs,run_id=context(directory,cfg)
+    with Step(logs,'nanobot','trusted-tests.batch',run_id,jobs=len(jobs),taskId=cfg['taskId']):
+        results=dict(zip(unique,trusted_test_batch(jobs)))
+    for body,stored in tool_tests:
+        if stored!=results[(body,'visible')]:raise ValueError('Visible test evidence drift')
+    baseline={split:results[(baseline_source,split)] for split in ('visible','hidden')}
+    after={split:results[(candidate,split)] for split in ('visible','hidden')}
     patch=''.join(difflib.unified_diff(baseline_source.splitlines(keepends=True),candidate.splitlines(keepends=True),fromfile='a/solution.py',tofile='b/solution.py'))
     if (directory/'repair-change.patch').exists() and (directory/'repair-change.patch').read_bytes().decode('utf-8')!=patch:raise ValueError('Patch artifact differs from verified source')
     return {'engine':ENGINE,'checksPassed':True,'taskId':cfg['taskId'],'baseline':baseline,'candidate':after,

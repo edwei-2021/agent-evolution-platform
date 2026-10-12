@@ -1,4 +1,5 @@
 """Five fixed native roles for measured declarative skill evolution."""
+from step_trace import traced
 import argparse
 import json
 from pathlib import Path
@@ -59,6 +60,7 @@ def verified_report(directory):
     return config, search, verified, chosen
 
 
+@traced('skills','role.execute')
 def run_role(role, directory):
     config = load(directory, 'skill-config.json')
     if config['provenance'] != provenance():

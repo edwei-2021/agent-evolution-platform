@@ -35,6 +35,10 @@ class GuiHandler(SimpleHTTPRequestHandler):
             runtime.logs.append('api', 'ERROR' if status >= 500 else 'WARNING' if status >= 400 else 'INFO',
                 f'{self.command} {path[:180]} → {status}', match[0] if match else data.get('id'),
                 {'status': status, 'error': data.get('error')})
+        step=getattr(self,'_api_step',None)
+        if step:
+            if step.run_id is None and isinstance(data.get('id'),str):step.run_id=data['id']
+            step.finish('failed' if status>=400 else 'completed',data.get('error'))
         payload = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -97,6 +101,9 @@ class GuiHandler(SimpleHTTPRequestHandler):
                     before=int(get('before')) if get('before') else None, limit=int(get('limit', '100'))))
             elif path == '/api/v1/llm/skills':
                 self.json_response(200, runtime.snapshot()['llm'])
+            elif match := re.fullmatch(r'/api/v1/debug/steps/(RUN-[A-Za-z0-9-]+)',path):
+                from step_trace import snapshot
+                self.json_response(200,snapshot(runtime,match[1]))
             elif match := re.fullmatch(r'/api/v1/debug/runs/(RUN-[A-Za-z0-9-]+)/(coordinator|worker|reflector|evaluator|reviewer)', path):
                 runtime.get_run(match[1])
                 target = (runtime.local / 'runs' / match[1] / (match[2] + '.log')).resolve()
@@ -133,6 +140,9 @@ class GuiHandler(SimpleHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise ValueError('JSON body must be an object')
             path = urlsplit(self.path).path
+            from step_trace import Step
+            match=re.search(r'(?:RUN|WARM)-[A-Za-z0-9-]+',path)
+            self._api_step=Step(runtime.logs,'api','http.mutation',match[0] if match else None,route=path[:180])
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
             elif path == '/api/v1/debug/logs':

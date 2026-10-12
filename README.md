@@ -175,6 +175,10 @@ The hosted URL can be accessed from a remote browser, subject to the owner's pri
 
 Version **0.7.0** adds actual **GEPA 0.1.4 + nanobot 0.3.5** execution at `http://localhost:8765/#gepa`. Stop the GUI, pull the update, rerun `bash scripts/install-nanobot.sh`, restart and refresh. Begin with Smoke (4/2/4 grouped synthetic tasks), explicitly preload the saved model, then start search. Full uses 20/10/20 tasks with an 80-evaluation search cap. Only the Skill body changes; trusted tool/test evidence drives selection and final gates. Review the diff, approve a verified improvement, or roll back an immutable GEPA version. Existing rule/LLM versions remain separate. See [GEPA guide](docs/gepa-evolution.md) and [verification](docs/verification/gepa-validation.md).
 
+## Accelerated workflow (加速流程)
+
+**v0.7.1** retains all v0.7.0 features and adds structured per-step logs/timing at `http://localhost:8765/#steps`, a bounded batch evaluator and staged regression reports. Pull and restart the GUI; no new dependency is required. Use `.venv-nanobot/bin/python scripts/check_steps.py --profile quick` while editing and `--profile release` before publication. See the [accelerated delivery plan](docs/accelerated-plan.md) and [per-step verification](docs/verification/accelerated-validation.md). The evaluator microbenchmark was about 4.14× faster; this is not an Ollama inference-speed claim.
+
 ## Next milestone
 
 Local monitoring, rule/model Skill evolution, warmup/logging and the first bounded nanobot SDK Python runner are implemented. The real GEPA adapter now evolves Skill bodies over grouped synthetic repair tasks, with independent post-selection evaluation and immutable local versions. Next, add user-authored grouped tasks and richer trace inspection; authenticated remote execution and broader containerized Python work remain later milestones. The local rule engine is a dependency-free integration foundation, not a GEPA implementation. Keep model secrets server-side and preserve trusted release/rollback gates.

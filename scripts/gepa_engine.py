@@ -1,4 +1,5 @@
 """Trusted GEPA evidence contracts; imports no optimizer in the GUI process."""
+from step_trace import traced
 import hashlib
 import json
 from pathlib import Path
@@ -31,6 +32,7 @@ def child_config(cfg,task,body):
 def score(result):
     return int(result['repairPassed'])
 
+@traced('gepa','evidence.verify')
 def verify(directory):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
     if cfg['provenance']!=provenance(cfg['profile']):raise ValueError('GEPA code or dataset provenance changed')

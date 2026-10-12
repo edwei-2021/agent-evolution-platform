@@ -317,6 +317,8 @@ class RuntimeService:
                     break
                 log = directory / (agent['role'] + '.log')
                 log_offset = 0
+                from step_trace import Step
+                step=Step(self.logs,'runtime','role.process',directory.name,role=agent['role'])
                 with self.lock:
                     agent.update(status='running', startedAt=now(), updatedAt=now())
                     self.event(agent, 'Starting: ' + agent['task'])
@@ -325,6 +327,7 @@ class RuntimeService:
                     with log.open('w') as stream:
                         with self.lock:
                             if self.cancel_event.is_set():
+                                step.finish('cancelled','Cancelled before process dispatch')
                                 break
                             self.process = subprocess.Popen(self.command_factory(agent['role'], directory), cwd=self.root, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
                             agent.update(pid=self.process.pid, processAlive=True)
@@ -359,11 +362,13 @@ class RuntimeService:
                         if provider_leased and agent['status'] in ('failed', 'cancelled'):
                             self.close_model_call(directory, agent['status'], error or 'Cancelled by user; no further requests were sent')
                         self.event(agent, f"{agent['status']}; PID {agent['pid']}; exit {code}")
+                        step.finish(agent['status'],error)
                         self.process = None
                         self.persist()
                     if agent['status'] != 'completed':
                         break
                 except Exception as exc:
+                    step.finish('failed',str(exc))
                     self.stop_process()
                     with self.lock:
                         agent.update(status='failed', error=str(exc), processAlive=False, endedAt=now(), updatedAt=now())

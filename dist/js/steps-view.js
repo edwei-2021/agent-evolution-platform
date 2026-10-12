@@ -1,0 +1,13 @@
+import {escapeHtml as esc} from './agent-view.js';
+const labels={running:'執行中',completed:'完成',failed:'失敗',cancelled:'已取消',interrupted:'已中斷',unreported:'結束前未回報'};
+const time=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'—';
+export function stepResultsView(state){
+ const data=state.data;
+ return `<section data-step-results><div class="card spaced"><p class="body-copy" role="status">${state.busy?'更新中…':state.error?'更新失敗；保留最後紀錄':state.enabled?'持續更新':'更新已暫停'} · 最近成功 ${esc(time(state.lastSuccess))}<br>${esc(data?.runId||'尚未選擇 Run')} · ${data?.steps.length||0} 個步驟 · 保留事件 ${data?.matchedEvents||0} 筆</p>${state.error?`<div class="error-banner">${esc(state.error)}</div>`:''}${data?.truncated?'<p class="body-copy">僅顯示最近 500 筆事件；可至模組 Log 依 Run ID 篩選並載入較舊紀錄。</p>':''}</div>
+ <section class="card spaced"><div class="table-wrap"><table><thead><tr><th>步驟／模組</th><th>角色／任務</th><th>開始／完成</th><th>耗時</th><th>狀態</th></tr></thead><tbody>${(data?.steps||[]).map(s=>`<tr><td><strong>${esc(s.name)}</strong><br>${esc(s.module)}${s.toolName?` · ${esc(s.toolName)}`:''}<br><small>${esc(s.artifactId||'')}</small></td><td>${esc([s.role,s.stage,s.taskId].filter(Boolean).join(' · ')||'—')}</td><td>${esc(time(s.startedAt))}<br>${esc(time(s.finishedAt))}${!s.startedAt?'<br><small>起始 log 不在此頁</small>':''}</td><td>${s.durationMs===null?'—':`${(s.durationMs/1000).toFixed(3)} 秒`}</td><td>${labels[s.status]}${s.status==='unreported'?'<br><small>Run 已結束，內層步驟沒有結束紀錄</small>':''}${s.error?`<pre class="log-message">${esc(s.error)}</pre>`:''}</td></tr>`).join('')||'<tr><td colspan="5">尚無步驟紀錄；新版執行才會產生逐步 log，舊紀錄仍可在模組 Log 檢閱。</td></tr>'}</tbody></table></div></section></section>`;
+}
+export function stepsView(state,runtime){
+ const runs=runtime.data?.runs||[];
+ return `<div class="page-heading"><div><p class="eyebrow">STEP TRACE · TIMING</p><h1>逐步執行紀錄</h1><p>查看每個角色、模型請求、工具操作、可信測試與證據驗證的開始、結束和耗時。</p></div><div class="actions"><button class="button secondary" data-step-refresh ${state.busy?'disabled':''}>↻ 更新步驟</button><button class="button secondary" data-step-toggle>${state.enabled?'暫停更新':'繼續更新'}</button><button class="button secondary" data-page="logs">查看模組 Log</button></div></div>
+ <section class="card"><label>實驗 Run<select data-step-run><option value="">選擇近期 Run</option>${runs.map(r=>`<option value="${esc(r.id)}" ${r.id===state.runId?'selected':''}>${esc(r.id)} · ${esc(r.task||'')} · ${esc(r.status)}</option>`).join('')}</select></label><p class="body-copy">新版涵蓋 v0.7.0 的原有實驗流程。一般 log 省略 prompt、模型內容與憑證；詳細工具／測試證據仍保存於各 Run。取消時保留已觀測紀錄，不將缺少結束紀錄的內層步驟標成成功。</p></section>${stepResultsView(state)}`;
+}

@@ -1,4 +1,5 @@
 """Pinned nanobot SDK integration with caller-owned tools and a no-retry provider."""
+from step_trace import traced
 import asyncio
 import importlib.metadata
 import json
@@ -57,6 +58,7 @@ class BoundedProvider(LLMProvider):
         return await self.chat(messages,tools)
     async def chat_with_retry(self,messages,tools=None,**kwargs):return await self.chat(messages,tools)
 
+@traced('nanobot','sdk.turn')
 async def run_sdk(directory,config,runner=None):
     version=importlib.metadata.version('nanobot-ai')
     if version!=SDK_VERSION:raise RuntimeError('Unsupported nanobot SDK version: '+version)
