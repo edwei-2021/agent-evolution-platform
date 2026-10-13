@@ -9,7 +9,13 @@ import uuid
 from .contracts import StepCheck
 from .evidence import atomic_write, canonical, digest, redact
 from .store import Store
-from scripts.setup_wsl import find_node
+def find_node(root):
+    """Resolve the project's Node runtime without assuming scripts/ is importable."""
+    scripts = str(Path(root).resolve() / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from setup_wsl import find_node as resolve_node
+    return resolve_node(Path(root).resolve())
 
 REMEDIATION = {
     'M1': 'Stop GUI/API/worker; inspect migration report, backup integrity and failed regression command.',

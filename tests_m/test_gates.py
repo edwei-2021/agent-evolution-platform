@@ -12,6 +12,11 @@ def test_acceptance_pytest_disables_nested_capture():
     assert commands
     assert all('-s' in command for command in commands)
 
+def test_node_resolver_imports_from_repository_scripts():
+    from platform_m.gates import find_node
+    result = find_node(Path(__file__).resolve().parents[1])
+    assert result is None or isinstance(result, dict)
+
 def test_m1_frontend_gate_uses_the_project_node_runtime():
     root=Path('/project')
     with patch('platform_m.gates.find_node',return_value={'path':'/project/.tools/node/bin/node'}):
