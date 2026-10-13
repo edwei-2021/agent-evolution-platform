@@ -41,3 +41,16 @@ class SetupOrchestratorTests(unittest.TestCase):
             code=module.execute([sys.executable,'-c','import time;time.sleep(5)'],directory,
                                 os.environ.copy(),Path(directory)/'timeout.log',.05)
             self.assertEqual(code,124)
+
+    def test_calibration_failure_retains_support_and_blocks_dispatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (patch.object(module, 'ROOT', root), patch.object(module, 'execute') as execute,
+                  patch('setup_wsl.find_node', return_value=None),
+                  patch('adaptive_validation.calibrate', side_effect=OSError('DBG-ADAPT-002: unavailable'))):
+                self.assertEqual(module.main(Namespace(python=sys.executable, setup_only=False)), 1)
+                execute.assert_not_called()
+            import json
+            report = json.loads(next((root / '.local/setup-reports').glob('*/report.json')).read_text())
+            self.assertEqual(report['blocked_by'], 'adaptive-calibration')
+            self.assertIn('DBG-ADAPT-002', report['remediation'])

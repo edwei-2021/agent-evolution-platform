@@ -77,10 +77,25 @@ def main(args):
                TIKTOKEN_CACHE_DIR=str(ROOT/'.local/cache/tiktoken'))
     python=shutil.which(args.python)
     if not python:raise RuntimeError('Requested base Python not found')
+    from adaptive_validation import calibrate, ENV
+    try:
+        calibration = calibrate(ROOT)
+    except (OSError, ValueError) as exc:
+        report.update(status='blocked', blocked_by='adaptive-calibration',
+                      remediation=safe(str(exc)))
+        save()
+        print(json.dumps(report, indent=2), flush=True)
+        print('SUPPORT:', directory / 'report.json', flush=True)
+        return 1
+    report['adaptive_calibration'] = calibration
+    env[ENV] = json.dumps(calibration)
+    smoke_seconds = calibration['profiles']['smoke']['maxSeconds']
+    full_seconds = calibration['profiles']['full']['maxSeconds']
+    print('ADAPTIVE_VALIDATION ' + json.dumps(calibration), flush=True)
     plan=[]
     if (ROOT/'.venv/bin/python').is_file():
-        plan.append(('single-llm-gate',[str(ROOT/'.venv/bin/python'),'scripts/check_llm_first_failure.py'],130))
-    plan.append(('base-environment',['bash','scripts/install-wsl.sh','--python',python],1800))
+        plan.append(('single-llm-gate',[str(ROOT/'.venv/bin/python'),'scripts/check_llm_first_failure.py'],smoke_seconds + 65))
+    plan.append(('base-environment',['bash','scripts/install-wsl.sh','--python',python],max(1800, full_seconds + 20 * smoke_seconds + 300)))
     plan.append(('nanobot-gepa',['bash','scripts/install-nanobot.sh'],1200))
     if not shutil.which('uv',path=env['PATH']):
         plan.extend([('uv-environment',[python,'-m','venv','--copies',str(ROOT/'.tools/uv-env')],120),

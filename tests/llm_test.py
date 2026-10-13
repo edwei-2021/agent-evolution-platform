@@ -15,6 +15,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+from adaptive_validation import workflow_seconds
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
 from llm_engine import ENGINE, messages, output, skill, splits, verify
@@ -108,7 +109,7 @@ class LlmWorkflowTests(unittest.TestCase):
         self.service.close(); self.model.shutdown(); self.model.server_close(); self.thread.join(); self.temp.cleanup()
 
     def options(self, revision=1):
-        return {'profile': 'smoke', 'maxSeconds': 60, 'expectedRevision': revision, 'providerRevision': 1}
+        return {'profile': 'smoke', 'maxSeconds': workflow_seconds('smoke'), 'expectedRevision': revision, 'providerRevision': 1}
 
     def start(self, name='model', revision=1):
         return self.service.start(registry(), name, 'llm-evolution', self.options(revision))
@@ -204,7 +205,7 @@ class LlmWorkflowTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): self.service.start(registry(), 'model', 'llm-evolution', {**self.options(), 'profile': 'full'})
 
     def test_full_profile_has_exact_call_accounting_and_separate_holdout_selection(self):
-        run = self.service.start(registry(), 'full', 'llm-evolution', {**self.options(), 'profile': 'full', 'maxSeconds': 300})
+        run = self.service.start(registry(), 'full', 'llm-evolution', {**self.options(), 'profile': 'full', 'maxSeconds': workflow_seconds('full')})
         done = finish(self.service, run['id'])
         self.assertEqual(done['status'], 'completed', done)
         self.assertEqual(done['llmResult']['calls'], 101)
@@ -382,7 +383,7 @@ while(Date.now()<preloadDeadline){{
 }}
 assert.equal(client.data.provider.warmup.status,'PRELOAD_PASS');
 assert.equal(client.data.provider.warmup.config.model,'qwen3-coder:30b');
-client.llmSeconds=60;await client.startLlm(initialRegistry());
+client.llmSeconds={workflow_seconds('smoke')};await client.startLlm(initialRegistry());
 const workflowDeadline=Date.now()+(client.llmSeconds+10)*1000;
 while(Date.now()<workflowDeadline){{
   assert.equal(await client.refresh(),true,client.error);
@@ -404,7 +405,7 @@ console.log(JSON.stringify({{polls:client.pollCount,status:'PASS'}}));
 """
         try:
             # Bounded outer harness covers preload, workflow and evidence replay.
-            result = subprocess.run([node['path'], '--input-type=module', '-e', js], capture_output=True, text=True, timeout=130)
+            result = subprocess.run([node['path'], '--input-type=module', '-e', js], capture_output=True, text=True, timeout=workflow_seconds('smoke') + 60)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['status'], 'PASS')
             self.assertEqual(len(MockModel.calls), 15)

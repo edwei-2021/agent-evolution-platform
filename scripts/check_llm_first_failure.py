@@ -64,11 +64,15 @@ if __name__=='__main__':
         raise SystemExit(child(args.child))
     directory=ROOT/'.local/test-reports'/('LLM-CHECK-'+uuid.uuid4().hex)
     directory.mkdir(parents=True)
+    from adaptive_validation import current, harness_seconds
+    calibration = current()
+    os.environ['AEP_VALIDATION_CALIBRATION'] = json.dumps(calibration)
+    harness_timeout = harness_seconds()
     start=time.monotonic()
     with (directory/'test.log').open('w') as log:
         process=subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'--child',str(directory)],
                                  cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-        try:code=process.wait(timeout=120)
+        try:code=process.wait(timeout=harness_timeout)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid,signal.SIGKILL)
             process.wait()
@@ -76,9 +80,10 @@ if __name__=='__main__':
     report={'debug_code':'DBG-LLM-001','status':'passed' if code==0 else 'failed','exit_code':code,
             'elapsed_seconds':round(time.monotonic()-start,2),'python':sys.executable,
             'wait_policy':'frozen workflow maxSeconds + 10s cleanup; event notification and persisted result',
-            'harness_timeout_seconds':120,
+            'harness_timeout_seconds':harness_timeout,
+            'adaptive_calibration':calibration,
             'test':'actual_worker_reflection_evaluation_review_and_versions',
-            'remediation':'Inspect test.log, failure-state.json, threads.log and role log tails; execution budgets were not changed.'}
+            'remediation':'Inspect test.log, failure-state.json, threads.log and role log tails; budgets were calibrated before dispatch; inspect the retained evidence.'}
     (directory/'report.json').write_text(json.dumps(report,indent=2))
     print(json.dumps({**report,'support_directory':str(directory)},indent=2))
     print((directory/'test.log').read_text(errors='replace')[-12000:])
