@@ -42,6 +42,28 @@ class CheckStepsTests(unittest.TestCase):
             self.assertEqual(case['status'],'passed')
             self.assertGreater(case['durationMs'],0)
 
+    def test_per_module_runner_stops_after_first_failure(self):
+        with tempfile.TemporaryDirectory() as root:
+            tests_dir=Path(root)/'tests';tests_dir.mkdir()
+            (tests_dir/'sample_test.py').write_text(
+                'import unittest\nclass Sample(unittest.TestCase):\n'
+                ' def test_a_error(self): raise RuntimeError("first failure")\n'
+                ' def test_b_later(self): raise RuntimeError("should never run")\n')
+            result=__import__('subprocess').run(
+                [sys.executable,str(Path(check_steps.__file__).with_name('run_test_module.py')),
+                 'sample_test.py','--tests-dir',str(tests_dir)],
+                capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,1)
+            rows=[json.loads(line.removeprefix('TEST_CASE_RESULT ')) for line in result.stdout.splitlines()
+                  if line.startswith('TEST_CASE_RESULT ')]
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0]['status'],'error')
+            self.assertNotIn('test_b_later',result.stdout+result.stderr)
+            summary=json.loads(next(line.removeprefix('TEST_MODULE_RESULT ')
+                                    for line in result.stdout.splitlines()
+                                    if line.startswith('TEST_MODULE_RESULT ')))
+            self.assertEqual(summary['testsRun'],1)
+
     def test_release_python_budgets_are_module_specific_and_adapt_from_history(self):
         estimate=check_steps.normal_budget('release','python-llm_test')
         self.assertGreaterEqual(estimate,30)
@@ -61,7 +83,7 @@ class CheckStepsTests(unittest.TestCase):
             self.assertEqual(check_steps.normal_budget('release','python-sample_test'),51)
 
     def test_overrun_reports_duration_and_user_decline_stops_process(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory():
             process=__import__('subprocess').Popen([sys.executable,'-c','import time;time.sleep(5)'],start_new_session=True)
             with patch('check_steps.sys.stdin',io.StringIO('n\n')),patch('builtins.print') as output:
                 result=supervise(process,'slow-fixture',.01,2,interval=.01)
