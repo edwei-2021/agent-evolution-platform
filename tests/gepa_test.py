@@ -17,6 +17,8 @@ import unittest
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_dataset import dataset, GROUPS, skill
+from adaptive_validation import current as validation_calibration
+from gepa_validation_budget import smoke_budget
 from gepa_engine import verify
 from repair_engine import trusted_test
 from runtime_service import RuntimeService, ROLES
@@ -108,6 +110,8 @@ class Model(BaseHTTPRequestHandler):
 @unittest.skipUnless(SDK,'Pinned GEPA and nanobot environment required')
 class GepaWorkflowTests(unittest.TestCase):
     def setUp(self):
+        # Include serial GEPA search and final rollouts before freezing the run.
+        self.workflow_seconds = smoke_budget(validation_calibration()['perCallIoAllowanceSeconds'])['workflowSeconds']
         Model.calls=[];Model.mode='good';Model.gate=None;Model.entered.clear()
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
         self.model=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.model.serve_forever,daemon=True);self.thread.start()
@@ -159,14 +163,21 @@ class GepaWorkflowTests(unittest.TestCase):
                     print(f'GEPA_TEST_SUPPORT_ERROR {type(exc).__name__}: {exc}',flush=True)
             self.temp.cleanup()
     def start(self,**changes):
-        options={'profile':'smoke','maxSeconds':120,'callTimeoutSeconds':10,'taskCallBudget':6,'metricBudget':8,'proposalBudget':2,'providerRevision':1,'expectedRevision':1,**changes}
+        options={'profile':'smoke','maxSeconds':self.workflow_seconds,'callTimeoutSeconds':10,'taskCallBudget':6,'metricBudget':8,'proposalBudget':2,'providerRevision':1,'expectedRevision':1,**changes}
         registry={'agents':[{'id':'AG-'+str(i),'name':r,'role':r,'enabled':True} for i,r in enumerate(ROLES)]}
         return self.service.start(registry,'gepa','gepa-evolution',options)
     def finish(self,identifier):
-        deadline=time.monotonic()+90
+        deadline=time.monotonic()+self.workflow_seconds+30
+        next_report=time.monotonic()+10
         while time.monotonic()<deadline:
             run=self.service.get_run(identifier)
             if run['status'] in ('completed','failed','cancelled','interrupted'):return run
+            if time.monotonic()>=next_report:
+                progress=run.get('gepaProgress') or {}
+                print(f'GEPA_TEST_PROGRESS role={next((a["role"] for a in run["agents"] if a["status"]=="running"), "queued")} '
+                      f'phase={progress.get("phase")} rollouts={progress.get("rollouts", 0)} '
+                      f'active_rollout={progress.get("activeRollout")}',flush=True)
+                next_report=time.monotonic()+10
             time.sleep(.04)
         self.fail('GEPA workflow did not terminate')
     def test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate(self):
@@ -240,8 +251,36 @@ class GepaWorkflowTests(unittest.TestCase):
             script="""import {RuntimeClient,validateGepaRun} from './dist/js/runtime-client.js';
 import {initialRegistry} from './dist/js/agents.js';
 const base=process.argv[1],client=new RuntimeClient({fetcher:(p,o)=>fetch(base+p,o)});
-await client.refresh();client.gepaSeconds=120;await client.startGepa(initialRegistry());
-for(let i=0;i<1000;i++){await client.refresh();const run=client.data?.gepa?.latestRun;if(run&&['completed','failed'].includes(run.status)){validateGepaRun(run);console.log(JSON.stringify({status:run.status,eligible:run.gepaResult?.eligible}));process.exit(run.status==='completed'?0:2);}await new Promise(r=>setTimeout(r,50));}process.exit(3);"""
-            result=subprocess.run([find_node()['path'], '--input-type=module','-e',script,f'http://127.0.0.1:{server.server_port}'],cwd=DIST.parent,capture_output=True,text=True,timeout=90)
+await client.refresh();client.gepaSeconds=Number(process.argv[2]);await client.startGepa(initialRegistry());
+const deadline=Date.now()+(Number(process.argv[2])+20)*1000;
+while(Date.now()<deadline){await client.refresh();const run=client.data?.gepa?.latestRun;if(run&&['completed','failed'].includes(run.status)){validateGepaRun(run);console.log(JSON.stringify({status:run.status,eligible:run.gepaResult?.eligible}));process.exit(run.status==='completed'?0:2);}await new Promise(r=>setTimeout(r,50));}process.exit(3);"""
+            command=[find_node()['path'], '--input-type=module','-e',script,
+                     f'http://127.0.0.1:{server.server_port}',str(self.workflow_seconds)]
+            print(f'GEPA_TEST_EXPECTED case=js-client maximum_workflow_seconds={self.workflow_seconds} '
+                  f'node_timeout_seconds={self.workflow_seconds+30}',flush=True)
+            with subprocess.Popen(command,cwd=DIST.parent,stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,text=True) as node:
+                started=time.monotonic();next_report=started+10
+                while True:
+                    try:
+                        stdout,stderr=node.communicate(timeout=min(10,max(0.1,self.workflow_seconds+30-(time.monotonic()-started))))
+                        break
+                    except subprocess.TimeoutExpired:
+                        elapsed=time.monotonic()-started
+                        if elapsed>=self.workflow_seconds+30:
+                            node.kill();stdout,stderr=node.communicate()
+                            self.fail(f'JS client exceeded calibrated workflow budget: {elapsed:.1f}s; '
+                                      f'stdout={stdout[-500:]} stderr={stderr[-500:]}')
+                        if time.monotonic()>=next_report:
+                            with self.service.lock:
+                                identifier=(self.service.current or {}).get('id')
+                            run=self.service.get_run(identifier) if identifier else {}
+                            progress=run.get('gepaProgress') or {}
+                            print(f'GEPA_TEST_PROGRESS case=js-client elapsed_seconds={int(elapsed)} '
+                                  f'role={next((a["role"] for a in run.get("agents",[]) if a["status"]=="running"), "queued")} '
+                                  f'phase={progress.get("phase")} rollouts={progress.get("rollouts",0)} '
+                                  f'active_rollout={progress.get("activeRollout")}',flush=True)
+                            next_report=time.monotonic()+10
+                result=subprocess.CompletedProcess(command,node.returncode,stdout,stderr)
             self.assertEqual(result.returncode,0,result.stderr+result.stdout);self.assertTrue(json.loads(result.stdout)['eligible'])
         finally:server.shutdown();server.server_close();worker.join()
