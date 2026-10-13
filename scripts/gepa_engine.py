@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from repair_engine import provenance as repair_provenance, verify as verify_repair, ROOT
-from repair_fixture import digest, TOOLS
+from repair_fixture import digest
 from repair_transport import ToolAccumulator
 from gepa_dataset import dataset, dataset_hash, skill, DATASET_VERSION
 from gepa_runtime import GEPA_VERSION
@@ -33,7 +33,7 @@ def score(result):
     return int(result['repairPassed'])
 
 @traced('gepa','evidence.verify')
-def verify(directory):
+def verify(directory, progress_callback=None):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
     if cfg['provenance']!=provenance(cfg['profile']):raise ValueError('GEPA code or dataset provenance changed')
     data=dataset(cfg['profile']);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
@@ -51,6 +51,8 @@ def verify(directory):
     if any(c['skill_body']!=seed['body'] and c['skill_body'] not in [p['body'] for p in proposals] for c in search['candidates']):raise ValueError('Unproposed candidate entered GEPA search')
     totals={label:{split:[] for split in ('validation','heldout')} for label in ('baseline','selected')}
     reconstructed=[];search_rows=[]
+    if progress_callback is not None:
+        progress_callback(0, len(ledger))
     for i,row in enumerate(ledger):
         if row['id']!=f'R{i+1:04d}' or row['taskId'] not in tasks:raise ValueError('Invalid rollout identity')
         split,task=tasks[row['taskId']]
@@ -64,6 +66,8 @@ def verify(directory):
         if row['stage']!='search':totals[row['stage']][split].append(row)
         calls=json.loads((child/'repair-calls.json').read_text())
         reconstructed.extend([{**c,'rolloutId':row['id'],'taskId':row['taskId'],'stage':row['stage']} for c in calls])
+        if progress_callback is not None and ((i+1) % 3 == 0 or i+1 == len(ledger)):
+            progress_callback(i+1, len(ledger))
     if len(search_rows)>cfg['metricBudget'] or search['metricCalls']!=len(search_rows):raise ValueError('GEPA metric accounting drift')
     if search['gepaVersion']!=GEPA_VERSION or search['sdkMetricCalls']!=len(search_rows):raise ValueError('Real optimizer accounting differs')
     scores=[]
