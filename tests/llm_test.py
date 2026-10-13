@@ -15,7 +15,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from adaptive_validation import workflow_seconds
+from adaptive_validation import current as validation_calibration, workflow_seconds
+from validation_wait import first_request, startup_budget
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
 from llm_engine import ENGINE, messages, output, skill, splits, verify
@@ -180,7 +181,9 @@ class LlmWorkflowTests(unittest.TestCase):
     def test_cancel_stops_future_calls_and_shared_slot_rejects_other_work(self):
         MockModel.block = threading.Event()
         run = self.start()
-        self.assertTrue(MockModel.entered.wait(5))
+        first_request(MockModel.entered, self.service, run['id'],
+                      startup_budget(validation_calibration()['perCallIoAllowanceSeconds'], self.options()['maxSeconds']),
+                      label='llm-cancel')
         with self.assertRaises(RuntimeError): self.service.start(registry(), 'another')
         with self.assertRaises(RuntimeError): self.service.ollama.run('metadata', 1)
         self.service.cancel(run['id'])
@@ -216,7 +219,9 @@ class LlmWorkflowTests(unittest.TestCase):
     def test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls(self):
         MockModel.block = threading.Event()
         run = self.start()
-        self.assertTrue(MockModel.entered.wait(5))
+        first_request(MockModel.entered, self.service, run['id'],
+                      startup_budget(validation_calibration()['perCallIoAllowanceSeconds'], self.options()['maxSeconds']),
+                      label='llm-workflow-deadline')
         # Fault injection shortens the already frozen deadline; public API minimum remains 60 s.
         with self.service.lock:
             self.service.current['llmConfig']['maxSeconds'] = .001
