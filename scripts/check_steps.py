@@ -205,7 +205,8 @@ def run(profile):
         try:
             with (directory/row['log']).open('w') as output:
                 process=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
-                                         text=True,bufsize=1,start_new_session=True)
+                                         text=True,bufsize=1,start_new_session=True,
+                                         env={**os.environ,'AEP_TEST_REPORT_DIR':str(directory)})
                 observed=supervise(process,name,normal,maximum,output_path=output)
             row.update(status='stopped' if observed.get('stopReason')=='user_declined' else
                        'completed' if observed['exitCode']==0 else 'failed',
