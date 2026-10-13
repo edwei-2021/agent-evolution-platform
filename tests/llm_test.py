@@ -281,10 +281,14 @@ class LlmWorkflowTests(unittest.TestCase):
     def test_silent_model_has_a_real_single_call_timeout_and_no_retry(self):
         self.service.ollama.save({**self.service.ollama.state()['config'], 'inferenceTimeout': 1}, 1)
         MockModel.block = threading.Event()
-        started = time.monotonic()
         run = self.service.start(registry(), 'silent', 'llm-evolution', {**self.options(), 'providerRevision': 2})
         done = finish(self.service, run['id'])
-        self.assertLess(time.monotonic() - started, 5)
+        # Startup, journal commits and teardown belong to the workflow budget.
+        # Transport deadline enforcement is checked with a controlled clock.
+        call = done['llmProgress']['lastCall']
+        self.assertEqual(call['timeoutSeconds'], 1)
+        self.assertEqual(call['status'], 'failed')
+        self.assertAlmostEqual(call['deadlineEpoch'] - call['startedAt'], 1, places=2)
         self.assertEqual(done['status'], 'failed')
         self.assertIn('Model call #1 exceeded its 1s time limit', done['error'])
         self.assertEqual(done['llmProgress']['completedCalls'], 0)
@@ -295,15 +299,20 @@ class LlmWorkflowTests(unittest.TestCase):
     def test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline(self):
         self.service.ollama.save({**self.service.ollama.state()['config'], 'inferenceTimeout': 1}, 1)
         MockModel.mode = 'stream-trickle'
-        started = time.monotonic()
         run = self.service.start(registry(), 'trickle', 'llm-evolution', {**self.options(), 'providerRevision': 2})
         done = finish(self.service, run['id'])
-        self.assertLess(time.monotonic() - started, 5)
+        # Startup, journal commits and teardown belong to the workflow budget.
+        # Transport deadline enforcement is checked with a controlled clock.
+        call = done['llmProgress']['lastCall']
+        self.assertEqual(call['timeoutSeconds'], 1)
+        self.assertEqual(call['status'], 'failed')
+        self.assertAlmostEqual(call['deadlineEpoch'] - call['startedAt'], 1, places=2)
         self.assertEqual(done['status'], 'failed')
         self.assertIn('Model call #1 exceeded its 1s time limit', done['error'])
         self.assertGreater(done['llmProgress']['lastCall']['chunks'], 0)
         self.assertEqual(done['llmProgress']['completedCalls'], 0)
         self.assertEqual(len(MockModel.calls), 1)
+        self.assertFalse(self.service.ollama.operation.locked())
 
     def test_local_http_submission_history_approval_and_rollback(self):
         class Quiet(GuiHandler):
