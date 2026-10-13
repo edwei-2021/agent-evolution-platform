@@ -59,6 +59,19 @@ def normal_budget(profile, name, command=None, calibration=None):
     if profile=='model':return 600
     if profile=='release' and name=='filesystem-calibration':return max(10,historical)
     if profile=='release' and name=='all-frontend':return max(45,historical)
+    if profile=='release' and name=='python-gepa_test':
+        from gepa_validation_budget import smoke_budget
+        try:
+            calibration=json.loads((reports/'validation-calibration.json').read_text())
+            io=float(calibration['perCallIoAllowanceSeconds'])
+        except (OSError,ValueError,KeyError,TypeError):
+            from adaptive_validation import current
+            io=float(current()['perCallIoAllowanceSeconds'])
+        full=smoke_budget(io)['normalSeconds']
+        # Four cases run complete serial search/final/review workflows. The
+        # other eight cases cover datasets, early failures and cancellation.
+        # This is a module estimate; each case still prints its own progress.
+        return max(historical,4*full+8*30)
     if profile=='release' and name.startswith('python-'):
         test_file=ROOT/'tests'/(name.removeprefix('python-')+'.py')
         try:
