@@ -13,6 +13,18 @@ def test_acceptance_pytest_disables_nested_capture():
               for command in checks if len(command)>2 and command[1:3]==['-m','pytest']]
     assert commands
     assert all('-s' in command for command in commands)
+    assert all('-vv' in command and '--durations=0' in command for command in commands)
+
+def test_m2_and_m7_python_test_files_are_separate_timed_commands():
+    checks=plans(Path('.'),sys.executable)
+    m2=next(commands for step,commands in checks if step=='M2')
+    m7=next(commands for step,commands in checks if step=='M7')
+    assert any('tests_m/test_m2.py' in command for command in m2)
+    assert any('tests_m/test_nanobot_bridge.py' in command for command in m2)
+    assert not any('tests_m/test_m2.py' in command and 'tests_m/test_nanobot_bridge.py' in command for command in m2)
+    assert any('tests_m/test_m7.py' in command for command in m7)
+    assert any('tests_m/test_gates.py' in command for command in m7)
+    assert not any('tests_m/test_m7.py' in command and 'tests_m/test_gates.py' in command for command in m7)
 
 def test_m1_frontend_gate_uses_the_project_node_runtime():
     root=Path('/project')

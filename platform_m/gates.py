@@ -47,8 +47,8 @@ REPORT_INTERVAL_SECONDS = 5
 MAX_PROMPT_SECONDS = 30 * 60
 MAX_COMMAND_SECONDS = 2 * 60 * 60
 FIRST_RUN_SECONDS = {
-    'M1': [15, 20], 'M2': [15, 30], 'M3': [30], 'M4': [60, 30],
-    'M5': [60], 'M6': [30], 'M7': [90, 30, 30, 900, 60, 60],
+    'M1': [15, 20], 'M2': [15, 30, 30], 'M3': [30], 'M4': [60, 30],
+    'M5': [60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
 }
 
 def prompt_after_seconds(normal):
@@ -256,18 +256,18 @@ def plans(root, python):
     # M acceptance runs from /mnt/d on WSL, where pytest's FDCapture tempfiles
     # can disappear during cleanup on DrvFS. The outer gate already captures
     # stdout/stderr into the support bundle, so pytest-level capture is redundant.
-    pytest = [python, '-m', 'pytest', '-s']
+    pytest = [python, '-m', 'pytest', '-s', '-vv', '--durations=0']
     return [
-        ('M1', [pytest+['tests_m/test_m1.py','-q'], [node,'--test',
+        ('M1', [pytest+['tests_m/test_m1.py'], [node,'--test',
             *[str(p.relative_to(root)) for p in sorted((root/'tests').glob('*.test.js'))]]]),
         ('M2', [[python,'scripts/generate_m_contracts.py','--check'],
-                pytest+['tests_m/test_m2.py','tests_m/test_nanobot_bridge.py','-q']]),
-        ('M3', [pytest+['tests_m/test_m3.py','-q']]),
+                pytest+['tests_m/test_m2.py'],pytest+['tests_m/test_nanobot_bridge.py']]),
+        ('M3', [pytest+['tests_m/test_m3.py']]),
         ('M4', [[python,'scripts/check_m_environment.py','--docker'],
-                pytest+['tests_m/test_m4.py','-q']]),
-        ('M5', [pytest+['tests_m/test_m5.py','-q']]),
-        ('M6', [pytest+['tests_m/test_m6.py','-q']]),
-        ('M7', [pytest+['tests_m/test_m7.py','tests_m/test_gates.py','-q'],
+                pytest+['tests_m/test_m4.py']]),
+        ('M5', [pytest+['tests_m/test_m5.py']]),
+        ('M6', [pytest+['tests_m/test_m6.py']]),
+        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py'],
                 [python,'scripts/scan_m_source.py'],
                 [python,'scripts/check_m_environment.py','--sdk'],
                 [str(sdk),'scripts/check_steps.py','--profile','release'],
