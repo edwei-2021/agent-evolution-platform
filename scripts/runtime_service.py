@@ -65,6 +65,7 @@ class RuntimeService:
         self.thread = None
         self.process = None
         self.cancel_event = threading.Event()
+        self.completion_event = threading.Event()
         self.current = None
         self.closed = False
         from debug_log import DebugLog
@@ -141,6 +142,23 @@ class RuntimeService:
                 raise KeyError('Run not found')
             run = json.loads(row[0])
         return self.decorate(run)
+
+    def wait_for_terminal(self, identifier, timeout):
+        """Wait without database polling, then read the persisted final state.
+        Completion is signalled after model-slot cleanup, including failures.
+        """
+        if isinstance(timeout,bool) or not isinstance(timeout,(int,float)) or not 0 < timeout <= 7300:
+            raise ValueError('Use a bounded positive terminal wait')
+        with self.lock:
+            active = self.current and self.current['id'] == identifier
+            event = self.completion_event if active else None
+        if event is not None:
+            if not event.wait(timeout):
+                raise TimeoutError('Workflow terminal wait exceeded its bounded budget')
+        result = self.get_run(identifier)
+        if result['status'] not in TERMINAL:
+            raise RuntimeError('Completion has no persisted terminal evidence')
+        return result
 
     def decorate(self, run):
         end = run.get('endedAt') or now()
@@ -274,6 +292,7 @@ class RuntimeService:
                 self.event(None, f'Queued actual {task} workflow; ' + ('real GEPA and nanobot SDK calls' if task=='gepa-evolution' else 'explicit model calls, no GEPA adapter' if task in MODEL_TASKS else 'no LLM or GEPA calls'))
                 self.persist()
                 self.cancel_event.clear()
+                self.completion_event = threading.Event()
                 self.thread = threading.Thread(target=self.execute, args=(directory,), daemon=True)
                 self.thread.start()
                 return copy.deepcopy(self.current)
@@ -311,6 +330,7 @@ class RuntimeService:
             return copy.deepcopy(self.current)
 
     def execute(self, directory):
+        completion = self.completion_event
         provider_leased = self.current.get('task') in MODEL_TASKS
         workflow_started = time.monotonic()
         try:
@@ -410,8 +430,11 @@ class RuntimeService:
                 self.persist()
 
         finally:
-            if provider_leased:
-                self.ollama.operation.release()
+            try:
+                if provider_leased:
+                    self.ollama.operation.release()
+            finally:
+                completion.set()
 
     @staticmethod
     def tail(path):

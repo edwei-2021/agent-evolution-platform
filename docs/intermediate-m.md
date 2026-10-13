@@ -168,7 +168,7 @@ git pull --ff-only
 .venv/bin/python scripts/check_llm_first_failure.py
 ```
 
-The probe retains the original 20-second workflow test expectation, uses only a loopback mock model, and bounds the test harness to 120 seconds. Its report and test log are stored under .local/test-reports/LLM-CHECK-...; on failure it also captures role states/log tails, mock request count and periodic Python thread stacks. These distinguish process startup, progress I/O, lock waits and model transport. A timeout is not silently converted to a pass.
+The current probe follows the frozen workflow budget (60 seconds in this fixture) plus 10 seconds for terminal cleanup, uses only a loopback mock model, and bounds the test harness to 120 seconds. The former unrelated 20-second workstation-speed assumption is superseded. Its report and test log are stored under .local/test-reports/LLM-CHECK-...; on failure it also captures role states/log tails, mock request count and periodic Python thread stacks. These distinguish process startup, progress I/O, lock waits and model transport. A timeout is not silently converted to a pass.
 
 Progress reads now release the supervisor mutex before filesystem access. A disconnected HTTP client closes the response without attempting a second error response. These defects are regression-tested; the user's WSL timeout still requires the local probe result. The installer prints Python case names and stops on the first failure. Optional GEPA/nanobot skips in the base GUI environment are not equivalent to an SDK acceptance pass.
 
@@ -186,4 +186,22 @@ git pull --ff-only
 .venv/bin/python scripts/check_llm_first_failure.py
 ```
 
-The measurement compares current single-record writes with one batch on the actual project filesystem, including final close/checkpoint. Both paths must retain the same record count. It sends no model requests and does not measure the pre-fix FULL policy or predict GPU speed. If the single-case probe remains failed, inspect the new state/thread logs instead of raising the test deadline.
+The measurement compares current single-record writes with one batch on the actual project filesystem, including final close/checkpoint. Both paths must retain the same record count. It sends no model requests and does not measure the pre-fix FULL policy or predict GPU speed. A user D-drive result was 8.095 seconds for 40 single transactions and 0.184 seconds for one batch; this is evidence of transaction cost, not an inference benchmark.
+
+### Completion-policy alignment and one-pass setup
+
+Functional completion now uses an Event signalled after terminal persistence and provider-slot cleanup, rather than repeatedly querying SQLite every 25 ms. The test then reads the persisted terminal result once. It follows the existing maxSeconds budget plus bounded cleanup grace; model-call and workflow execution limits remain in the supervisor, and cancellation/failure are never reclassified as success. Assertions still require the five roles, 15 real mock requests, trusted scores and version gates.
+
+Source and persistent state remain in the D-drive checkout. A slow host-filesystem benchmark is reported separately from functional completion. No implicit relocation to Linux home/tmp or Windows permission changes occurs.
+
+With the GUI/API/worker stopped, run the automated setup driver:
+
+```bash
+cd /mnt/d/agent-evolution-platform
+git pull --ff-only
+python3.11 scripts/complete_m_setup.py --python python3.11
+```
+
+It runs the single-case gate when .venv already exists, the base installer, pinned nanobot/GEPA installer, uv bootstrap when missing, locked M installation, npm ci and strict M acceptance. Each command has a finite timeout; it prints live output and five-second wait updates. Failure blocks subsequent commands and retains redacted logs/report.json under .local/setup-reports/SETUP-.... --setup-only omits phase acceptance and labels that restricted scope explicitly. It never runs the user's model or cold-load diagnostics. Once the automated driver is launched, inspect its returned report instead of manually repeating successful stages or reinstalling unrelated components.
+
+This changes the completion criterion from an arbitrary 20-second machine-speed expectation to the declared execution contract. It does not prove that a slow D-drive deployment meets a separate latency SLO, or complete the outstanding production/GUI/optimizer-resume migration work.

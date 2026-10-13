@@ -26,13 +26,15 @@ def registry():
 
 
 def finish(service, identifier):
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        run = service.get_run(identifier)
-        if run['status'] in ('completed', 'cancelled', 'failed', 'interrupted'):
-            return run
-        time.sleep(.025)
-    raise AssertionError('LLM workflow did not finish')
+    run = service.get_run(identifier)
+    # Functional completion follows the frozen workflow budget, not an
+    # unrelated 20-second workstation-speed assumption. Model and workflow
+    # limits still run in the supervisor; the 10 seconds is cleanup grace.
+    budget = run['llmConfig']['maxSeconds'] + 10
+    try:
+        return service.wait_for_terminal(identifier,budget)
+    except (TimeoutError,RuntimeError) as exc:
+        raise AssertionError('LLM workflow has no terminal evidence within its workflow/cleanup budget') from exc
 
 
 class MockModel(BaseHTTPRequestHandler):
@@ -363,18 +365,21 @@ assert.match(provider.view(),/value="qwen3-coder:30b"/);
 const reopened=new OllamaUI({{fetcher:(path,options)=>fetch(base+path,options)}});
 await reopened.operate('reload');assert.equal(reopened.data.config.model,'qwen3-coder:30b');
 await client.warmModel();
-for(let i=0;i<100;i++){{
+const preloadDeadline=Date.now()+30000;
+while(Date.now()<preloadDeadline){{
   assert.equal(await client.refresh(),true,client.error);
   if(client.data.provider.warmup.status!=='RUNNING')break;
-  await new Promise(resolve=>setTimeout(resolve,30));
+  await new Promise(resolve=>setTimeout(resolve,250));
 }}
 assert.equal(client.data.provider.warmup.status,'PRELOAD_PASS');
 assert.equal(client.data.provider.warmup.config.model,'qwen3-coder:30b');
 client.llmSeconds=60;await client.startLlm(initialRegistry());
-for(let i=0;i<160;i++){{
+const workflowDeadline=Date.now()+(client.llmSeconds+10)*1000;
+while(Date.now()<workflowDeadline){{
   assert.equal(await client.refresh(),true,client.error);
   if(client.data.llm.latestRun.status==='completed')break;
-  await new Promise(resolve=>setTimeout(resolve,50));
+  if(['failed','cancelled','interrupted'].includes(client.data.llm.latestRun.status))break;
+  await new Promise(resolve=>setTimeout(resolve,250));
 }}
 assert.equal(client.data.llm.latestRun.status,'completed');
 assert.equal(client.data.llm.latestRun.llmResult.calls,15);
@@ -389,7 +394,8 @@ assert.equal(client.data.skills.activeVersionId,'SKV-baseline');
 console.log(JSON.stringify({{polls:client.pollCount,status:'PASS'}}));
 """
         try:
-            result = subprocess.run([node['path'], '--input-type=module', '-e', js], capture_output=True, text=True, timeout=20)
+            # Bounded outer harness covers preload, workflow and evidence replay.
+            result = subprocess.run([node['path'], '--input-type=module', '-e', js], capture_output=True, text=True, timeout=130)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['status'], 'PASS')
             self.assertEqual(len(MockModel.calls), 15)

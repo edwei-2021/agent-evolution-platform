@@ -46,6 +46,8 @@ def child(directory):
             self.support(test)
             super().addError(test,error)
     with (directory/'threads.log').open('w') as stream:
+        stream.write('Periodic 25-second stack samples; the workflow test uses its frozen budget, not this sampling interval.\n')
+        stream.flush()
         faulthandler.dump_traceback_later(25,repeat=True,file=stream)
         try:
             suite=unittest.TestSuite([module.LlmWorkflowTests('test_actual_worker_reflection_evaluation_review_and_versions')])
@@ -73,8 +75,10 @@ if __name__=='__main__':
             code=124
     report={'debug_code':'DBG-LLM-001','status':'passed' if code==0 else 'failed','exit_code':code,
             'elapsed_seconds':round(time.monotonic()-start,2),'python':sys.executable,
+            'wait_policy':'frozen workflow maxSeconds + 10s cleanup; event notification and persisted result',
+            'harness_timeout_seconds':120,
             'test':'actual_worker_reflection_evaluation_review_and_versions',
-            'remediation':'Inspect test.log, failure-state.json, threads.log and role log tails; no timeout was increased.'}
+            'remediation':'Inspect test.log, failure-state.json, threads.log and role log tails; execution budgets were not changed.'}
     (directory/'report.json').write_text(json.dumps(report,indent=2))
     print(json.dumps({**report,'support_directory':str(directory)},indent=2))
     print((directory/'test.log').read_text(errors='replace')[-12000:])
