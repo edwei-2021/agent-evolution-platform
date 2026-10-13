@@ -73,6 +73,7 @@ bash scripts/build-m-images.sh
 
 - Components: fast development checks; Docker isolation may be skipped and must not be presented as phase acceptance.
 - Acceptance: M1 through M7 in dependency order; M4 requires a running Docker daemon and locally built evaluator image. M7 requires actual installed nanobot/GEPA, full legacy regression, lint and generated TypeScript checks.
+- Before every acceptance command, the gate prints `M_CHECK_EXPECTED` with the command, normal-duration estimate, continue-prompt threshold and hard limit. Child output streams to the terminal and support bundle with redaction. Every five seconds after normal duration it prints `M_CHECK_OVERRUN`; at ten times normal duration (capped at 30 minutes) it asks whether to continue. `y` continues with periodic overrun reports; any other response stops the process group. Successful command timings are retained and used for later estimates.
 - Success: each step stores a passed StepCheck; final report status is passed within the declared machine-check scope.
 - Failure: failing step is failed or blocked, later steps are blocked and their commands do not run; command exit status is nonzero. Dependency preflight uses exit 78 and is recorded as blocked.
 - Every bundle is under .local/m/support/MCHECK-.../M1.json through M7.json. report.json links the checks. Bundles include source/input hashes, command, exit code, redacted combined stdout/stderr and remediation. Checks also persist in control.sqlite3 independently of debug-log rotation.

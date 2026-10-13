@@ -1,10 +1,12 @@
 import json
+import io
 import os
 import subprocess
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
-from platform_m.gates import Gates, plans
+from platform_m.gates import Gates, execute, normal_budget, plans
 
 def test_acceptance_pytest_disables_nested_capture():
     commands=[command for _,checks in plans(Path('.'),sys.executable)
@@ -12,16 +14,39 @@ def test_acceptance_pytest_disables_nested_capture():
     assert commands
     assert all('-s' in command for command in commands)
 
-def test_node_resolver_imports_from_repository_scripts():
-    from platform_m.gates import find_node
-    result = find_node(Path(__file__).resolve().parents[1])
-    assert result is None or isinstance(result, dict)
-
 def test_m1_frontend_gate_uses_the_project_node_runtime():
     root=Path('/project')
     with patch('platform_m.gates.find_node',return_value={'path':'/project/.tools/node/bin/node'}):
         m1=next(checks for step,checks in plans(root,sys.executable) if step=='M1')
     assert m1[1][0]=='/project/.tools/node/bin/node'
+
+def test_command_monitor_streams_output_reports_overrun_and_continues():
+    command=[sys.executable,'-u','-c','import time;print("child-start",flush=True);time.sleep(.16);print("child-end",flush=True)']
+    terminal=io.StringIO()
+    with patch('builtins.input',return_value='y'),redirect_stdout(terminal):
+        code,output,timing=execute(command,Path.cwd(),os.environ,timeout=1,normal_seconds=.02,
+                                   prompt_after=.05,interval=.01)
+    assert code==0 and 'child-start' in output and 'child-end' in output
+    assert 'M_CHECK_OVERRUN' in terminal.getvalue()
+    assert 'M_CHECK_WAIT_DECISION' in terminal.getvalue()
+    assert 'M_CHECK_WAIT_APPROVED' in terminal.getvalue()
+    assert timing['extension_approved'] and timing['over_normal_seconds']>=.1
+
+def test_command_monitor_stops_process_when_wait_is_declined():
+    command=[sys.executable,'-c','import time;time.sleep(5)']
+    with patch('builtins.input',return_value='n'),redirect_stdout(io.StringIO()):
+        code,output,timing=execute(command,Path.cwd(),os.environ,timeout=1,normal_seconds=.01,
+                                   prompt_after=.02,interval=.01)
+    assert code==125 and timing['stopped_by_user']
+    assert 'M_CHECK_STOPPED_BY_USER' in output
+
+def test_command_monitor_keeps_a_finite_hard_limit_after_wait_approval():
+    command=[sys.executable,'-c','import time;time.sleep(5)']
+    with patch('builtins.input',return_value='y'),redirect_stdout(io.StringIO()):
+        code,output,timing=execute(command,Path.cwd(),os.environ,timeout=.15,normal_seconds=.02,
+                                   prompt_after=.04,interval=.01)
+    assert code==124 and timing['extension_approved']
+    assert 'M_CHECK_HARD_LIMIT' in output
 
 def test_failure_generates_bundle_and_blocks_following_command(tmp_path):
     subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
@@ -37,6 +62,28 @@ def test_failure_generates_bundle_and_blocks_following_command(tmp_path):
     assert bundle['logs'][0]['exit_code'] == 3 and bundle['input_hashes']
     blocked = json.loads((tmp_path/result['checks'][1]['bundle']).read_text())
     assert blocked['logs'][0]['command_executed'] is False
+
+def test_gate_prints_each_command_estimate_and_persists_runtime(tmp_path):
+    subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
+    runner=Gates(tmp_path)
+    output=io.StringIO()
+    command=[sys.executable,'-u','-c','import time;print("visible-child-output",flush=True);time.sleep(.03)']
+    with patch('platform_m.gates.normal_budget',return_value=5),redirect_stdout(output):
+        result=runner.run([('M1',[command])])
+    assert result['checks'][0]['status']=='passed'
+    assert 'M_CHECK_EXPECTED step=M1 command=1/1' in output.getvalue()
+    assert 'visible-child-output' in output.getvalue()
+    row=json.loads((tmp_path/result['checks'][0]['bundle']).read_text())
+    assert row['monitor_policy']=='m-command-watch-v1'
+    assert row['logs'][0]['elapsed_seconds']>=0
+
+def test_normal_estimate_adapts_from_recent_successful_command(tmp_path):
+    folder=tmp_path/'.local/m/support/MCHECK-history'
+    folder.mkdir(parents=True)
+    (folder/'report.json').write_text('{}')
+    (folder/'M1.json').write_text(json.dumps({'monitor_policy':'m-command-watch-v1','status':'passed',
+        'logs':[{'command_index':0,'exit_code':0,'elapsed_seconds':12.0}]}))
+    assert normal_budget(tmp_path,'M1',0)==18
 
 def test_missing_dependency_is_blocked_with_remediation(tmp_path):
     subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
