@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from functools import partial
 import importlib.metadata
 import json
+import math
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +12,8 @@ import time
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from repair_fixture import BASELINE, HIDDEN, validate_source
+from adaptive_validation import current as validation_calibration
+from validation_wait import first_request, startup_budget
 from repair_engine import trusted_test, verify
 from runtime_service import RuntimeService,ROLES
 from ollama_bridge import DEFAULTS
@@ -84,6 +87,9 @@ class Model(BaseHTTPRequestHandler):
 @unittest.skipUnless(SDK,'Pinned SDK integration requires the optional nanobot environment')
 class SdkWorkflowTests(unittest.TestCase):
     def setUp(self):
+        io_seconds=validation_calibration()['perCallIoAllowanceSeconds']
+        self.workflow_seconds=max(90,min(7200,math.ceil(40+8*(10+3*io_seconds))))
+        self.startup_seconds=startup_budget(io_seconds,self.workflow_seconds)
         Model.calls=[];Model.mode='good';Model.gate=None;Model.entered.clear()
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
         self.model=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.model.serve_forever,daemon=True);self.thread.start()
@@ -93,12 +99,18 @@ class SdkWorkflowTests(unittest.TestCase):
         self.service.close();self.model.shutdown();self.model.server_close();self.thread.join();self.temp.cleanup()
     def start(self,budget=8):
         registry={'agents':[{'id':'AG-'+str(i),'name':r,'role':r,'enabled':True} for i,r in enumerate(ROLES)]}
-        return self.service.start(registry,'repair','nanobot-repair',{'maxSeconds':60,'callTimeoutSeconds':10,'callBudget':budget,'providerRevision':1})
+        return self.service.start(registry,'repair','nanobot-repair',{'maxSeconds':self.workflow_seconds,'callTimeoutSeconds':10,'callBudget':budget,'providerRevision':1})
     def finish(self,id):
-        deadline=time.monotonic()+30
+        deadline=time.monotonic()+self.workflow_seconds+15
+        next_report=time.monotonic()+10
         while time.monotonic()<deadline:
             run=self.service.get_run(id)
             if run['status'] in ('completed','failed','cancelled','interrupted'):return run
+            if time.monotonic()>=next_report:
+                print(f'REPAIR_TEST_PROGRESS elapsed_seconds={self.workflow_seconds+15-round(deadline-time.monotonic())} '
+                      f'role={next((a["role"] for a in run["agents"] if a["status"]=="running"),"queued")} '
+                      f'calls={(run.get("repairProgress") or {}).get("completedCalls",0)}',flush=True)
+                next_report=time.monotonic()+10
             time.sleep(.025)
         self.fail('SDK workflow did not terminate')
     def test_real_sdk_repair_tools_independent_scores_and_evidence(self):
@@ -137,7 +149,8 @@ class SdkWorkflowTests(unittest.TestCase):
         Model.mode='budget';done=self.finish(self.start(2)['id'])
         self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),2)
     def test_cancellation_stops_the_actual_sdk_worker_and_later_calls(self):
-        Model.gate=threading.Event();run=self.start();self.assertTrue(Model.entered.wait(10))
+        Model.gate=threading.Event();run=self.start()
+        first_request(Model.entered,self.service,run['id'],self.startup_seconds,label='repair-cancel')
         with self.assertRaises(RuntimeError):self.service.ollama.start_warmup(1)
         self.service.cancel(run['id']);done=self.finish(run['id'])
         self.assertEqual(done['status'],'cancelled');self.assertEqual(len(Model.calls),1);self.assertFalse(self.service.ollama.operation.locked())
@@ -145,7 +158,7 @@ class SdkWorkflowTests(unittest.TestCase):
         self.service.ollama.save({**self.service.ollama.state()['config'],'inferenceTimeout':1},1)
         registry={'agents':[{'id':'AG-'+str(i),'name':r,'role':r,'enabled':True} for i,r in enumerate(ROLES)]}
         Model.gate=threading.Event()
-        run=self.service.start(registry,'timeout','nanobot-repair',{'maxSeconds':60,'callTimeoutSeconds':10,'callBudget':8,'providerRevision':2})
+        run=self.service.start(registry,'timeout','nanobot-repair',{'maxSeconds':self.workflow_seconds,'callTimeoutSeconds':10,'callBudget':8,'providerRevision':2})
         done=self.finish(run['id']);self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),1)
         self.assertEqual(done['repairProgress']['failedCalls'],1);self.assertFalse(self.service.ollama.operation.locked())
     def test_actual_javascript_client_runs_api_reads_verified_patch_and_has_no_approval_path(self):
@@ -165,14 +178,16 @@ import {{initialRegistry}} from {json.dumps((root/'dist/js/agents.js').as_uri())
 const base='http://127.0.0.1:{server.server_port}';
 const client=new RuntimeClient({{fetcher:(path,options)=>fetch(base+path,options)}});
 assert.equal(await client.refresh(),true);assert.equal(client.data.repair.sdk.available,true);
-client.repairSeconds=60;client.repairCallSeconds=10;await client.startRepair(initialRegistry());
-for(let i=0;i<400;i++){{assert.equal(await client.refresh(),true,client.error);if(['completed','failed'].includes(client.data.repair.latestRun.status))break;await new Promise(r=>setTimeout(r,25));}}
+client.repairSeconds={self.workflow_seconds};client.repairCallSeconds=10;await client.startRepair(initialRegistry());
+const deadline=Date.now()+({self.workflow_seconds}+15)*1000;
+while(Date.now()<deadline){{assert.equal(await client.refresh(),true,client.error);if(['completed','failed'].includes(client.data.repair.latestRun.status))break;await new Promise(r=>setTimeout(r,100));}}
 const run=client.data.repair.latestRun;assert.equal(run.status,'completed');assert.equal(run.repairResult.repairPassed,true);
 await client.readRepairEvidence(run.id);assert.match(client.repairEvidence.patch,/ValueError/);assert.equal(client.repairEvidence.tools.length,3);
 console.log('SDK API client PASS');
 """
         try:
-            result=subprocess.run([node['path'],'--input-type=module','-e',js],text=True,capture_output=True,timeout=20)
+            print(f'REPAIR_JS_EXPECTED workflow_limit_seconds={self.workflow_seconds} node_limit_seconds={self.workflow_seconds+30}',flush=True)
+            result=subprocess.run([node['path'],'--input-type=module','-e',js],text=True,capture_output=True,timeout=self.workflow_seconds+30)
             self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(len(Model.calls),4)
             with self.assertRaises(RuntimeError):self.service.llm.approve(self.service.snapshot()['repair']['latestRun']['id'],1)
         finally:server.shutdown();server.server_close();thread.join()
