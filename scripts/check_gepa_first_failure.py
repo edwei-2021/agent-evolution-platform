@@ -10,6 +10,7 @@ import uuid
 
 from adaptive_validation import current
 from check_steps import prompt_after_seconds, supervise
+from gepa_validation_budget import smoke_budget
 from repair_runtime import sdk_status
 
 
@@ -30,13 +31,15 @@ def main():
     try:
         calibration = current()
         io_seconds = float(calibration['perCallIoAllowanceSeconds'])
-        normal = max(30, min(180, round(15 + 10 * io_seconds)))
+        budget = smoke_budget(io_seconds)
+        normal = budget['normalSeconds']
         prompt = prompt_after_seconds(normal)
-        maximum = min(7200, max(normal * 20, prompt + 60))
+        maximum = min(7200, max(budget['workflowSeconds'] + 60, prompt + 60))
         command = [sdk['python'], '-m', 'unittest', 'discover', '-s', 'tests',
                    '-p', 'gepa_test.py', '-k', CASE, '-v']
         report = {'schemaVersion': 1, 'case': CASE, 'startedAt': datetime.now(timezone.utc).isoformat(),
                   'status': 'running', 'calibration': calibration,
+                  'workloadBudget': budget,
                   'normalSeconds': normal, 'promptAfterSeconds': prompt,
                   'maximumSeconds': maximum, 'command': command, 'log': 'test.log'}
         report_path.write_text(json.dumps(report, indent=2))
