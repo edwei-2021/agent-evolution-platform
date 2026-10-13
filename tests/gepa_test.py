@@ -141,8 +141,11 @@ class GepaWorkflowTests(unittest.TestCase):
                 last=progress.get('lastCall') or {}
                 diagnostic={'test':self.id(),'capturedAtEpoch':time.time(),
                     'runId':run_id,'runStatus':status,'roles':roles,
+                    'workflowLimitSeconds':(run.get('gepaConfig') or {}).get('maxSeconds'),
+                    'workflowDeadlineEpoch':(run.get('gepaConfig') or {}).get('deadlineEpoch'),
                     'phase':progress.get('phase'),'activeRollout':progress.get('activeRollout'),
                     'activeTask':progress.get('activeTask'),'modelRequestsReceived':len(Model.calls),
+                    'verification':progress.get('verification'),
                     'lastCall':{key:last.get(key) for key in
                                 ('id','kind','status','startedAt','deadlineEpoch','timeoutSeconds')},
                     'supervisorThreadAlive':bool(self.service.thread and self.service.thread.is_alive())}
@@ -191,6 +194,9 @@ class GepaWorkflowTests(unittest.TestCase):
         self.assertEqual(result['calls'],len(Model.calls));self.assertFalse(self.service.ollama.operation.locked())
         self.assertEqual(self.service.gepa.snapshot()['activeVersionId'],'GSV-baseline');self.assertEqual(self.service.llm.snapshot()['activeVersionId'],'LSV-baseline')
         directory=self.service.local/'runs'/run['id'];self.assertEqual(verify(directory),result)
+        replay=json.loads((directory/'gepa-progress.json').read_text())['verification']
+        self.assertEqual((replay['verifiedRollouts'],replay['totalRollouts']),
+                         (result['rollouts'],result['rollouts']))
         selection=json.loads((directory/'gepa-selection.json').read_text());ledger=json.loads((directory/'gepa-rollouts.json').read_text())
         final_ids={t['id'] for t in dataset('smoke')['heldout']}
         self.assertFalse(any(r['taskId'] in final_ids and r['stage']=='search' for r in ledger))
@@ -276,10 +282,12 @@ while(Date.now()<deadline){await client.refresh();const run=client.data?.gepa?.l
                                 identifier=(self.service.current or {}).get('id')
                             run=self.service.get_run(identifier) if identifier else {}
                             progress=run.get('gepaProgress') or {}
+                            verification=progress.get('verification') or {}
                             print(f'GEPA_TEST_PROGRESS case=js-client elapsed_seconds={int(elapsed)} '
                                   f'role={next((a["role"] for a in run.get("agents",[]) if a["status"]=="running"), "queued")} '
                                   f'phase={progress.get("phase")} rollouts={progress.get("rollouts",0)} '
-                                  f'active_rollout={progress.get("activeRollout")}',flush=True)
+                                  f'active_rollout={progress.get("activeRollout")} '
+                                  f'review_verified={verification.get("verifiedRollouts",0)}/{verification.get("totalRollouts",0)}',flush=True)
                             next_report=time.monotonic()+10
                 result=subprocess.CompletedProcess(command,node.returncode,stdout,stderr)
             self.assertEqual(result.returncode,0,result.stderr+result.stdout);self.assertTrue(json.loads(result.stdout)['eligible'])
