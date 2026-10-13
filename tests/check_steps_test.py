@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import check_steps
+import run_test_module
 from check_steps import supervise
 
 class CheckStepsTests(unittest.TestCase):
@@ -81,6 +82,21 @@ class CheckStepsTests(unittest.TestCase):
             (Path(root)/'tests'/'sample_test.py').write_text(
                 'def test_one(): pass\ndef test_two(): pass\ndef test_three(): pass\n')
             self.assertEqual(check_steps.normal_budget('release','python-sample_test'),51)
+
+    def test_gepa_module_budget_includes_multiple_full_workflows(self):
+        with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)):
+            reports=Path(root)/'.local/test-reports';reports.mkdir(parents=True)
+            (reports/'validation-calibration.json').write_text(json.dumps({'perCallIoAllowanceSeconds':2}))
+            self.assertGreaterEqual(check_steps.normal_budget('release','python-gepa_test'),1300)
+
+    def test_gepa_cases_show_distinct_workload_estimates(self):
+        with tempfile.TemporaryDirectory() as root,patch('run_test_module.ROOT',Path(root)):
+            reports=Path(root)/'.local/test-reports';reports.mkdir(parents=True)
+            (reports/'validation-calibration.json').write_text(json.dumps({'perCallIoAllowanceSeconds':2}))
+            self.assertEqual(run_test_module.expected_case_seconds(
+                'gepa_test.GepaWorkflowTests.test_actual_js_client_to_python_api_dispatch_and_result_validation'),290)
+            self.assertEqual(run_test_module.expected_case_seconds(
+                'gepa_test.GepaWorkflowTests.test_cancel_stops_actual_gepa_sdk_process'),60)
 
     def test_overrun_reports_duration_and_user_decline_stops_process(self):
         with tempfile.TemporaryDirectory():
