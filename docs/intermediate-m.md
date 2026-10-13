@@ -16,6 +16,10 @@ This delivery adds M service components and machine checks to the v0.7.1 runtime
 
 The acceptance script proves the listed machine-check scope. A green component gate is not proof that the remaining phase-closure items are finished. Current API queue accepts explicitly labeled mock work; actual nanobot work uses the explicit scripts below. No process automatically sends model requests at install/startup.
 
+### M1 pytest capture issue on WSL DrvFS
+
+If M1 reports `FileNotFoundError` from `_pytest.capture` while truncating its capture tempfile and says no tests ran, this is a pytest output-capture failure, not a migration assertion failure. M acceptance now invokes pytest with `-s` so its internal file-descriptor capture is disabled; the outer gate still captures and saves stdout/stderr in the M1 support bundle. After pulling this fix, run only `.venv-m/bin/python -m pytest -s tests_m/test_m1.py -q` to verify M1 locally before deciding whether to resume the full acceptance sequence.
+
 ## 2. Upgrade and Ubuntu path migration (Ubuntu 目錄遷移)
 
 Stop the legacy GUI, M API and worker first. Run in the existing checkout:

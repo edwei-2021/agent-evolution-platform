@@ -97,17 +97,21 @@ def plans(root, python):
     root = Path(root)
     node = shutil.which('node') or 'node'
     sdk = root/'.venv-nanobot/bin/python'
+    # M acceptance runs from /mnt/d on WSL, where pytest's FDCapture tempfiles
+    # can disappear during cleanup on DrvFS. The outer gate already captures
+    # stdout/stderr into the support bundle, so pytest-level capture is redundant.
+    pytest = [python, '-m', 'pytest', '-s']
     return [
-        ('M1', [[python,'-m','pytest','tests_m/test_m1.py','-q'], [node,'--test',
+        ('M1', [pytest+['tests_m/test_m1.py','-q'], [node,'--test',
             *[str(p.relative_to(root)) for p in sorted((root/'tests').glob('*.test.js'))]]]),
         ('M2', [[python,'scripts/generate_m_contracts.py','--check'],
-                [python,'-m','pytest','tests_m/test_m2.py','tests_m/test_nanobot_bridge.py','-q']]),
-        ('M3', [[python,'-m','pytest','tests_m/test_m3.py','-q']]),
+                pytest+['tests_m/test_m2.py','tests_m/test_nanobot_bridge.py','-q']]),
+        ('M3', [pytest+['tests_m/test_m3.py','-q']]),
         ('M4', [[python,'scripts/check_m_environment.py','--docker'],
-                [python,'-m','pytest','tests_m/test_m4.py','-q']]),
-        ('M5', [[python,'-m','pytest','tests_m/test_m5.py','-q']]),
-        ('M6', [[python,'-m','pytest','tests_m/test_m6.py','-q']]),
-        ('M7', [[python,'-m','pytest','tests_m/test_m7.py','tests_m/test_gates.py','-q'],
+                pytest+['tests_m/test_m4.py','-q']]),
+        ('M5', [pytest+['tests_m/test_m5.py','-q']]),
+        ('M6', [pytest+['tests_m/test_m6.py','-q']]),
+        ('M7', [pytest+['tests_m/test_m7.py','tests_m/test_gates.py','-q'],
                 [python,'scripts/scan_m_source.py'],
                 [python,'scripts/check_m_environment.py','--sdk'],
                 [str(sdk),'scripts/check_steps.py','--profile','release'],

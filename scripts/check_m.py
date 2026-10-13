@@ -13,7 +13,7 @@ if __name__ == '__main__':
     root = Path(__file__).resolve().parents[1]
     if args.profile == 'components':
         import os
-        code, output = execute([sys.executable,'-m','pytest','tests_m','-q'], root, os.environ)
+        code, output = execute([sys.executable,'-m','pytest','-s','tests_m','-q'], root, os.environ)
         print(output)
         print('COMPONENT CHECK ONLY: Docker and actual SDK/production integration are not certified.')
         raise SystemExit(code)

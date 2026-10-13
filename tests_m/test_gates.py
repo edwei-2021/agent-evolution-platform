@@ -2,7 +2,14 @@ import json
 import os
 import subprocess
 import sys
-from platform_m.gates import Gates
+from pathlib import Path
+from platform_m.gates import Gates, plans
+
+def test_acceptance_pytest_disables_nested_capture():
+    commands=[command for _,checks in plans(Path('.'),sys.executable)
+              for command in checks if len(command)>2 and command[1:3]==['-m','pytest']]
+    assert commands
+    assert all('-s' in command for command in commands)
 
 def test_failure_generates_bundle_and_blocks_following_command(tmp_path):
     subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
