@@ -9,6 +9,8 @@ import time
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from runtime_service import RuntimeService, ROLES
+from adaptive_validation import current as validation_calibration
+from validation_wait import startup_budget
 from ollama_bridge import DEFAULTS
 
 class Model(BaseHTTPRequestHandler):
@@ -26,6 +28,7 @@ class Model(BaseHTTPRequestHandler):
 
 class WarmupTests(unittest.TestCase):
     def setUp(self):
+        self.io_seconds=validation_calibration()['perCallIoAllowanceSeconds']
         Model.calls=[];Model.gate=None;Model.entered.clear();Model.mode='ok'
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name);self.bridge=self.service.ollama
         self.server=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
@@ -34,7 +37,7 @@ class WarmupTests(unittest.TestCase):
         if Model.gate:Model.gate.set()
         self.service.close();self.server.shutdown();self.server.server_close();self.thread.join();self.temp.cleanup()
     def finish(self):
-        deadline=time.monotonic()+5
+        deadline=time.monotonic()+max(10,5+5*self.io_seconds)
         while time.monotonic()<deadline:
             job=self.bridge.warmup_status()
             if job['status']!='RUNNING':return job
@@ -52,7 +55,14 @@ class WarmupTests(unittest.TestCase):
         self.assertEqual(self.bridge.warmup_status()['status'],'PRELOAD_PASS');self.assertEqual(len(Model.calls),1)
 
     def test_preload_blocks_overlap_and_cancels_without_unload_or_retry(self):
-        Model.gate=threading.Event();job=self.bridge.start_warmup(1);self.assertTrue(Model.entered.wait(3))
+        Model.gate=threading.Event();job=self.bridge.start_warmup(1)
+        wait_seconds=startup_budget(self.io_seconds,600)
+        print(f'WARMUP_REQUEST_EXPECTED maximum_startup_seconds={wait_seconds}',flush=True)
+        elapsed=0
+        while elapsed<wait_seconds and not Model.entered.wait(min(10,wait_seconds-elapsed)):
+            elapsed+=min(10,wait_seconds-elapsed)
+            print(f'WARMUP_REQUEST_WAIT elapsed_seconds={elapsed} status={self.bridge.warmup_status()["status"]}',flush=True)
+        self.assertTrue(Model.entered.is_set(),self.bridge.warmup_status())
         with self.assertRaises(RuntimeError):self.bridge.start_warmup(1)
         with self.assertRaises(RuntimeError):self.bridge.run('metadata',1)
         registry={'agents':[{'id':'AG-'+str(i),'name':r,'role':r,'enabled':True} for i,r in enumerate(ROLES)]}
