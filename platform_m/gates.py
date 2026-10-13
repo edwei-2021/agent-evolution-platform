@@ -1,7 +1,6 @@
 """Acceptance gates stop dependent work and always preserve actionable support bundles."""
 import os
 from pathlib import Path
-import shutil
 import signal
 import subprocess
 import sys
@@ -10,6 +9,7 @@ import uuid
 from .contracts import StepCheck
 from .evidence import atomic_write, canonical, digest, redact
 from .store import Store
+from scripts.setup_wsl import find_node
 
 REMEDIATION = {
     'M1': 'Stop GUI/API/worker; inspect migration report, backup integrity and failed regression command.',
@@ -95,7 +95,8 @@ class Gates:
 
 def plans(root, python):
     root = Path(root)
-    node = shutil.which('node') or 'node'
+    runtime = find_node(root)
+    node = runtime['path'] if runtime else 'node'
     sdk = root/'.venv-nanobot/bin/python'
     # M acceptance runs from /mnt/d on WSL, where pytest's FDCapture tempfiles
     # can disappear during cleanup on DrvFS. The outer gate already captures
