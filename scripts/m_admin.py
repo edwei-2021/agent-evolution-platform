@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from platform_m.store import Store
 from platform_m.evidence import Artifacts
-from platform_m.releases import Releases
+from platform_m.releases import Releases, signing_key_path
 from platform_m.dataset import built_in
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -23,11 +23,11 @@ if __name__=='__main__':
     args=parser.parse_args()
     store=Store(ROOT/'.local/m/control.sqlite3')
     artifacts=Artifacts(ROOT/'.local/m/artifacts')
-    releases=Releases(store,artifacts,ROOT/'.local/m/signing.key')
+    releases=Releases(store,artifacts,signing_key_path(ROOT))
     try:
         if args.action=='init-key':
             releases.init_key()
-            value={'key':'created; owner-only .local/m/signing.key'}
+            value={'key':'created; owner-only Linux state file','path':str(releases.key_path)}
         elif args.action=='dataset':
             value={'dataset_hash':built_in(artifacts)}
         elif args.action=='backup-db':

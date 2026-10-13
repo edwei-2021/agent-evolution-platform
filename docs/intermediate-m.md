@@ -144,9 +144,11 @@ Register an operator-prepared complete Release manifest referring to CAS assets 
 
 Replace MANIFEST_SHA256 with the returned hash. The register gate recomputes comparison from stored records, verifies artifacts, requires matching complete validation with improvement, repeated independent evidence and zero regressions. A checksum is not a signature: Ed25519 signs immutable manifest bytes with the server-side owner-only key; the trusted public key is checked during activation. Key rotation requires a deliberate migration; replacing a key invalidates previous verification.
 
+The signing key is stored with owner-only permissions in the Linux user's state directory by default, outside a `/mnt/<drive>` DrvFS checkout. `init-key` prints its path. `AEP_SIGNING_KEY_PATH` can select a different protected path for an API service and its administration commands; set it in both processes. Existing `.local/m/signing.key` files remain in use to preserve prior signatures. Keep the key on a filesystem that enforces POSIX owner-only permissions.
+
 Rollback targets the current release's approved parent and requires the current pointer revision. Activation changes future snapshots, not in-flight manifests or historical evidence. This new release pointer does not silently change the legacy rule/LLM/GEPA active pointers. Final production cutover and Git reconciliation remain separately gated.
 
-Back up the stopped service's entire .local/m (DB, CAS, signing key) and existing .local data. backup-db can produce a transactionally consistent DB copy but is not a complete artifact/key backup by itself.
+Back up the stopped service's entire .local/m (DB and CAS), the signing key at the path printed by `init-key`, and existing .local data. backup-db can produce a transactionally consistent DB copy but is not a complete artifact/key backup by itself.
 
 ## 7. Debug support matrix
 

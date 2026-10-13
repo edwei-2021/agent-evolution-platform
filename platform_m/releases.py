@@ -1,5 +1,6 @@
 """Evidence-derived immutable manifests, Ed25519 approval and transactional pointers."""
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,23 @@ from cryptography.hazmat.primitives import serialization
 from .contracts import Release
 from .dataset import compare
 from .evidence import canonical
+
+def signing_key_path(root):
+    """Return a private-key path on Linux state storage by default.
+
+    Existing project-local keys remain authoritative so their signatures are
+    preserved. A path can be selected explicitly via AEP_SIGNING_KEY_PATH.
+    """
+    configured = os.environ.get('AEP_SIGNING_KEY_PATH')
+    if configured:
+        return Path(configured).expanduser().resolve()
+    root = Path(root).resolve()
+    legacy = root/'.local/m/signing.key'
+    if legacy.exists() or legacy.is_symlink():
+        return legacy
+    state_home = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state')).expanduser()
+    project_id = hashlib.sha256(str(root).encode()).hexdigest()[:16]
+    return state_home/'agent-evolution-platform'/project_id/'signing.key'
 
 class Releases:
     def __init__(self, store, artifacts, key_path, allow_test_evidence=False):

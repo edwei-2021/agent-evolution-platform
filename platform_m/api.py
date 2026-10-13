@@ -11,13 +11,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from .store import Store
 from .evidence import Artifacts, atomic_write
-from .releases import Releases
+from .releases import Releases, signing_key_path
 
 def create_app(root, token, role='operator', legacy_port=None):
     root = Path(root).resolve()
     store = Store(root/'.local/m/control.sqlite3')
     artifacts = Artifacts(root/'.local/m/artifacts')
-    releases = Releases(store, artifacts, root/'.local/m/signing.key')
+    releases = Releases(store, artifacts, signing_key_path(root))
     app = FastAPI(title='Agent Evolution Platform M', version='0.8.0')
     app.state.store, app.state.artifacts, app.state.releases = store, artifacts, releases
 
