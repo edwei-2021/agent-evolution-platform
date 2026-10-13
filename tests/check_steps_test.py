@@ -21,7 +21,7 @@ class CheckStepsTests(unittest.TestCase):
             steps=check_steps.stages('quick');self.assertEqual([s[0] for s in steps],['installer','setup-control','completion','journal','model-transport','step-trace','batch-evaluator','trace-journal','frontend']);self.assertNotIn('llm_test.py',' '.join(' '.join(step[1]) for step in steps))
             with self.assertRaises(RuntimeError):check_steps.stages('release')
         with patch('check_steps.find_node',return_value={'path':'node'}),patch('check_steps.sdk_status',return_value={'available':True,'python':'sdk-python'}),patch('check_steps.gepa_status',return_value={'available':True}):
-            plan=check_steps.stages('release');self.assertEqual(plan[0][0],'all-frontend')
+            plan=check_steps.stages('release');self.assertEqual([x[0] for x in plan[:2]],['filesystem-calibration','all-frontend'])
             python_steps=[row for row in plan if row[0].startswith('python-')]
             self.assertGreater(len(python_steps),10)
             self.assertEqual(python_steps[0][1][0],'sdk-python')
@@ -50,6 +50,15 @@ class CheckStepsTests(unittest.TestCase):
             (reports/'report.json').write_text(json.dumps({'profile':'release','monitorPolicy':check_steps.MONITOR_POLICY,
                 'steps':[{'step':'python-llm_test','status':'completed','durationMs':100000}]}))
             self.assertEqual(check_steps.normal_budget('release','python-llm_test'),150)
+
+    def test_first_release_module_budget_uses_filesystem_calibration_and_case_count(self):
+        with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)):
+            reports=Path(root)/'.local/test-reports';reports.mkdir(parents=True)
+            (reports/'validation-calibration.json').write_text(json.dumps({'perCallIoAllowanceSeconds':2}))
+            (Path(root)/'tests').mkdir()
+            (Path(root)/'tests'/'sample_test.py').write_text(
+                'def test_one(): pass\ndef test_two(): pass\ndef test_three(): pass\n')
+            self.assertEqual(check_steps.normal_budget('release','python-sample_test'),51)
 
     def test_overrun_reports_duration_and_user_decline_stops_process(self):
         with tempfile.TemporaryDirectory() as root:

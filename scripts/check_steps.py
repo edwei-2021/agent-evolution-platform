@@ -57,6 +57,7 @@ def normal_budget(profile, name, command=None, calibration=None):
         return max(15,round(estimate),historical)
     if profile=='quick':return max(45,historical)
     if profile=='model':return 600
+    if profile=='release' and name=='filesystem-calibration':return max(10,historical)
     if profile=='release' and name=='all-frontend':return max(45,historical)
     if profile=='release' and name.startswith('python-'):
         test_file=ROOT/'tests'/(name.removeprefix('python-')+'.py')
@@ -65,8 +66,15 @@ def normal_budget(profile, name, command=None, calibration=None):
             count=sum(isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name.startswith('test_')
                       for node in ast.walk(tree))
         except (OSError,SyntaxError):count=1
-        # First run estimates per module; successful timings then adapt by module.
-        return max(30,min(900,15+count*10),historical)
+        # Use measured checkout I/O plus case count on first run; later runs
+        # adapt from that module's own successful duration history.
+        calibration=0
+        try:
+            data=json.loads((reports/'validation-calibration.json').read_text())
+            calibration=float(data['perCallIoAllowanceSeconds'])
+        except (OSError,ValueError,KeyError,TypeError):pass
+        per_case=8+min(12,round(calibration*2))
+        return max(30,min(900,15+count*per_case),historical)
     return 900
 
 def supervise(process, name, normal, maximum, interval=5, *, output_path=None, progress_interval=30):
@@ -172,7 +180,8 @@ def stages(profile,root=ROOT):
         steps=[('repair-sdk',unit('repair_test.py','-v')),('gepa-sdk',unit('gepa_test.py','-v'))]
     elif profile=='release':
         if not sdk['available'] or not gepa_status(root)['available']:raise RuntimeError('Release checks require real pinned SDKs; skipped SDK tests are not a release pass')
-        steps=[('all-frontend',steps[-1][1])]
+        steps=[('filesystem-calibration',[python,str(root/'scripts/calibrate_release_tests.py')]),
+               ('all-frontend',steps[-1][1])]
         steps.extend(('python-'+path.stem,[python,str(root/'scripts/run_test_module.py'),path.name,
                                            '--tests-dir',str(root/'tests')])
                      for path in sorted((root/'tests').glob('*_test.py')))
@@ -186,7 +195,7 @@ def run(profile):
         target=directory/'report.json';temp=directory/'report.tmp';temp.write_text(json.dumps(report,indent=2));temp.replace(target)
     save();print(f'Test report: {directory}',flush=True)
     for name,command in plan:
-        started=time.perf_counter();row={'step':name,'status':'running','startedAt':datetime.now(timezone.utc).isoformat(),'log':name+'.log'};report['steps'].append(row);save()
+        row={'step':name,'status':'running','startedAt':datetime.now(timezone.utc).isoformat(),'log':name+'.log'};report['steps'].append(row);save()
         step=Step(logs,'runtime','test.'+name,identifier,profile=profile);print(f'STEP_STARTED {name}',flush=True)
         normal=normal_budget(profile,name,command)
         prompt_after=prompt_after_seconds(normal)
