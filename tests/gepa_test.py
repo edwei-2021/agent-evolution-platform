@@ -19,6 +19,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_dataset import dataset, GROUPS, skill
 from adaptive_validation import current as validation_calibration
 from gepa_validation_budget import smoke_budget
+from validation_wait import first_request, startup_budget
 from gepa_engine import verify
 from repair_engine import trusted_test
 from runtime_service import RuntimeService, ROLES
@@ -111,7 +112,9 @@ class Model(BaseHTTPRequestHandler):
 class GepaWorkflowTests(unittest.TestCase):
     def setUp(self):
         # Include serial GEPA search and final rollouts before freezing the run.
-        self.workflow_seconds = smoke_budget(validation_calibration()['perCallIoAllowanceSeconds'])['workflowSeconds']
+        io_seconds = validation_calibration()['perCallIoAllowanceSeconds']
+        self.workflow_seconds = smoke_budget(io_seconds)['workflowSeconds']
+        self.startup_seconds = startup_budget(io_seconds, self.workflow_seconds)
         Model.calls=[];Model.mode='good';Model.gate=None;Model.entered.clear()
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
         self.model=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.model.serve_forever,daemon=True);self.thread.start()
@@ -232,7 +235,8 @@ class GepaWorkflowTests(unittest.TestCase):
         self.service.gepa.freeze=lambda options:{**original(options),'callBudget':1}
         done=self.finish(self.start()['id']);self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),1)
     def test_cancel_stops_actual_gepa_sdk_process(self):
-        Model.gate=threading.Event();run=self.start();self.assertTrue(Model.entered.wait(15))
+        Model.gate=threading.Event();run=self.start()
+        first_request(Model.entered,self.service,run['id'],self.startup_seconds,label='gepa-cancel')
         with self.assertRaises(RuntimeError):self.service.ollama.start_warmup(1,15)
         self.service.cancel(run['id']);done=self.finish(run['id']);self.assertEqual(done['status'],'cancelled');self.assertFalse(self.service.ollama.operation.locked())
         directory=self.service.local/'runs'/run['id'];calls=json.loads((directory/'gepa-calls.json').read_text());self.assertEqual(calls[-1]['status'],'cancelled')
