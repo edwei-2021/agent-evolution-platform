@@ -122,7 +122,7 @@ def main(args):
         save()
         if code:
             report.update(status='blocked',blocked_by=name,
-                remediation='Inspect '+name+'.log and referenced support directory. Dependent steps were not started.')
+                remediation='Inspect '+name+'.log and referenced support directory (including fatal.log/environment.json for a native crash). Dependent steps were not started.')
             save()
             print(json.dumps(report,indent=2),flush=True)
             print('SUPPORT:',directory/'report.json',flush=True)
