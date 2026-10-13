@@ -71,7 +71,11 @@ def main(argv=None):
     sys.path.insert(0, str(tests_dir))
     suite = unittest.defaultTestLoader.discover(str(tests_dir), pattern=args.pattern,
                                                 top_level_dir=str(tests_dir))
-    runner = unittest.TextTestRunner(stream=sys.stderr, verbosity=2, resultclass=TimedResult)
+    # A release gate only needs the first failing case to block the next step.
+    # Continuing after a bounded workflow timeout can add minutes without
+    # improving the evidence for that first failure.
+    runner = unittest.TextTestRunner(stream=sys.stderr, verbosity=2,
+                                     resultclass=TimedResult, failfast=True)
     result = runner.run(suite)
     print('TEST_MODULE_RESULT ' + json.dumps({
         'pattern': args.pattern, 'testsRun': result.testsRun,
