@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 import pytest
 from platform_m.store import Store
 
@@ -19,25 +20,31 @@ def test_backup_restores_database_and_events(tmp_path):
     store.backup(tmp_path/'restore.db')
     assert Store(tmp_path/'restore.db').events('task') == store.events('task')
 
-def test_checkout_move_preserves_settings_and_rebuilds_env(tmp_path):
-    source = tmp_path/'nanobot-gepa-mvp'
-    source.mkdir()
-    subprocess.run(['git', 'init', str(source)], check=True, capture_output=True)
-    subprocess.run(['git', 'remote', 'add', 'origin', 'https://github.com/edwei-2021/nanobot-gepa-mvp.git'],
-                   cwd=source, check=True)
-    (source/'.local').mkdir()
-    (source/'.local/settings.json').write_text('{"model":"saved"}')
-    (source/'.venv').mkdir()
-    (source/'.venv/old-path').write_text(str(source))
-    destination = tmp_path/'agent-evolution-platform'
-    module = migration_module()
-    assert module.move(source, destination)['apply'] is False
-    assert source.exists() and not destination.exists()
-    report = module.move(source, destination, True)
-    assert report['status'] == 'moved'
-    assert json.loads((destination/'.local/settings.json').read_text())['model'] == 'saved'
-    assert not (destination/'.venv').exists()
-    assert list(destination.glob('.venv.before-migration-*'))
+def test_checkout_move_preserves_settings_and_rebuilds_env():
+    # WSL DrvFS under /mnt/d can deny directory rename even on the same drive.
+    # This test covers the rename mode on WSL's native Linux filesystem; the
+    # adjacent verified-copy test covers the supported /mnt/d migration mode.
+    native_tmp = Path('/tmp') if Path('/tmp').is_dir() else Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(prefix='aep-m1-rename-', dir=native_tmp) as directory:
+        tmp_path = Path(directory)
+        source = tmp_path/'nanobot-gepa-mvp'
+        source.mkdir()
+        subprocess.run(['git', 'init', str(source)], check=True, capture_output=True)
+        subprocess.run(['git', 'remote', 'add', 'origin', 'https://github.com/edwei-2021/nanobot-gepa-mvp.git'],
+                       cwd=source, check=True)
+        (source/'.local').mkdir()
+        (source/'.local/settings.json').write_text('{"model":"saved"}')
+        (source/'.venv').mkdir()
+        (source/'.venv/old-path').write_text(str(source))
+        destination = tmp_path/'agent-evolution-platform'
+        module = migration_module()
+        assert module.move(source, destination)['apply'] is False
+        assert source.exists() and not destination.exists()
+        report = module.move(source, destination, True)
+        assert report['status'] == 'moved'
+        assert json.loads((destination/'.local/settings.json').read_text())['model'] == 'saved'
+        assert not (destination/'.venv').exists()
+        assert list(destination.glob('.venv.before-migration-*'))
 
 def test_migration_refuses_running_supervisor_and_existing_destination(tmp_path):
     import fcntl
