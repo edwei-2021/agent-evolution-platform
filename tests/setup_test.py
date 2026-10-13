@@ -136,6 +136,15 @@ class InstallerTests(unittest.TestCase):
             venv.assert_not_called()
 
 
+    def test_installer_uses_quick_release_gated_checks(self):
+        with patch.object(setup, 'find_node', return_value={'path': 'node'}), \
+             patch.object(setup, 'run') as run:
+            setup.run_tests(Path('/project'))
+        self.assertEqual(run.call_count, 1)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[1:], ['scripts/check_steps.py', '--profile', 'quick'])
+
+
 class GuiServerTests(unittest.TestCase):
     def test_serves_assets_but_not_checkout_secrets_or_external_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:

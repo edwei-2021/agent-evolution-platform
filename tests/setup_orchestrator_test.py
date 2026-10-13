@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import io
 import unittest
 from unittest.mock import patch
 from argparse import Namespace
@@ -13,6 +14,14 @@ module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 class SetupOrchestratorTests(unittest.TestCase):
+    def test_setup_baseline_adapts_to_successful_stage_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            report=root/'.local/setup-reports/SETUP-old/report.json'
+            report.parent.mkdir(parents=True)
+            report.write_text('{"steps":[{"step":"base-environment","status":"passed","started_at":100,"finished_at":120}]}')
+            self.assertEqual(module.normal_budget('base-environment',300,root),30)
+
     def test_exit_code_and_redacted_log_are_retained(self):
         with tempfile.TemporaryDirectory() as directory:
             target=Path(directory)/'test.log'
@@ -41,6 +50,36 @@ class SetupOrchestratorTests(unittest.TestCase):
             code=module.execute([sys.executable,'-c','import time;time.sleep(5)'],directory,
                                 os.environ.copy(),Path(directory)/'timeout.log',.05)
             self.assertEqual(code,124)
+
+
+    def test_long_step_reports_overrun_and_stops_when_user_declines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log=Path(directory)/'wait.log'
+            with patch('sys.stdin',io.StringIO('n\n')),patch('builtins.print') as output:
+                code=module.execute([sys.executable,'-c','import time;time.sleep(5)'],directory,
+                                    os.environ.copy(),log,2,.01,'slow fixture')
+            self.assertEqual(code,125)
+            messages=' '.join(str(call.args[0]) for call in output.call_args_list)
+            self.assertIn('SETUP_OVERRUN',messages)
+            self.assertIn('SETUP_EXPECTED',messages)
+            self.assertIn('SETUP_WAIT_DECISION',messages)
+            self.assertIn('SETUP_WAIT_DECLINED',messages)
+
+    def test_long_step_continues_reporting_after_user_approval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log=Path(directory)/'wait.log'
+            with patch('sys.stdin',io.StringIO('yes\n')),patch('builtins.print') as output:
+                code=module.execute([sys.executable,'-c','import time;time.sleep(.3)'],directory,
+                                    os.environ.copy(),log,1,.01,'slow fixture')
+            self.assertEqual(code,0)
+            messages=' '.join(str(call.args[0]) for call in output.call_args_list)
+            self.assertIn('SETUP_WAIT_APPROVED',messages)
+            self.assertIn('over_normal_seconds=',messages)
+
+    def test_prompt_is_ten_times_normal_capped_at_thirty_minutes(self):
+        self.assertEqual(module.prompt_after_seconds(15),150)
+        self.assertEqual(module.prompt_after_seconds(600),1800)
+        self.assertEqual(module.prompt_after_seconds(2000),2000)
 
     def test_calibration_failure_retains_support_and_blocks_dispatch(self):
         with tempfile.TemporaryDirectory() as directory:

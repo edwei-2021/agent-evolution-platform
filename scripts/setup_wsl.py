@@ -236,13 +236,12 @@ def create_venv(root=ROOT):
 
 
 def run_tests(root=ROOT):
-    node = find_node(root)
-    if not node:
-        raise RuntimeError('A supported Linux Node runtime is required for tests.')
-    run([node['path'], '--test', *sorted((root / 'tests').glob('*.test.js'))], cwd=root)
-    # Show the exact case and stop after the first failure. Continuing dozens
-    # of workflow cases hides the initial problem on a slow WSL drive.
-    run([root / '.venv/bin/python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', '*_test.py', '-v', '-f'], cwd=root)
+    if not find_node(root):
+        raise RuntimeError('A supported Linux Node runtime is required for checks.')
+    # Installation runs the fast, persisted quick profile. The full legacy
+    # suite is reserved for the SDK-backed M7 release gate, avoiding duplicate
+    # nested workflows on slow mounted Windows filesystems.
+    run([root / '.venv/bin/python', 'scripts/check_steps.py', '--profile', 'quick'], cwd=root)
 
 
 def main(argv=None):
@@ -273,7 +272,9 @@ def main(argv=None):
     if not final['ready']:
         raise RuntimeError('Environment is still incomplete; see the check output above.')
     run_tests()
-    final['tests_passed'] = True
+    final['quick_tests_passed'] = True
+    final['validation_profile'] = 'quick'
+    final['full_regression_status'] = 'deferred to SDK-backed M7 release gate'
     final['node_download'] = node_download
     final['git_commit'] = capture(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'])
     target = ROOT / '.local' / 'environment.json'

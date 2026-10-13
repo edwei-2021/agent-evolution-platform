@@ -3,23 +3,62 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import io
+import os
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import check_steps
+from check_steps import supervise
 
 class CheckStepsTests(unittest.TestCase):
+    def test_prompt_is_ten_times_normal_capped_at_thirty_minutes(self):
+        self.assertEqual(check_steps.prompt_after_seconds(15),150)
+        self.assertEqual(check_steps.prompt_after_seconds(600),1800)
+        self.assertEqual(check_steps.prompt_after_seconds(2000),2000)
     def test_quick_plan_and_release_sdk_requirement(self):
         with patch('check_steps.find_node',return_value={'path':'node'}),patch('check_steps.sdk_status',return_value={'available':False}):
-            steps=check_steps.stages('quick');self.assertEqual([s[0] for s in steps],['trace','evaluator','frontend'])
+            steps=check_steps.stages('quick');self.assertEqual([s[0] for s in steps],['installer','setup-control','completion','journal','model-transport','step-trace','batch-evaluator','trace-journal','frontend']);self.assertNotIn('llm_test.py',' '.join(' '.join(step[1]) for step in steps))
             with self.assertRaises(RuntimeError):check_steps.stages('release')
         with patch('check_steps.find_node',return_value={'path':'node'}),patch('check_steps.sdk_status',return_value={'available':True,'python':'sdk-python'}),patch('check_steps.gepa_status',return_value={'available':True}):
             plan=check_steps.stages('release');self.assertEqual(len(plan),2);self.assertIn('*_test.py',plan[1][1]);self.assertEqual(plan[1][1][0],'sdk-python')
+
+    def test_overrun_reports_duration_and_user_decline_stops_process(self):
+        with tempfile.TemporaryDirectory() as root:
+            process=__import__('subprocess').Popen([sys.executable,'-c','import time;time.sleep(5)'],start_new_session=True)
+            with patch('check_steps.sys.stdin',io.StringIO('n\n')),patch('builtins.print') as output:
+                result=supervise(process,'slow-fixture',.01,2,interval=.01)
+            self.assertEqual(result['exitCode'],125)
+            self.assertTrue(result['stoppedByUser'])
+            self.assertFalse(result['extensionApproved'])
+            self.assertTrue(any('TEST_WAIT_DECISION' in str(c.args[0]) for c in output.call_args_list))
+            with self.assertRaises(ProcessLookupError):os.kill(process.pid,0)
+
+    def test_monitor_reports_each_overrun_and_continues_after_approval(self):
+        import subprocess
+        process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(.2)'],start_new_session=True)
+        with patch('check_steps.sys.stdin',io.StringIO('yes\n')),patch('builtins.print') as output:
+            result=supervise(process,'slow-fixture',.01,1,interval=.01)
+        self.assertEqual(result['exitCode'],0)
+        self.assertTrue(result['extensionApproved'])
+        self.assertTrue(any('TEST_WAIT_APPROVED' in str(c.args[0]) for c in output.call_args_list))
+        self.assertGreater(result['overNormalSeconds'],0.1)
+
+    def test_hard_limit_reports_overrun_before_stopping(self):
+        import subprocess
+        process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(5)'],start_new_session=True)
+        with patch('builtins.print') as output:
+            result=supervise(process,'hard-limit-fixture',.01,.08,interval=.01)
+        self.assertEqual(result['exitCode'],124)
+        self.assertTrue(any('TEST_HARD_LIMIT' in str(c.args[0]) and 'over_normal_seconds=' in str(c.args[0])
+                            for c in output.call_args_list))
+
     def test_success_report_has_each_started_and_completed_step(self):
         with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)),patch('check_steps.stages',return_value=[('one',[sys.executable,'-c','print("PASS one")']),('two',[sys.executable,'-c','print("PASS two")'])]):
             self.assertEqual(check_steps.run('quick'),0);path=next(Path(root).glob('.local/test-reports/*/report.json'));data=json.loads(path.read_text())
             self.assertEqual(data['status'],'completed');self.assertEqual(len(data['steps']),2)
             self.assertTrue(all(s['startedAt'] and s['finishedAt'] and s['durationMs']>=0 for s in data['steps']))
+            self.assertTrue(all(s['normalSeconds'] and s['promptAfterSeconds'] and s['maximumSeconds'] for s in data['steps']))
             self.assertIn('PASS one',(path.parent/'one.log').read_text())
     def test_failure_stops_next_stage_and_preserves_stdout_and_exit_code(self):
         with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)),patch('check_steps.stages',return_value=[('failed',[sys.executable,'-c','print("FAIL details"); raise SystemExit(3)']),('never',[sys.executable,'-c','print("should not run")'])]):

@@ -125,7 +125,10 @@ class RuntimeTests(unittest.TestCase):
             service = RuntimeService(tmp)
             try:
                 run = service.start(registry(), 'request-native')
-                done = wait_for(service, run['id'], lambda r: r['status'] in ('completed', 'failed'), timeout=30)
+                # This workflow launches nested JS/Python checks. Wait on terminal persistence
+                # using the supervisor's bounded per-role execution limits.
+                timeout = len(ROLES) * service.stage_timeout + 15
+                done = service.wait_for_terminal(run['id'], timeout)
                 self.assertEqual(done['status'], 'completed', done)
                 self.assertTrue(done['checksPassed'])
                 self.assertIn('review.json', done['artifacts'])
