@@ -7,6 +7,29 @@ import sys
 import time
 import unittest
 
+ROOT = Path(__file__).resolve().parents[1]
+GEPA_FULL_CASES = ('test_actual_js_client_to_python_api_dispatch_and_result_validation',
+                   'test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate',
+                   'test_perfect_seed_skips_proposals_and_cannot_release_without_improvement',
+                   'test_heldout_regression_blocks_release_even_with_validation_improvement')
+
+
+def expected_case_seconds(identifier):
+    if not identifier.startswith('gepa_test.'):
+        return None
+    if '.DatasetTests.' in identifier:
+        return 30
+    if identifier.rsplit('.', 1)[-1] not in GEPA_FULL_CASES:
+        return 60
+    from gepa_validation_budget import smoke_budget
+    try:
+        report=json.loads((ROOT/'.local/test-reports/validation-calibration.json').read_text())
+        io=float(report['perCallIoAllowanceSeconds'])
+    except (OSError,ValueError,TypeError,KeyError):
+        from adaptive_validation import current
+        io=float(current()['perCallIoAllowanceSeconds'])
+    return smoke_budget(io)['normalSeconds']
+
 
 class TimedResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
@@ -18,6 +41,9 @@ class TimedResult(unittest.TextTestResult):
     def startTest(self, test):
         key = test.id()
         self.started[key] = time.monotonic()
+        normal=expected_case_seconds(key)
+        if normal is not None:
+            print('TEST_CASE_EXPECTED ' + json.dumps({'test':key,'normalSeconds':normal},ensure_ascii=False),flush=True)
         print('TEST_CASE_STARTED ' + json.dumps({'test': key}, ensure_ascii=False), flush=True)
         super().startTest(test)
 
