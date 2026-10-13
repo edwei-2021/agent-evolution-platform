@@ -1,16 +1,20 @@
 """Real GEPA + nanobot integration with loopback model and trusted evaluators."""
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from functools import partial
+import faulthandler
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_dataset import dataset, GROUPS, skill
 from gepa_engine import verify
@@ -109,8 +113,51 @@ class GepaWorkflowTests(unittest.TestCase):
         self.model=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.model.serve_forever,daemon=True);self.thread.start()
         self.service.ollama.save({**DEFAULTS,'host':'127.0.0.1','port':self.model.server_port,'model':'mock-gepa:local','inferenceTimeout':10,'maxTokens':512},0)
     def tearDown(self):
+        result=getattr(getattr(self,'_outcome',None),'result',None)
+        failed=result is not None and any(test is self for test,_ in result.failures+result.errors)
+        support=None
+        if failed:
+            report_root=Path(os.environ.get('AEP_TEST_REPORT_DIR',
+                str(Path(__file__).resolve().parents[1]/'.local/test-reports')))
+            support=report_root/'failure-evidence'/'gepa_test'/(
+                self._testMethodName+'-'+uuid.uuid4().hex)
+            try:
+                support.mkdir(parents=True)
+                with self.service.lock:
+                    run=self.service.current or {}
+                    roles=[{key:agent.get(key) for key in ('role','status','pid','exitCode','error','updatedAt')}
+                           for agent in run.get('agents',[])]
+                    run_id=run.get('id')
+                    status=run.get('status')
+                progress_path=self.service.local/'runs'/str(run_id)/'gepa-progress.json'
+                try:
+                    progress=json.loads(progress_path.read_text())
+                except (OSError,ValueError):
+                    progress={}
+                last=progress.get('lastCall') or {}
+                diagnostic={'test':self.id(),'capturedAtEpoch':time.time(),
+                    'runId':run_id,'runStatus':status,'roles':roles,
+                    'phase':progress.get('phase'),'activeRollout':progress.get('activeRollout'),
+                    'activeTask':progress.get('activeTask'),'modelRequestsReceived':len(Model.calls),
+                    'lastCall':{key:last.get(key) for key in
+                                ('id','kind','status','startedAt','deadlineEpoch','timeoutSeconds')},
+                    'supervisorThreadAlive':bool(self.service.thread and self.service.thread.is_alive())}
+                (support/'diagnostic.json').write_text(json.dumps(diagnostic,indent=2))
+                with (support/'threads.log').open('w') as stream:
+                    faulthandler.dump_traceback(file=stream,all_threads=True)
+            except (OSError,ValueError,RuntimeError) as exc:
+                print(f'GEPA_TEST_SUPPORT_ERROR {type(exc).__name__}: {exc}',flush=True)
         if Model.gate:Model.gate.set()
-        self.service.close();self.model.shutdown();self.model.server_close();self.thread.join();self.temp.cleanup()
+        try:
+            self.service.close();self.model.shutdown();self.model.server_close();self.thread.join()
+        finally:
+            if support and support.is_dir():
+                try:
+                    shutil.copytree(self.temp.name,support/'run')
+                    print(f'GEPA_TEST_SUPPORT {support}',flush=True)
+                except (OSError,shutil.Error) as exc:
+                    print(f'GEPA_TEST_SUPPORT_ERROR {type(exc).__name__}: {exc}',flush=True)
+            self.temp.cleanup()
     def start(self,**changes):
         options={'profile':'smoke','maxSeconds':120,'callTimeoutSeconds':10,'taskCallBudget':6,'metricBudget':8,'proposalBudget':2,'providerRevision':1,'expectedRevision':1,**changes}
         registry={'agents':[{'id':'AG-'+str(i),'name':r,'role':r,'enabled':True} for i,r in enumerate(ROLES)]}
