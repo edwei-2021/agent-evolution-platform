@@ -93,6 +93,23 @@ class CheckStepsTests(unittest.TestCase):
         self.assertTrue(any('TEST_HARD_LIMIT' in str(c.args[0]) and 'over_normal_seconds=' in str(c.args[0])
                             for c in output.call_args_list))
 
+    def test_ctrl_c_is_distinguished_from_declining_the_wait_prompt(self):
+        class InterruptedProcess:
+            pid=999999
+            stdout=None
+            returncode=-15
+            def poll(self):return None
+            def wait(self,timeout=None):
+                if not hasattr(self,'interrupted'):
+                    self.interrupted=True
+                    raise KeyboardInterrupt
+                return self.returncode
+        process=InterruptedProcess()
+        with patch('check_steps.os.killpg'),patch('builtins.print'):
+            result=supervise(process,'ctrl-c-fixture',10,20)
+        self.assertEqual(result['exitCode'],130)
+        self.assertEqual(result['stopReason'],'ctrl_c')
+
     def test_success_report_has_each_started_and_completed_step(self):
         with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)),patch('check_steps.stages',return_value=[('one',[sys.executable,'-c','print("PASS one")']),('two',[sys.executable,'-c','print("PASS two")'])]):
             self.assertEqual(check_steps.run('quick'),0);path=next(Path(root).glob('.local/test-reports/*/report.json'));data=json.loads(path.read_text())

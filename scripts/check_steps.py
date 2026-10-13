@@ -216,4 +216,7 @@ def run(profile):
     return int(report['status']!='completed')
 
 if __name__=='__main__':
+    def terminate_as_interrupt(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM,terminate_as_interrupt)
     parser=argparse.ArgumentParser();parser.add_argument('--profile',choices=['quick','model','release'],default='quick');args=parser.parse_args();raise SystemExit(run(args.profile))
