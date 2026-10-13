@@ -24,7 +24,14 @@ def run(role,directory):
         evaluate_final(directory,cfg);result=verify(directory);write(directory/'gepa-evaluation.json',result);progress(directory,result=result)
         print('Independent baseline/selected validation and final tasks measured.',flush=True)
     elif role=='reviewer':
-        result=verify(directory)
+        from time import monotonic
+        started=monotonic()
+        def report_replay(completed,total):
+            progress(directory,verification={'role':'reviewer','verifiedRollouts':completed,
+                                             'totalRollouts':total,'elapsedSeconds':round(monotonic()-started,1)})
+            print(f'GEPA_REVIEW_PROGRESS verified_rollouts={completed}/{total} '
+                  f'elapsed_seconds={int(monotonic()-started)}',flush=True)
+        result=verify(directory,progress_callback=report_replay)
         if result!=json.loads((directory/'gepa-evaluation.json').read_text()):raise ValueError('Stored GEPA result differs from trusted evidence')
         write(directory/'review.json',result);progress(directory,result=result)
         print('Release gate verified: '+str(result['eligible'])+'; activation requires an explicit action.',flush=True)
