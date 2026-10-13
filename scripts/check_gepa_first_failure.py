@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import uuid
+from zipfile import ZipFile
 
 from adaptive_validation import current
 from check_steps import prompt_after_seconds, supervise
@@ -69,6 +70,12 @@ def main():
                     print(f'GEPA_DIAGNOSTIC_ARCHIVE {archive}', flush=True)
         report['supportArchives'] = archives
         report_path.write_text(json.dumps(report, indent=2))
+        for archive in archives:
+            # A single archive is sufficient for follow-up diagnosis, even if
+            # separate report/log attachments fail during upload.
+            with ZipFile(archive, 'a') as bundle:
+                bundle.write(report_path, 'report.json')
+                bundle.write(directory/'test.log', 'test.log')
         print(f'STEP_{report["status"].upper()} {CASE} {report["durationMs"]} ms', flush=True)
         print(f'GEPA_DIAGNOSTIC_REPORT {report_path}', flush=True)
         return 0 if report['status'] == 'completed' else 1
