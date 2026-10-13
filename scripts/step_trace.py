@@ -49,7 +49,14 @@ def traced(module,name):
             owner=getattr(obj,'session',obj)
             directory=bound.get('directory',getattr(obj,'directory',getattr(owner,'directory',None)))
             config=bound.get('config',bound.get('cfg',getattr(obj,'config',getattr(owner,'config',getattr(owner,'cfg',None)))))
-            logs,run_id=context(directory,config)
+            # Model runners already own a journal. Reuse it instead of running
+            # schema/index initialization for every nested span and model call.
+            logs = getattr(getattr(owner, 'client', None), 'logs', None)
+            expected_root = (config or {}).get('logRoot', directory.parents[2])
+            if logs is not None and logs.path == Path(expected_root) / '.local/debug.sqlite3':
+                run_id = (config or {}).get('correlationRunId', (config or {}).get('runId', directory.name))
+            else:
+                logs,run_id=context(directory,config)
             details={k:bound[k] for k in ('role','stage','split') if isinstance(bound.get(k),str)}
             if isinstance(bound.get('name'),str):details['toolName']=bound['name']
             if isinstance(bound.get('task'),dict):details['taskId']=bound['task'].get('id')

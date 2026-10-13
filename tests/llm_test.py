@@ -204,7 +204,7 @@ class LlmWorkflowTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): self.service.start(registry(), 'model', 'llm-evolution', {**self.options(), 'profile': 'full'})
 
     def test_full_profile_has_exact_call_accounting_and_separate_holdout_selection(self):
-        run = self.service.start(registry(), 'full', 'llm-evolution', {**self.options(), 'profile': 'full'})
+        run = self.service.start(registry(), 'full', 'llm-evolution', {**self.options(), 'profile': 'full', 'maxSeconds': 300})
         done = finish(self.service, run['id'])
         self.assertEqual(done['status'], 'completed', done)
         self.assertEqual(done['llmResult']['calls'], 101)
