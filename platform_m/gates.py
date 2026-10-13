@@ -81,7 +81,8 @@ def normal_budget(root, step, command_index):
     return FIRST_RUN_SECONDS[step][command_index]
 
 def execute(command, root, environment, timeout=900, normal_seconds=30,
-            prompt_after=None, interval=REPORT_INTERVAL_SECONDS, input_fn=None):
+            prompt_after=None, interval=REPORT_INTERVAL_SECONDS, input_fn=None,
+            report_overrun=True):
     process = subprocess.Popen(command, cwd=root, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
     lines = queue.Queue()
@@ -98,7 +99,7 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
     prompted = approved = False
     input_fn = input_fn or input
     prompt_after = prompt_after_seconds(normal_seconds) if prompt_after is None else prompt_after
-    next_report = started + normal_seconds
+    next_report = started + normal_seconds if report_overrun else started + timeout
     output = []
     def terminate():
         try:
@@ -132,7 +133,7 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
             now = time.monotonic()
             elapsed = now - started
             overdue = max(0, elapsed - normal_seconds)
-            if now >= next_report and overdue:
+            if report_overrun and now >= next_report and overdue:
                 print(f'M_CHECK_OVERRUN over_normal_seconds={overdue:.1f} elapsed_seconds={elapsed:.0f} '
                       f'normal_seconds={normal_seconds}', flush=True)
                 next_report = now + interval
@@ -215,7 +216,8 @@ class Gates:
                           f'hard_limit_seconds={hard_limit} argv={display}', flush=True)
                     try:
                         code, output, timing = execute(command, self.root, env,
-                            timeout=hard_limit, normal_seconds=normal, prompt_after=prompt_after)
+                            timeout=hard_limit, normal_seconds=normal, prompt_after=prompt_after,
+                            report_overrun=not nested_monitor)
                     except (OSError, RuntimeError) as exc:
                         code, output, timing = 127, str(exc), {'elapsed_seconds': 0,
                             'over_normal_seconds': 0, 'extension_approved': False,

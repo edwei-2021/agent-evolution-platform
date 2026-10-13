@@ -5,10 +5,12 @@ import ast
 from datetime import datetime,timezone
 import json
 import os
+import queue
 import signal
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from debug_log import DebugLog
@@ -55,15 +57,50 @@ def normal_budget(profile, name, command=None, calibration=None):
         return max(15,round(estimate),historical)
     if profile=='quick':return max(45,historical)
     if profile=='model':return 600
+    if profile=='release' and name=='all-frontend':return max(45,historical)
+    if profile=='release' and name.startswith('python-'):
+        test_file=ROOT/'tests'/(name.removeprefix('python-')+'.py')
+        try:
+            tree=ast.parse(test_file.read_text())
+            count=sum(isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name.startswith('test_')
+                      for node in ast.walk(tree))
+        except (OSError,SyntaxError):count=1
+        # First run estimates per module; successful timings then adapt by module.
+        return max(30,min(900,15+count*10),historical)
     return 900
 
-def supervise(process, name, normal, maximum, interval=5):
+def supervise(process, name, normal, maximum, interval=5, *, output_path=None, progress_interval=30):
     started=time.monotonic();prompted=False;approved=False;declined=False
+    events=queue.Queue();reader=None;last_output='';next_progress=started+progress_interval
+    if process.stdout is not None:
+        def collect():
+            try:
+                for line in process.stdout:events.put(line)
+            finally:
+                process.stdout.close()
+                events.put(None)
+        reader=threading.Thread(target=collect,name='check-step-output',daemon=True);reader.start()
+    def drain():
+        nonlocal last_output
+        while True:
+            try:line=events.get_nowait()
+            except queue.Empty:break
+            if line is None:continue
+            last_output=line.rstrip()[-400:]
+            if output_path is not None:output_path.write(line);output_path.flush()
+            print(line,end='',flush=True)
+    next_overrun=None
     while process.poll() is None:
+        drain()
         elapsed=time.monotonic()-started
         over=round(max(0,elapsed-normal),1)
-        if over:
+        if elapsed>=next_progress:
+            print(f'TEST_PROGRESS step={name} elapsed_seconds={int(elapsed)} over_normal_seconds={over} '
+                  f'last_output={last_output or "waiting_for_test_output"}',flush=True)
+            next_progress=time.monotonic()+progress_interval
+        if over and (next_overrun is None or time.monotonic()>=next_overrun):
             print(f'TEST_OVERRUN step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} normal_seconds={normal}',flush=True)
+            next_overrun=time.monotonic()+interval
         if elapsed>=prompt_after_seconds(normal) and not prompted:
             prompted=True
             print(f'TEST_WAIT_DECISION step={name} exceeded_normal_seconds={over}. Continue waiting? [y/N] ',end='',flush=True)
@@ -81,7 +118,7 @@ def supervise(process, name, normal, maximum, interval=5):
                     process.wait()
                 return {'exitCode':125,'durationMs':round((time.monotonic()-started)*1000,3),
                         'overNormalSeconds':round(max(0,time.monotonic()-started-normal),1),
-                        'extensionApproved':False,'stoppedByUser':True}
+                        'extensionApproved':False,'stoppedByUser':True,'stopReason':'user_declined'}
             print(f'TEST_WAIT_APPROVED step={name}; continuing; over_normal_seconds={over}',flush=True)
         if elapsed>=maximum:
             print(f'TEST_HARD_LIMIT step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} hard_limit_seconds={maximum}; stopping process',flush=True)
@@ -95,7 +132,7 @@ def supervise(process, name, normal, maximum, interval=5):
             return {'exitCode':124,'durationMs':round((time.monotonic()-started)*1000,3),
                     'overNormalSeconds':round(max(0,time.monotonic()-started-normal),1),
                     'extensionApproved':approved,'stoppedByUser':False}
-        try:process.wait(timeout=min(interval,maximum-elapsed))
+        try:process.wait(timeout=min(.2,maximum-elapsed))
         except subprocess.TimeoutExpired:pass
         except KeyboardInterrupt:
             try:os.killpg(process.pid,signal.SIGTERM)
@@ -108,7 +145,9 @@ def supervise(process, name, normal, maximum, interval=5):
             elapsed=time.monotonic()-started
             return {'exitCode':130,'durationMs':round(elapsed*1000,3),
                     'overNormalSeconds':round(max(0,elapsed-normal),1),
-                    'extensionApproved':approved,'stoppedByUser':True}
+                    'extensionApproved':approved,'stoppedByUser':True,'stopReason':'ctrl_c'}
+    drain()
+    if reader is not None:reader.join(timeout=1)
     elapsed=time.monotonic()-started
     return {'exitCode':process.returncode,'durationMs':round(elapsed*1000,3),
             'overNormalSeconds':round(max(0,elapsed-normal),1),'extensionApproved':approved,
@@ -133,7 +172,10 @@ def stages(profile,root=ROOT):
         steps=[('repair-sdk',unit('repair_test.py','-v')),('gepa-sdk',unit('gepa_test.py','-v'))]
     elif profile=='release':
         if not sdk['available'] or not gepa_status(root)['available']:raise RuntimeError('Release checks require real pinned SDKs; skipped SDK tests are not a release pass')
-        steps=[('all-frontend',steps[-1][1]),('all-python',unit('*_test.py','-v'))]
+        steps=[('all-frontend',steps[-1][1])]
+        steps.extend(('python-'+path.stem,[python,str(root/'scripts/run_test_module.py'),path.name,
+                                           '--tests-dir',str(root/'tests')])
+                     for path in sorted((root/'tests').glob('*_test.py')))
     elif profile!='quick':raise ValueError('Unknown test profile')
     return steps
 
@@ -153,11 +195,17 @@ def run(profile):
         print(f'STEP_EXPECTED {name} normal_seconds={normal} prompt_after_seconds={prompt_after} hard_limit_seconds={maximum}',flush=True)
         try:
             with (directory/row['log']).open('w') as output:
-                process=subprocess.Popen(command,cwd=ROOT,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
-                observed=supervise(process,name,normal,maximum)
-            row.update(status='stopped' if observed['stoppedByUser'] else 'completed' if observed['exitCode']==0 else 'failed',
+                process=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                                         text=True,bufsize=1,start_new_session=True)
+                observed=supervise(process,name,normal,maximum,output_path=output)
+            row.update(status='stopped' if observed.get('stopReason')=='user_declined' else
+                       'completed' if observed['exitCode']==0 else 'failed',
                        exitCode=observed['exitCode'],durationMs=observed['durationMs'],
                        overNormalSeconds=observed['overNormalSeconds'],extensionApproved=observed['extensionApproved'])
+            if observed.get('stopReason')=='ctrl_c':row['interruptedBy']='Ctrl-C'
+            log_text=(directory/row['log']).read_text(errors='replace')
+            row['testCases']=[json.loads(line.removeprefix('TEST_CASE_RESULT '))
+                              for line in log_text.splitlines() if line.startswith('TEST_CASE_RESULT ')]
             if row['status']=='stopped':row['error']='User chose to stop after the test exceeded ten times its normal duration.'
         except OSError as exc:row.update(status='failed',error=str(exc))
         row.update(finishedAt=datetime.now(timezone.utc).isoformat());save()

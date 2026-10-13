@@ -48,6 +48,15 @@ def test_command_monitor_keeps_a_finite_hard_limit_after_wait_approval():
     assert code==124 and timing['extension_approved']
     assert 'M_CHECK_HARD_LIMIT' in output
 
+def test_nested_monitor_does_not_duplicate_overrun_heartbeat():
+    command=[sys.executable,'-u','-c','import time;time.sleep(.08)']
+    terminal=io.StringIO()
+    with redirect_stdout(terminal):
+        code,_,_=execute(command,Path.cwd(),os.environ,timeout=1,normal_seconds=.01,
+                         prompt_after=2,interval=.01,report_overrun=False)
+    assert code==0
+    assert 'M_CHECK_OVERRUN' not in terminal.getvalue()
+
 def test_failure_generates_bundle_and_blocks_following_command(tmp_path):
     subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
     (tmp_path/'input.txt').write_text('fixture')
