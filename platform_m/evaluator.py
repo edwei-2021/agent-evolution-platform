@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
 import uuid
 from .evidence import digest
 
@@ -24,6 +25,43 @@ def command(image, name):
             '--user=65534:65534', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=32',
             '--memory=256m', '--memory-swap=256m', '--cpus=1', '--tmpfs=/tmp:rw,noexec,nosuid,size=16m',
             '--label=aep.phase=M4', image]
+
+def cleanup_container(name, timeout=5):
+    """Remove an evaluator container and verify removal with bounded retries."""
+    deadline = time.monotonic() + timeout
+    result = {'container': name, 'removed': False, 'remove_exit_code': None,
+              'remove_stderr': '', 'inspect_exit_code': None, 'inspect_stderr': '',
+              'last_state': None}
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            removed = subprocess.run(['docker', 'rm', '-f', name], capture_output=True,
+                                     text=True, timeout=min(3, remaining))
+            result['remove_exit_code'] = removed.returncode
+            result['remove_stderr'] = removed.stderr[:1000]
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            result['remove_stderr'] = str(exc)[:1000]
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            inspected = subprocess.run(['docker', 'container', 'inspect', '--format', '{{.State.Status}}', name],
+                                       capture_output=True, text=True, timeout=min(3, remaining))
+            result['inspect_exit_code'] = inspected.returncode
+            result['inspect_stderr'] = inspected.stderr[:1000]
+            result['last_state'] = inspected.stdout.strip() or None
+            error = inspected.stderr.lower()
+            if inspected.returncode != 0 and ('no such' in error or 'not found' in error):
+                result['removed'] = True
+                break
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            result['inspect_stderr'] = str(exc)[:1000]
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(0.25, remaining))
+    return result
 
 def evaluate(jobs, image, timeout=10):
     if not isinstance(jobs, list) or not 1 <= len(jobs) <= 32:
@@ -62,12 +100,12 @@ def evaluate(jobs, image, timeout=10):
     except (OSError, ValueError):
         status, reason = 'invalid_evaluation', 'infrastructure'
     finally:
-        subprocess.run(['docker', 'rm', '-f', name], capture_output=True, text=True, timeout=15)
-        inspect = subprocess.run(['docker', 'container', 'inspect', name], capture_output=True, text=True, timeout=15)
-        cleanup['removed'] = inspect.returncode != 0 and 'No such' in inspect.stderr
+        evaluation_status, evaluation_reason = status, reason
+        cleanup = cleanup_container(name)
         if not cleanup['removed']:
             status, reason = 'invalid_evaluation', 'integrity'
     return {'verdict': status, 'failure_category': reason, 'results': results, 'image': pinned,
+            'evaluation_verdict': evaluation_status, 'evaluation_failure_category': evaluation_reason,
             'request_hash': digest(jobs), 'output_hash': digest(output), 'cleanup': cleanup,
             'stderr': error[:4000], 'command': cmd}
 
