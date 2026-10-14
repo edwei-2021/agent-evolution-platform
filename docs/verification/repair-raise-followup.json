@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "kind": "repair-exception-syntax-contract",
+  "date": "2026-10-15",
+  "publicEvidenceScope": "Repository-owned test contracts and aggregate local verification only. Uploaded incident identifiers, model/provider metadata, original candidate payloads and attachment hashes are omitted.",
+  "oldCodeReproduction": {
+    "case": "repair_test.EvaluatorTests.test_exception_class_and_instance_forms_pass_independent_tests",
+    "successful": false,
+    "error": "Only raise ValueError is permitted"
+  },
+  "focusedVerification": {
+    "unittestCases": [
+      "repair_test.EvaluatorTests.test_exception_class_and_instance_forms_pass_independent_tests",
+      "repair_test.EvaluatorTests.test_exception_syntax_rejects_other_types_chaining_and_shadowing",
+      "repair_test.EvaluatorTests.test_unsafe_python_cannot_run_or_change_trusted_tests",
+      "gepa_test.DatasetTests.test_bare_valueerror_passes_all_exception_bearing_grouped_fixtures",
+      "repair_test.SdkWorkflowTests.test_recorded_bare_valueerror_candidate_completes_actual_sdk_and_review",
+      "repair_test.SdkWorkflowTests.test_model_call_budget_is_an_absolute_dispatch_cap"
+    ],
+    "unittestPassed": 6,
+    "unittestSkipped": 0,
+    "m4Cases": [
+      "test_packaged_evaluator_entrypoint_accepts_exception_class_and_rejects_chaining",
+      "test_container_command_enforces_digest_and_boundaries"
+    ],
+    "m4Passed": 2,
+    "m4Skipped": 0,
+    "m4Deselected": 4,
+    "ruff": "passed"
+  },
+  "contracts": {
+    "accepted": [
+      "ValueError class",
+      "ValueError instance without arguments",
+      "ValueError instance with bounded message"
+    ],
+    "rejected": [
+      "other exception classes",
+      "bare re-raise",
+      "explicit exception chaining",
+      "attributes",
+      "keyword arguments",
+      "trusted-builtin shadowing"
+    ],
+    "sdkFixture": {
+      "assertedBy": "repair_test.SdkWorkflowTests.test_recorded_bare_valueerror_candidate_completes_actual_sdk_and_review",
+      "sdkVersion": "0.3.5",
+      "provider": "loopback scripted fixture",
+      "callBudget": 8,
+      "completedCalls": 4,
+      "tools": 3,
+      "visiblePassed": 6,
+      "hiddenPassed": 6,
+      "reviewerReplay": true,
+      "providerSlotReleased": true
+    },
+    "gepaFixtures": {
+      "exceptionBearingTasks": 15,
+      "evaluationJobs": 30,
+      "passedTaskChecks": 90
+    },
+    "packagedEvaluator": "Copied repository evaluator/validator files under python -I -S; accepted class form and rejected chaining"
+  },
+  "qualification": {
+    "fullM7Rerun": false,
+    "newUserModelInference": false,
+    "realDockerExecution": false,
+    "dockerImageRebuildNeeded": true,
+    "originalFailedRunsRemainHistorical": true
+  }
+}

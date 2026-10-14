@@ -21,7 +21,7 @@ from adaptive_validation import current as validation_calibration
 from gepa_validation_budget import smoke_budget
 from validation_wait import first_request, startup_budget
 from gepa_engine import verify
-from repair_engine import trusted_test
+from repair_engine import trusted_test, trusted_test_batch
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
 from serve_gui import GuiHandler, DIST
@@ -41,6 +41,18 @@ def source(task):
     return head+'    return '+expression+f'+({k})\n'
 
 class DatasetTests(unittest.TestCase):
+    def test_bare_valueerror_passes_all_exception_bearing_grouped_fixtures(self):
+        jobs=[]
+        for rows in dataset('full').values():
+            for task in rows:
+                body=source(task)
+                if 'raise ValueError(' not in body:continue
+                body=re.sub(r'raise ValueError\("[^"]*"\)', 'raise ValueError', body)
+                jobs.extend({'source':body,'split':split,'fixture':task['fixture']} for split in ('visible','hidden'))
+        self.assertEqual(len(jobs),30)
+        results=trusted_test_batch(jobs)
+        self.assertEqual(len(results),30)
+        self.assertTrue(all(r['passed']==r['total']==3 for r in results))
     def test_grouped_dataset_counts_and_golden_reference_sources(self):
         full=dataset('full');self.assertEqual([len(full[k]) for k in ('train','validation','heldout')],[20,10,20])
         smoke=dataset('smoke');self.assertEqual([len(smoke[k]) for k in ('train','validation','heldout')],[4,2,4])

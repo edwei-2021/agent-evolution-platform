@@ -32,6 +32,11 @@ def validate_source(source):
             if isinstance(n.ctx,ast.Store) and n.id in ('min','max','ValueError'): raise ValueError('Cannot replace trusted builtins')
         if isinstance(n,ast.Constant) and not (type(n.value) is int and abs(n.value)<=1000000 or type(n.value) is str and len(n.value)<=200 or n.value is None): raise ValueError('Unsupported constant')
         if isinstance(n,ast.Call) and (not isinstance(n.func,ast.Name) or n.func.id not in ('min','max','ValueError') or n.keywords or len(n.args)>3): raise ValueError('Only min, max and ValueError calls are permitted')
-        if isinstance(n,ast.Raise) and (n.cause or not isinstance(n.exc,ast.Call) or not isinstance(n.exc.func,ast.Name) or n.exc.func.id!='ValueError'): raise ValueError('Only raise ValueError is permitted')
+        if isinstance(n,ast.Raise):
+            # Python accepts both the trusted exception class and an instance.
+            # Keep every other exception, bare re-raise and explicit cause out.
+            target=n.exc.func if isinstance(n.exc,ast.Call) else n.exc
+            if n.cause is not None or not isinstance(target,ast.Name) or target.id!='ValueError':
+                raise ValueError('Only raise ValueError or raise ValueError(...) is permitted; exception chaining is unavailable')
         if isinstance(n,ast.Assign) and any(not isinstance(t,ast.Name) for t in n.targets): raise ValueError('Assign only local variables')
     return tree

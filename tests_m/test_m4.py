@@ -1,11 +1,29 @@
 import os
+import json
+from pathlib import Path
+import shutil
 import subprocess
+import sys
 import pytest
 from unittest.mock import patch
 from platform_m.evaluator import cleanup_container, command, evaluate, image_id
 from platform_m.evidence import Artifacts
 
 GOOD = 'def clamp(value, lower, upper):\n    if lower > upper:\n        raise ValueError("bounds")\n    return max(lower,min(value,upper))\n'
+BARE = GOOD.replace('ValueError("bounds")','ValueError')
+
+def test_packaged_evaluator_entrypoint_accepts_exception_class_and_rejects_chaining(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    for name in ('repair_fixture.py','repair_evaluator.py'):
+        shutil.copyfile(root/'scripts'/name,tmp_path/name)
+    command = [sys.executable,'-I','-S',str(tmp_path/'repair_evaluator.py')]
+    jobs = [{'source':BARE,'split':split} for split in ('visible','hidden')]
+    result = subprocess.run(command,input=json.dumps({'jobs':jobs}),text=True,capture_output=True,timeout=5)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [(r['passed'],r['total']) for r in json.loads(result.stdout)['results']] == [(6,6),(6,6)]
+    result = subprocess.run(command,input=json.dumps({'source':BARE.replace('raise ValueError','raise ValueError from None'),'split':'hidden'}),text=True,capture_output=True,timeout=5)
+    assert result.returncode != 0
+    assert 'exception chaining is unavailable' in json.loads(result.stdout)['error']
 
 def test_container_command_enforces_digest_and_boundaries():
     cmd = command('sha256:'+'a'*64, 'meval-'+'b'*32)
@@ -59,11 +77,11 @@ def test_real_docker_isolation_good_bad_malicious_and_cleanup():
     if os.environ.get('M_REQUIRE_DOCKER') != '1':
         pytest.skip('Component profile only; M4 acceptance requires M_REQUIRE_DOCKER=1')
     image = image_id(os.environ.get('M_EVALUATOR_IMAGE', 'aep-evaluator:m'))
-    for source, expected in [(GOOD,'pass'), ('def clamp(value, lower, upper):\n    return value\n','fail'),
+    for source, expected in [(GOOD,'pass'), (BARE,'pass'), ('def clamp(value, lower, upper):\n    return value\n','fail'),
                               ('import os\ndef clamp(value, lower, upper):\n    return os.open("/evaluator/repair_fixture.py",0)\n','fail')]:
         report = evaluate([{'source':source,'split':'hidden'}], image)
         assert report['verdict'] == expected and report['cleanup']['removed'], report
-        if source == GOOD:
+        if source in (GOOD,BARE):
             assert report['results'][0]['passed'] == report['results'][0]['total']
         elif source.startswith('def'):
             assert report['results'][0]['passed'] < report['results'][0]['total']

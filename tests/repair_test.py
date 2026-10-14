@@ -19,10 +19,26 @@ from ollama_bridge import DEFAULTS
 from serve_gui import GuiHandler,DIST
 
 GOOD='def clamp(value, lower, upper):\n    if lower > upper:\n        raise ValueError("invalid bounds")\n    return max(lower, min(value, upper))\n'
+# Valid exception-class spelling used by real tool-calling models.
+BARE='def clamp(value, lower, upper):\n    if lower > upper:\n        raise ValueError\n    return max(lower, min(value, upper))'
 try:SDK=importlib.metadata.version('nanobot-ai')=='0.3.5'
 except importlib.metadata.PackageNotFoundError:SDK=False
 
 class EvaluatorTests(unittest.TestCase):
+    def test_exception_class_and_instance_forms_pass_independent_tests(self):
+        for expression in ('ValueError', 'ValueError()', 'ValueError("invalid bounds")'):
+            source=BARE.replace('raise ValueError', 'raise '+expression)
+            for split in ('visible','hidden'):
+                with self.subTest(expression=expression,split=split):
+                    self.assertEqual(trusted_test(source,split)['passed'],6)
+    def test_exception_syntax_rejects_other_types_chaining_and_shadowing(self):
+        for expression in ('', 'TypeError', 'TypeError()', 'min', 'None',
+                           'ValueError from None', 'ValueError() from ValueError()',
+                           'ValueError.__class__', 'ValueError(message="bounds")'):
+            with self.subTest(expression=expression),self.assertRaises((ValueError,SyntaxError)):
+                validate_source(BARE.replace('raise ValueError','raise '+expression))
+        with self.assertRaisesRegex(ValueError,'Cannot replace trusted builtins'):
+            validate_source(BARE.replace('    if lower > upper:', '    ValueError = lower\n    if lower > upper:'))
     def test_independent_visible_hidden_scores_and_baseline_failures(self):
         self.assertLess(trusted_test(BASELINE,'visible')['passed'],6)
         for split in ('visible','hidden'):self.assertEqual(trusted_test(GOOD,split)['passed'],6)
@@ -62,7 +78,7 @@ class Model(BaseHTTPRequestHandler):
         elif self.mode=='budget':name,args='read_solution',{'path':'solution.py'};content=None
         elif self.mode=='escape':name,args='read_solution',{'path':'../outside'};content=None
         elif n==1:name,args='read_solution',{'path':'solution.py'};content=None
-        elif n==2:name,args='write_solution',{'path':'solution.py','source':GOOD.replace('\n','\r\n') if self.mode=='crlf' else GOOD};content=None
+        elif n==2:name,args='write_solution',{'path':'solution.py','source':BARE if self.mode=='bare' else GOOD.replace('\n','\r\n') if self.mode=='crlf' else GOOD};content=None
         elif n==3:name,args='run_tests',{};content=None
         else:content='Implemented inclusive bounds and ValueError for reversed bounds.'
         message={'role':'assistant','content':content};finish='stop'
@@ -126,6 +142,21 @@ class SdkWorkflowTests(unittest.TestCase):
         tools=json.loads((directory/'repair-tools.json').read_text());tools[1]['arguments']['source']=BASELINE
         (directory/'repair-tools.json').write_text(json.dumps(tools))
         with self.assertRaises(ValueError):verify(directory)
+    def test_recorded_bare_valueerror_candidate_completes_actual_sdk_and_review(self):
+        Model.mode='bare';done=self.finish(self.start(8)['id'])
+        self.assertEqual(done['status'],'completed',done)
+        result=done['repairResult']
+        self.assertTrue(result['repairPassed'])
+        self.assertEqual((result['calls'],result['toolCalls']),(4,3))
+        self.assertEqual([result['candidate'][s]['passed'] for s in ('visible','hidden')],[6,6])
+        directory=self.service.local/'runs'/done['id']
+        self.assertEqual((directory/'repair-candidate.py').read_text(),BARE)
+        self.assertEqual(json.loads((directory/'repair-sdk-result.json').read_text())['stopReason'],'completed')
+        tools=json.loads((directory/'repair-tools.json').read_text())
+        self.assertEqual([t['name'] for t in tools],['read_solution','write_solution','run_tests'])
+        self.assertTrue(all(t['status']=='completed' for t in tools))
+        self.assertEqual(verify(directory),result)
+        self.assertFalse(self.service.ollama.operation.locked())
     def test_fragmented_sse_tool_arguments_reconstruct_and_tampering_is_rejected(self):
         Model.mode='stream';run=self.start();done=self.finish(run['id']);self.assertEqual(done['status'],'completed',done)
         directory=self.service.local/'runs'/run['id'];calls=json.loads((directory/'repair-calls.json').read_text())
