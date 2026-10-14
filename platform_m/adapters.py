@@ -27,7 +27,8 @@ class NanobotAdapter:
         root, directory = Path(root), Path(directory)
         sdk = sdk_status(root)
         if not sdk['available']:
-            raise RuntimeError('DBG-M-002 install pinned nanobot SDK first')
+            import json
+            raise RuntimeError('DBG-M-002 SDK probe failed: '+json.dumps(sdk, ensure_ascii=False))
         if digest(config['skill']) != release['skill_hash'] or config['taskId'] != task.id:
             raise ValueError('Requested Skill/task snapshot mismatch')
         directory.mkdir(parents=True, exist_ok=False)
@@ -48,8 +49,15 @@ class NanobotAdapter:
                 if output['loaded_skill_hash'] != release['skill_hash']:
                     raise ValueError('Observed Skill hash mismatch')
                 status = 'succeeded'
-        except subprocess.TimeoutExpired:
-            status, output = 'timed_out', {'error': 'SDK task deadline reached'}
+        except subprocess.TimeoutExpired as exc:
+            def tail(value, size):
+                if isinstance(value, bytes):
+                    value = value.decode('utf-8', errors='replace')
+                return redact((value or '')[-size:])
+            status, output = 'timed_out', {'error': 'SDK task deadline reached',
+                'timeout_seconds': config['maxSeconds'], 'elapsed_seconds': time.monotonic()-started,
+                'python': sdk['python'], 'stdout': tail(exc.stdout, 4000), 'stderr': tail(exc.stderr, 8000),
+                'run_directory': str(directory)}
         evidence = artifacts.put({'adapter': self.version, 'status': status, 'output': output,
                                   'task_id': task.id, 'config_hash': digest(config)})
         return RunResult(run_id=identifier, task_id=task.id, status=status,

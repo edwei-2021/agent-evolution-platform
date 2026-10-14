@@ -10,6 +10,7 @@ import statistics
 import threading
 import time
 import uuid
+import zipfile
 from .contracts import StepCheck
 from .evidence import atomic_write, canonical, digest, redact
 from .store import Store
@@ -47,7 +48,7 @@ REPORT_INTERVAL_SECONDS = 5
 MAX_PROMPT_SECONDS = 30 * 60
 MAX_COMMAND_SECONDS = 2 * 60 * 60
 FIRST_RUN_SECONDS = {
-    'M1': [15, 20], 'M2': [15, 30, 30], 'M3': [30], 'M4': [60, 30],
+    'M1': [15, 20], 'M2': [15, 30, 120], 'M3': [30], 'M4': [60, 30],
     'M5': [60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
 }
 
@@ -236,7 +237,9 @@ class Gates:
             atomic_write(bundle, canonical(redact(report)))
             row = StepCheck(id=uuid.uuid4().hex, step=step, status=status, debug_code=debug_code,
                 source_hash=self.source_hash, input_hash=digest(self.inputs), started_at=started,
-                finished_at=time.time(), command=commands[0] if commands else [], exit_code=exit_code,
+                finished_at=time.time(), command=redact(logs[-1].get('command', commands[0] if commands else []))
+                    if logs else [],
+                exit_code=exit_code,
                 bundle=str(bundle.relative_to(self.root)), remediation=REMEDIATION[step])
             self.store.check(row.model_dump())
             checks.append(row.model_dump())
@@ -246,6 +249,16 @@ class Gates:
                   'source_hash': self.source_hash, 'checks': checks, 'finished_at': time.time()}
         atomic_write(self.directory/'report.json', canonical(result))
         print('Support report: '+str(self.directory/'report.json'), flush=True)
+        if failed is not None:
+            archive_path = self.directory/'support.zip'
+            try:
+                with zipfile.ZipFile(archive_path, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
+                    for name in ['report.json', *[step+'.json' for step, _ in plans]]:
+                        path = self.directory/name
+                        archive.writestr(name, canonical(redact(json.loads(path.read_text()))))
+                print('M_SUPPORT_ARCHIVE '+str(archive_path), flush=True)
+            except (OSError, ValueError) as exc:
+                print('M_SUPPORT_EXPORT_FAILED '+str(exc), flush=True)
         return result
 
 def plans(root, python):

@@ -5,6 +5,17 @@ import time
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
+def repair_workflow_seconds(io_seconds, call_budget=8):
+    """Freeze the bounded repair test budget before SDK subprocess dispatch."""
+    if (not math.isfinite(io_seconds) or io_seconds < 0 or type(call_budget) is not int
+            or not 1 <= call_budget <= 12):
+        raise ValueError('Invalid repair test calibration or call budget')
+    seconds = max(90, math.ceil(40 + call_budget * (10 + 3 * io_seconds)))
+    if seconds > 7200:
+        raise ValueError('Repair test storage calibration exceeds the 7200-second limit')
+    return seconds
+
+
 def startup_budget(io_seconds, workflow_seconds):
     """Reserve process startup and journal writes without altering model deadlines."""
     if not math.isfinite(io_seconds) or io_seconds < 0 or workflow_seconds <= 0:

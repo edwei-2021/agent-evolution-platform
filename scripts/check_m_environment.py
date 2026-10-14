@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Missing acceptance dependencies are blocked (exit 78), never silently skipped."""
 import argparse
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -23,8 +24,11 @@ if __name__ == '__main__':
         if args.sdk:
             from scripts.repair_runtime import sdk_status
             from scripts.gepa_runtime import gepa_status
-            if not sdk_status(root)['available'] or not gepa_status(root)['available']:
-                raise RuntimeError('Install pinned nanobot/GEPA with scripts/install-nanobot.sh')
+            sdk = sdk_status(root)
+            gepa = gepa_status(root, sdk=sdk)
+            print('SDK_ENVIRONMENT '+json.dumps({'nanobot':sdk, 'gepa':gepa}), flush=True)
+            if not sdk['available'] or not gepa['available']:
+                raise RuntimeError('Pinned package probe failed; inspect SDK_ENVIRONMENT diagnostics')
         print('Required dependency check passed')
     except Exception as exc:
         print('BLOCKED: '+str(exc), file=sys.stderr)

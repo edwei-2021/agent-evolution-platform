@@ -3,6 +3,7 @@ import io
 import os
 import subprocess
 import sys
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -74,15 +75,21 @@ def test_failure_generates_bundle_and_blocks_following_command(tmp_path):
     (tmp_path/'input.txt').write_text('fixture')
     runner = Gates(tmp_path)
     result = runner.run([
-        ('M1', [[sys.executable,'-c','print("token=private-value");raise SystemExit(3)']]),
+        ('M1', [[sys.executable,'-c','print("first command passed")'],
+                [sys.executable,'-c','print("token=private-value");raise SystemExit(3)']]),
         ('M2', [[sys.executable,'-c','raise SystemExit("must never run")']])])
     assert result['status'] == 'blocked'
     assert [r['status'] for r in result['checks']] == ['failed','blocked']
     bundle = json.loads((tmp_path/result['checks'][0]['bundle']).read_text())
     assert 'private-value' not in str(bundle)
-    assert bundle['logs'][0]['exit_code'] == 3 and bundle['input_hashes']
+    assert bundle['logs'][1]['exit_code'] == 3 and bundle['input_hashes']
+    assert result['checks'][0]['command'] == bundle['logs'][1]['command']
     blocked = json.loads((tmp_path/result['checks'][1]['bundle']).read_text())
     assert blocked['logs'][0]['command_executed'] is False
+    with zipfile.ZipFile(runner.directory/'support.zip') as archive:
+        assert set(archive.namelist()) == {'report.json', 'M1.json', 'M2.json'}
+        assert b'private-value' not in archive.read('M1.json')
+        assert json.loads(archive.read('report.json'))['status'] == 'blocked'
 
 def test_gate_prints_each_command_estimate_and_persists_runtime(tmp_path):
     subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)

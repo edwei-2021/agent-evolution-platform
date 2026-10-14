@@ -3,7 +3,6 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from functools import partial
 import importlib.metadata
 import json
-import math
 from pathlib import Path
 import sys
 import tempfile
@@ -13,7 +12,7 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from repair_fixture import BASELINE, HIDDEN, validate_source
 from adaptive_validation import current as validation_calibration
-from validation_wait import first_request, startup_budget
+from validation_wait import first_request, startup_budget, repair_workflow_seconds
 from repair_engine import trusted_test, verify
 from runtime_service import RuntimeService,ROLES
 from ollama_bridge import DEFAULTS
@@ -88,7 +87,7 @@ class Model(BaseHTTPRequestHandler):
 class SdkWorkflowTests(unittest.TestCase):
     def setUp(self):
         io_seconds=validation_calibration()['perCallIoAllowanceSeconds']
-        self.workflow_seconds=max(90,min(7200,math.ceil(40+8*(10+3*io_seconds))))
+        self.workflow_seconds=repair_workflow_seconds(io_seconds)
         self.startup_seconds=startup_budget(io_seconds,self.workflow_seconds)
         Model.calls=[];Model.mode='good';Model.gate=None;Model.entered.clear()
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
