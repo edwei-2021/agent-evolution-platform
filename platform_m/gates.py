@@ -150,7 +150,7 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
             elapsed = time.monotonic() - started
             deadline = min(active_deadline, next_report,
                            started + prompt_after if interactive and not prompted else active_deadline,
-                           last_output_at + heartbeat_seconds if child_monitor else active_deadline)
+                           last_output_at + heartbeat_seconds if child_monitor and child_step is not None else active_deadline)
             wait = max(0.01, min(0.25, deadline - time.monotonic()))
             try:
                 item = lines.get(timeout=wait)
@@ -208,7 +208,8 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
                         'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout, **limits()}
                 print(f'\nM_CHECK_WAIT_APPROVED continuing; over_normal_seconds={overdue:.1f}', flush=True)
                 next_report = time.monotonic() + interval
-            stalled = child_monitor and now - last_output_at >= heartbeat_seconds
+            # Before the first authenticated step, the startup deadline owns liveness.
+            stalled = child_monitor and child_step is not None and now - last_output_at >= heartbeat_seconds
             if (now >= active_deadline or stalled) and process.poll() is None:
                 terminate()
                 reason = 'child_output_stalled' if stalled else 'hard_limit'
@@ -389,7 +390,7 @@ def plans(root, python):
                 pytest+['tests_m/test_m4.py']]),
         ('M5', [pytest+['tests_m/test_m5.py']]),
         ('M6', [pytest+['tests_m/test_m6.py']]),
-        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py','tests_m/test_check_selection.py'],
+        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py','tests_m/test_check_selection.py','tests_m/test_heartbeat_contract.py'],
                 [python,'scripts/scan_m_source.py'],
                 [python,'scripts/check_m_environment.py','--sdk'],
                 [str(sdk),'scripts/check_steps.py','--profile','release'],

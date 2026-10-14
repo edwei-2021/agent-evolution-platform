@@ -2,9 +2,57 @@
 
 Audience: AI maintainers and human reviewers. Updated: 2026-10-14.
 
-This document records mistakes in the M7 repair process, including the repeated GEPA reviewer timeout, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.
+This document records mistakes in the M7 repair process, including the repeated GEPA reviewer timeout and the later missing-heartbeat interruption, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.
 
-## Current finding: reviewer timeout repeated despite a written lesson (再次缺漏)
+## Current finding: a missing heartbeat interrupted a valid LLM test (本次缺漏)
+
+Evidence: attached `MCHECK-ae7ac928a6da44d8b2788c8a0b309bfb`, nested `CHECK-cb18c328f43c4de08a38ad65db14cd01`, source `d95add7ce81bb3ac7bcf943b43d9524f74f1adeec81f926d9d99699c781197fa`. The relevant source-file hashes match published commit `2d19038`; stale code does not explain this incident. The attached ZIP, M7 JSON, report and terminal transcript agree. GEPA passed **12/12 on the user's WSL run**, including the formerly failing perfect seed (400.690 seconds) and the final optimizer/approval case (495.494 seconds). The first six LLM cases then passed. The seventh, `llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection`, was interrupted by the outer supervisor.
+
+**直接原因：** `supervise()` initialized `next_progress = started + 30`, an absolute monotonic timestamp, but checked `elapsed >= next_progress`, comparing a duration against that timestamp. The promised 30-second heartbeat therefore did not occur on an ordinary nonzero clock origin. The outer M gate correctly observed 120 seconds without output and sent SIGTERM. The interrupted case's 122.441 seconds includes teardown. Its module had a normal estimate of 810 seconds and hard limit of 7200 seconds; its frozen Full workflow allowed 1227 seconds for 101 requests. The outer silence limit interrupted it before those limits. The recorded `ModuleInterrupted` is cancellation evidence, not a demonstrated model timeout or workflow assertion failure.
+
+### Human-readable failure procedure (這次失敗流程)
+
+| Step | What happened | Evidence / consequence |
+| --- | --- | --- |
+| 1 | Start M7 at step 1; omit M1–M6 | Interactive selection recorded exact omissions |
+| 2 | Complete M7 prechecks and GEPA | Prechecks passed; all 12 GEPA cases passed |
+| 3 | Complete LLM cases 1–6 | Six passed case records |
+| 4 | Start LLM Full profile | 101-request fixture; workflow 1227 s, module estimate 810 s, module hard cap 7200 s |
+| 5 | Wait for the workflow while it writes runtime progress to files | `finish()` waits for its completion event; ordinary model calls need not print stdout |
+| 6 | Attempt periodic supervisor output | Incorrect comparison prevents the 30-second heartbeat; no overrun output while under 810 s |
+| 7 | Reach 120 seconds without stdout | Parent records `child_output_stalled`, terminates the process group; module exits 143 |
+| 8 | Clean up the failed LLM test | Previous teardown deleted temporary runtime evidence; ZIP contains module traceback but no LLM runtime diagnostics |
+| 9 | Leave all later cases untested | Resume at this exact case; retain prior passes as historical evidence only |
+
+The ZIP does **not** establish the exact model call or internal role at interruption. Claiming a particular I/O stall or a guaranteed eventual LLM pass would exceed the evidence. Preservation on assertion failure and interruption now closes this diagnostic gap.
+
+### Why the Lessons document still missed it (共同問題與責任)
+
+The previous document did mention heartbeat, enclosing deadlines and evidence retention. Those promises were not enforced at the actual producer/consumer boundary. This was a maintenance-process failure as well as a one-line defect:
+
+| Repeated reasoning error | What was missed this time | Prevention that can fail on old code |
+| --- | --- | --- |
+| Treat a written rule as proof of behavior | A documented 30-second heartbeat was never observed during a quiet, under-estimate child | Real quiet subprocess through both supervisors; assert progress without overrun |
+| Test the visible exception branch only | Negative watchdog tests proved silence is killed, but no positive test proved healthy silence survives | Pair live/quiet success with silent-supervisor failure and independent hard-limit failure |
+| Use convenient fake clocks | Clock origin zero hides the absolute-time/duration comparison error | Same virtual run at origins 0, 2000 and 1000000; identical heartbeat count |
+| Assume a slow test qualifies every liveness path | GEPA's own rollout output kept its parent alive; it did not qualify a quiet LLM wait | Delay the real Full fixture past 120 s, keep normal estimate above its duration, observe 30/60/90/120 s supervisor heartbeats |
+| Stop the audit at a terminal status or traceback | Runtime records disappeared during temporary-directory cleanup | Exercise the actual LLM teardown on assertion failure and cancellation; export after source deletion and check redaction |
+| Repair individual timers without defining their relationships | Startup, heartbeat, workflow, module and cleanup are distinct clocks with different ownership | Record clock domains and boundary contracts; heartbeat never renews a hard deadline |
+
+**共同核心：** previous fixes modeled completion and allowed duration, but did not require observable evidence that the entire lifecycle contract actually holds across layers. Larger budgets, verbose tests and prose checklists hid a broken liveness path. Every relevant promise must now name its producer, consumer, clock domain, failure evidence and a positive/negative proof. No amount of additional narrative substitutes for that proof.
+
+### Current repair and bounded verification (修正與驗證)
+
+- Compare absolute monotonic timestamps on both sides of the heartbeat condition. Record emitted supervisor heartbeat counts in module reports.
+- Apply the documented startup limit before the first authenticated step; apply the 120-second silence allowance after that step. Ordinary stdout cannot renew startup or step hard deadlines.
+- Preserve the existing 30-second heartbeat cadence, 120-second silence guard, 360-second startup, per-step execution cap, cleanup grace, per-call deadline and frozen workflow budget. Heartbeats establish supervisor liveness, not model progress.
+- Retain LLM run JSON/log evidence after service cleanup and before deleting its temporary workspace, using the existing bounded/redacted support export.
+- Add executable contracts to M7 step 2. They cover nonzero clock origins, quiet success, pre-frame startup, silence failure, hard-deadline expiry despite heartbeats, and actual failed/interrupted LLM teardown/export.
+- Audit the unexecuted tail under the same supervisor. Only the failed Full case and later cases/modules are selected; earlier six LLM cases, GEPA and M1–M6 are omitted. Directly affected supervisor tests run separately.
+
+See [M7 heartbeat follow-up](m7-heartbeat-followup.md) for measured results and source/evidence scope. Previous incidents below retain their original evidence boundaries; later WSL passes supersede earlier uncertainty only for the relevant uploaded revision.
+
+## Previous finding: reviewer timeout repeated despite a written lesson (前次缺漏)
 
 Evidence supplied in the terminal transcript: outer `MCHECK-217adc0bacc24977bb47f06ca2916115`, nested `CHECK-2e7c23d60d19420997702b39a8f26d33`. Ten GEPA cases passed; `test_perfect_seed_skips_proposals_and_cannot_release_without_improvement` failed after 409.470 seconds with `Workflow time limit exceeded`, with reviewer active and 17 completed rollouts reported. The final optimizer/approval/rollback/tamper case did not execute. The current support ZIP was not attached here. Therefore the precise frozen deadline, reviewer row at termination, and any particular slow I/O operation are **unconfirmed**. The terminal duration includes setup/cleanup and is not itself the workflow deadline.
 

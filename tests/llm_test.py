@@ -2,6 +2,7 @@
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -19,7 +20,7 @@ from adaptive_validation import current as validation_calibration, workflow_seco
 from validation_wait import first_request, startup_budget
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
-from llm_engine import ENGINE, messages, output, skill, splits, verify
+from llm_engine import messages, output, skill, splits, verify
 from serve_gui import GuiHandler, DIST
 
 
@@ -41,6 +42,7 @@ def finish(service, identifier):
 
 class MockModel(BaseHTTPRequestHandler):
     calls = []
+    response_delay = 0
     warmups = []
     mode = 'improve'
     block = None
@@ -56,6 +58,8 @@ class MockModel(BaseHTTPRequestHandler):
             raw=json.dumps({'model':request['model'],'done':True,'load_duration':400000000}).encode()
             self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         self.calls.append(request); self.entered.set()
+        if self.response_delay:
+            time.sleep(self.response_delay)
         if self.block: self.block.wait(5)
         system = request['messages'][0]['content']
         if self.mode == 'http-error':
@@ -98,6 +102,7 @@ class MockModel(BaseHTTPRequestHandler):
 class LlmWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.service = RuntimeService(self.temp.name)
+        MockModel.response_delay = 0
         MockModel.calls = []; MockModel.warmups = []; MockModel.mode = 'improve'; MockModel.block = None; MockModel.stream_block = None; MockModel.entered.clear()
         self.model = ThreadingHTTPServer(('127.0.0.1', 0), MockModel)
         self.thread = threading.Thread(target=self.model.serve_forever, daemon=True); self.thread.start()
@@ -105,9 +110,19 @@ class LlmWorkflowTests(unittest.TestCase):
                                  'model': 'mock-local:1', 'inferenceTimeout': 10}, 0)
 
     def tearDown(self):
-        if MockModel.block: MockModel.block.set()
-        if MockModel.stream_block: MockModel.stream_block.set()
-        self.service.close(); self.model.shutdown(); self.model.server_close(); self.thread.join(); self.temp.cleanup()
+        result = getattr(getattr(self, '_outcome', None), 'result', None)
+        failed = result is not None and any(test is self for test,_ in result.failures + result.errors)
+        try:
+            if MockModel.block: MockModel.block.set()
+            if MockModel.stream_block: MockModel.stream_block.set()
+            self.service.close(); self.model.shutdown(); self.model.server_close(); self.thread.join()
+        finally:
+            try:
+                if failed:
+                    from native_check_support import preserve
+                    preserve(self.service, self.id())
+            finally:
+                self.temp.cleanup()
 
     def options(self, revision=1):
         return {'profile': 'smoke', 'maxSeconds': workflow_seconds('smoke'), 'expectedRevision': revision, 'providerRevision': 1}
@@ -208,6 +223,14 @@ class LlmWorkflowTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): self.service.start(registry(), 'model', 'llm-evolution', {**self.options(), 'profile': 'full'})
 
     def test_full_profile_has_exact_call_accounting_and_separate_holdout_selection(self):
+        # Opt-in fault injection for the real two-supervisor silence proof.
+        # Only this case is delayed; per-request and frozen workflow limits stay active.
+        delay = float(os.environ.get('AEP_LLM_TEST_RESPONSE_DELAY_SECONDS', '0'))
+        if not 0 <= delay <= 5 or 101 * delay > .8 * workflow_seconds('full'):
+            raise ValueError('Invalid bounded LLM fixture response delay')
+        MockModel.response_delay = delay
+        if delay:
+            print(f'LLM_TEST_CONTROLLED_DELAY seconds_per_request={delay} requests=101', flush=True)
         run = self.service.start(registry(), 'full', 'llm-evolution', {**self.options(), 'profile': 'full', 'maxSeconds': workflow_seconds('full')})
         done = finish(self.service, run['id'])
         self.assertEqual(done['status'], 'completed', done)

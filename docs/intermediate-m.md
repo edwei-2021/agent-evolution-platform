@@ -363,3 +363,12 @@ The requested local tail also caught a warmup lifecycle race after 146 passing c
 Run `.venv-m/bin/python scripts/check_m.py --interactive` to choose an M stage and its original step number. In a terminal, the normal acceptance command opens the menu automatically. M7 step 5 can drill into a release module and starting case, so earlier model workflows can be omitted. `--from-stage`, `--from-step`, `--release-step` and `--from-case` provide the same source-owned selection for unattended use; `--list-steps` and `--dry-run` preview it without dispatch.
 
 Partial success is recorded as `scoped_passed` with exact omissions, source identity and original step indices. It does not create full-stage acceptance rows. CI/setup explicitly disable prompts; pinned SDK checks, calibrated GEPA limits, failure blocking and support export remain enforced. See [Selectable M Test Starts](m-check-start-menu.md) for menu flow, M7's step table and copyable commands.
+
+
+### Missing heartbeat interrupted LLM Full profile (2026-10-14)
+
+Attached `MCHECK-ae7ac928a6da44d8b2788c8a0b309bfb` confirms GEPA 12/12 and the first six LLM cases passed on WSL. The seventh LLM case was interrupted after 120 seconds without stdout. Its module had an 810-second normal estimate and 7200-second hard cap; its Full workflow allowed 1227 seconds. The child supervisor compared elapsed duration to an absolute monotonic heartbeat timestamp, preventing its advertised 30-second output. The parent therefore killed the module with `child_output_stalled`; this does not establish a failed model assertion.
+
+The corrected condition compares absolute timestamps. Before the first authenticated control frame, the startup deadline owns liveness; afterward, the existing 120-second silence guard applies. Heartbeats never renew hard deadlines. M7 step 2 includes positive quiet-child and negative silence/hard-limit contracts, nonzero clock-origin checks, and failed/interrupted LLM teardown/export checks. Failed LLM runtime records survive temporary-workspace deletion in the bounded/redacted support ZIP.
+
+Use the newest failed support ZIP with `scripts/check_m7_remaining.py --previous-support` to select only the Full case and unexecuted tail. The existing interactive M7 step 5 menu also permits choosing `python-llm_test` and that starting case. Do not rerun GEPA or the first six LLM cases for this diagnosis. See [the incident procedure and common-cause review](ai-maintenance-lessons.md) and [measured verification](m7-heartbeat-followup.md).

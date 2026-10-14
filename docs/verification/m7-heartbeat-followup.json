@@ -1,0 +1,1236 @@
+{
+  "schemaVersion": 1,
+  "kind": "m7-heartbeat-followup",
+  "date": "2026-10-14",
+  "environment": "local Linux; loopback mock model; pinned real SDK subprocesses",
+  "priorEvidence": {
+    "outerReportId": "MCHECK-ae7ac928a6da44d8b2788c8a0b309bfb",
+    "releaseReportId": "CHECK-cb18c328f43c4de08a38ad65db14cd01",
+    "sourceHash": "d95add7ce81bb3ac7bcf943b43d9524f74f1adeec81f926d9d99699c781197fa",
+    "artifactSha256": "3cb8f97c8cd63357faa5ffc5a206c2a6e01dbb62679c228d3d362be90cf3223d",
+    "matchedPublishedCommit": "2d1903838c2c59b6808ddd485dbca84c778b3189",
+    "gepaCasesPassed": 12,
+    "earlierLlmCasesPassed": 6,
+    "historicalOnly": true
+  },
+  "originalFailure": {
+    "case": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+    "classification": "outer-supervisor interruption; no demonstrated model assertion failure",
+    "reason": "child_output_stalled",
+    "silenceSeconds": 120,
+    "moduleExitCode": 143,
+    "moduleNormalSeconds": 810,
+    "moduleHardSeconds": 7200,
+    "frozenFullWorkflowSeconds": 1227,
+    "runtimeEvidenceAbsent": true
+  },
+  "oldCodeRegression": {
+    "origins": [
+      0,
+      2000,
+      1000000
+    ],
+    "expectedHeartbeatsPerOrigin": 3,
+    "observedHeartbeatsPerOrigin": [
+      3,
+      0,
+      0
+    ],
+    "failed": 2,
+    "passed": 1,
+    "logSha256": "0e6a6362535001632a2099112a0aa60148e542c2dc9ddda4414cd18b454ec953"
+  },
+  "focusedContracts": {
+    "newHeartbeatAndRetention": {
+      "passed": 9,
+      "skipped": 0,
+      "logSha256": "a49cc8d158f2ae53d6d2189b4e62abe1b3faecbeac54ac232353b595b354a90e"
+    },
+    "existingParentMonitor": {
+      "passed": 20,
+      "skipped": 0,
+      "logSha256": "e39c8b0c1cf1e9bd15adbf8ad0bceeb07df58b09b1185850f90a096729e38a87"
+    },
+    "directLeafMonitorAndCleanup": {
+      "passed": 6,
+      "skipped": 0,
+      "logSha256": "16c2788472f2c5dc80741ab85c02805f52aef0ffb81edb8560732272650e133e"
+    },
+    "existingApprovalMonitor": {
+      "passed": 1,
+      "skipped": 0,
+      "logSha256": "c59373e08dc2accd74cead3b429f88bdd05823b5b769bdd3eff6bb8733da0d7e"
+    }
+  },
+  "realParentProof": {
+    "exitCode": 0,
+    "timing": {
+      "elapsed_seconds": 365.35743759699994,
+      "over_normal_seconds": 335.35743759699994,
+      "extension_approved": false,
+      "stopped_by_user": false,
+      "child_step": "m7-types",
+      "child_report": "/workspace/scratch/6a3861809b90/repo/.local/test-reports/CHECK-4b312939f2264ff4a6ad814bd1e844aa/report.json",
+      "deadline_scope": "child_step",
+      "prompt_after_seconds": 300,
+      "hard_limit_seconds": 1624.411,
+      "startup_limit_seconds": 360,
+      "heartbeat_seconds": 120,
+      "child_step_index": 20,
+      "child_step_maximum_seconds": 1200,
+      "child_cleanup_seconds": 60
+    },
+    "sourceHash": "6a3a49642952c701ad4218ea53f2a12b6e221ad927c9d70d32fb9f9b872d4771",
+    "priorArtifactSha256": "3cb8f97c8cd63357faa5ffc5a206c2a6e01dbb62679c228d3d362be90cf3223d",
+    "plan": [
+      "filesystem-calibration",
+      "python-llm_test",
+      "python-llm_transport_test",
+      "python-m7_resume_test",
+      "python-native_checks_test",
+      "python-ollama_test",
+      "python-polling_boundary_test",
+      "python-repair_test",
+      "python-runtime_test",
+      "python-sdk_runtime_probe_test",
+      "python-setup_orchestrator_test",
+      "python-setup_test",
+      "python-skill_test",
+      "python-step_trace_test",
+      "python-trace_journal_reuse_test",
+      "python-validation_wait_test",
+      "python-warmup_test",
+      "m7-source-scan",
+      "m7-ruff",
+      "m7-types"
+    ],
+    "proofConditions": {
+      "heartbeatSeconds": 120,
+      "supervisorIntervalSeconds": 30,
+      "llmNormalSeconds": 810,
+      "llmHardSeconds": 7200,
+      "modelDelaySecondsPerRequest": 1.3,
+      "requestCount": 101,
+      "calibration": {
+        "filesystemRoot": "/mnt/d/agent-evolution-platform/.local/tmp",
+        "inferenceTimeout": 10,
+        "maximumWorkflowSeconds": 7200,
+        "modelRequests": 0,
+        "perCallIoAllowanceSeconds": 1.84371816800558,
+        "policy": "pre-dispatch workload and filesystem calibration",
+        "profiles": {
+          "full": {
+            "calls": 101,
+            "maxSeconds": 1227
+          },
+          "smoke": {
+            "calls": 15,
+            "maxSeconds": 208
+          }
+        },
+        "samplesSeconds": [
+          0.20376921400020365,
+          0.2304647710006975,
+          0.2099480759970902,
+          0.2098456849998911,
+          0.2206068570012576
+        ],
+        "schemaVersion": 1
+      }
+    },
+    "outputLogSha256": "b8734fc2afed1aae173ff842d9950f097147c9ed78e046e74a59ea1ee2c2fc16",
+    "heartbeatLines": [
+      "TEST_PROGRESS step=python-llm_test elapsed_seconds=30 over_normal_seconds=0 last_output=test_full_profile_has_exact_call_accounting_and_separate_holdout_selection (llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection) ... LLM_TEST_CONTROLLED_DELAY seconds_per_request=1.3 requests=101",
+      "TEST_PROGRESS step=python-llm_test elapsed_seconds=60 over_normal_seconds=0 last_output=test_full_profile_has_exact_call_accounting_and_separate_holdout_selection (llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection) ... LLM_TEST_CONTROLLED_DELAY seconds_per_request=1.3 requests=101",
+      "TEST_PROGRESS step=python-llm_test elapsed_seconds=90 over_normal_seconds=0 last_output=test_full_profile_has_exact_call_accounting_and_separate_holdout_selection (llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection) ... LLM_TEST_CONTROLLED_DELAY seconds_per_request=1.3 requests=101",
+      "TEST_PROGRESS step=python-llm_test elapsed_seconds=120 over_normal_seconds=0 last_output=test_full_profile_has_exact_call_accounting_and_separate_holdout_selection (llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection) ... LLM_TEST_CONTROLLED_DELAY seconds_per_request=1.3 requests=101"
+    ],
+    "normalEstimateInjection": "Reproduces the uploaded 810-second LLM estimate so overrun output cannot mask heartbeat failure. Other estimates use current source.",
+    "calibrationInput": "Exact validated frozen calibration from uploaded WSL report, injected into the local test; not a new measurement of WSL performance.",
+    "launcherSha256": "a4a9debbdcdb701046cf83095e7a0bd3c9e4e2720eea2bc60bca06a5bd9cbef3",
+    "childLauncherSha256": "de8f307ca8892af2f044495109a20b3257cb875b96696710ed11a7a36380c81c",
+    "launcherSource": "import contextlib,json,os,secrets,sys\nfrom pathlib import Path\nROOT=Path(__file__).resolve().parents[2]\nsys.path[:0]=[str(ROOT),str(ROOT/'scripts')]\nimport check_steps,check_m7_remaining\nfrom check_start_selection import release_plan\nfrom platform_m.gates import execute,source_snapshot\nimport zipfile\nattached=ROOT.parent/'upload/support(3).zip'\nwith zipfile.ZipFile(attached) as z:\n    prior=json.loads(z.read('release/report.json'))\nrow=next(x for x in prior['steps'] if x['step']=='python-llm_test')\ncalibration=row['validationCalibration']\nnonce=secrets.token_hex(16)\nnode=check_steps.find_node(ROOT)['path']\nsdk=str(ROOT/'.venv-nanobot/bin/python')\nold,failed,anchor,sha=check_m7_remaining.prior_failure(attached)\nplan,*_=check_m7_remaining.build_plan(release_plan(ROOT,sdk,node),old,failed,anchor,node)\nlauncher=ROOT/'.local/heartbeat-proof/child.py'\nlauncher.write_text('''import sys\\nfrom pathlib import Path\\nROOT=Path(__file__).resolve().parents[2]\\nsys.path[:0]=[str(ROOT),str(ROOT/'scripts')]\\nimport check_steps,check_m7_remaining\\noriginal_run=check_steps.run\\noriginal_normal=check_steps.normal_budget\\ndef run(*args,**kwargs):\\n kwargs['monitor_id']=sys.argv[1]\\n return original_run(*args,**kwargs)\\ndef normal(profile,name,*args,**kwargs):\\n return 810 if name=='python-llm_test' else original_normal(profile,name,*args,**kwargs)\\ncheck_steps.run=run\\ncheck_steps.normal_budget=normal\\nraise SystemExit(check_m7_remaining.main(['--previous-support',sys.argv[2]]))\\n''')\nenv={**os.environ,'AEP_VALIDATION_CALIBRATION':json.dumps(calibration),'AEP_LLM_TEST_RESPONSE_DELAY_SECONDS':'1.3'}\nsource_hash,_=source_snapshot(ROOT)\nwith (ROOT/'.local/heartbeat-proof/output.log').open('w') as log,contextlib.redirect_stdout(log):\n    code,output,timing=execute([sdk,str(launcher),nonce,str(attached)],ROOT,env,timeout=360,\n        interactive=False,report_overrun=False,child_monitor={'id':nonce,'steps':len(plan)})\nresult={'exitCode':code,'timing':timing,'sourceHash':source_hash,'priorArtifactSha256':sha,\n    'plan':[n for n,_ in plan],'proofConditions':{'heartbeatSeconds':120,'supervisorIntervalSeconds':30,\n    'llmNormalSeconds':810,'llmHardSeconds':7200,'modelDelaySecondsPerRequest':1.3,\n    'requestCount':101,'calibration':calibration}}\n(ROOT/'.local/heartbeat-proof/result.json').write_text(json.dumps(result,indent=2))\nprint(json.dumps({'exitCode':code,'timing':timing},indent=2))\nraise SystemExit(code)\n",
+    "childLauncherSource": "import sys\nfrom pathlib import Path\nROOT=Path(__file__).resolve().parents[2]\nsys.path[:0]=[str(ROOT),str(ROOT/'scripts')]\nimport check_steps,check_m7_remaining\noriginal_run=check_steps.run\noriginal_normal=check_steps.normal_budget\ndef run(*args,**kwargs):\n kwargs['monitor_id']=sys.argv[1]\n return original_run(*args,**kwargs)\ndef normal(profile,name,*args,**kwargs):\n return 810 if name=='python-llm_test' else original_normal(profile,name,*args,**kwargs)\ncheck_steps.run=run\ncheck_steps.normal_budget=normal\nraise SystemExit(check_m7_remaining.main(['--previous-support',sys.argv[2]]))\n"
+  },
+  "tailReport": {
+    "id": "CHECK-4b312939f2264ff4a6ad814bd1e844aa",
+    "sha256": "716657786196d90bf8a34ec7af81ca1dbeeacf8058c4e95583b59627bc9535f7",
+    "supportZipSha256": "cbf696f4012dc4d2a242e50f056e2179d88a2f3123ff2760f6fb66347614c7da",
+    "sourceHash": "6a3a49642952c701ad4218ea53f2a12b6e221ad927c9d70d32fb9f9b872d4771",
+    "scope": {
+      "kind": "m7-remaining",
+      "fullMAcceptance": false,
+      "fullM7Acceptance": false,
+      "priorEvidenceKind": "support artifact",
+      "legacyHarnessTail": false,
+      "priorReportId": "CHECK-cb18c328f43c4de08a38ad65db14cd01",
+      "priorArtifactSha256": "3cb8f97c8cd63357faa5ffc5a206c2a6e01dbb62679c228d3d362be90cf3223d",
+      "priorEvidence": "historical only; not re-certified against this source",
+      "fromCase": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+      "releaseFromCase": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+      "resumedFromStep": "python-llm_test",
+      "failedCase": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+      "omittedReleaseSteps": [
+        "filesystem-calibration",
+        "all-frontend",
+        "python-adaptive_validation_test",
+        "python-check_steps_test",
+        "python-completion_wait_test",
+        "python-debug_log_test",
+        "python-diagnostic_support_test",
+        "python-gepa_budget_test",
+        "python-gepa_test",
+        "python-journal_batch_test"
+      ],
+      "completedPriorTailSteps": [],
+      "sourceHash": "6a3a49642952c701ad4218ea53f2a12b6e221ad927c9d70d32fb9f9b872d4771",
+      "plannedSteps": [
+        "filesystem-calibration",
+        "python-llm_test",
+        "python-llm_transport_test",
+        "python-m7_resume_test",
+        "python-native_checks_test",
+        "python-ollama_test",
+        "python-polling_boundary_test",
+        "python-repair_test",
+        "python-runtime_test",
+        "python-sdk_runtime_probe_test",
+        "python-setup_orchestrator_test",
+        "python-setup_test",
+        "python-skill_test",
+        "python-step_trace_test",
+        "python-trace_journal_reuse_test",
+        "python-validation_wait_test",
+        "python-warmup_test",
+        "m7-source-scan",
+        "m7-ruff",
+        "m7-types"
+      ]
+    },
+    "caseCount": 142,
+    "steps": [
+      {
+        "step": "filesystem-calibration",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 64.019,
+        "normalSeconds": 10,
+        "maximumSeconds": 200,
+        "supervisorProgressMessages": 0,
+        "testCases": []
+      },
+      {
+        "step": "python-llm_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 145375.835,
+        "normalSeconds": 810,
+        "maximumSeconds": 7200,
+        "supervisorProgressMessages": 4,
+        "testCases": [
+          {
+            "test": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+            "status": "passed",
+            "durationMs": 133839.349
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_invalid_or_stale_configuration_and_idempotent_replay",
+            "status": "passed",
+            "durationMs": 1392.156
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_local_http_submission_history_approval_and_rollback",
+            "status": "passed",
+            "durationMs": 1897.435
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_no_gain_preserves_baseline_and_counts_fewer_holdout_calls",
+            "status": "passed",
+            "durationMs": 1363.863
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_provider_errors_are_not_retried_or_scored_as_success",
+            "status": "passed",
+            "durationMs": 828.031
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_reflector_cannot_change_metadata_and_failure_skips_evaluator",
+            "status": "passed",
+            "durationMs": 1082.167
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_silent_model_has_a_real_single_call_timeout_and_no_retry",
+            "status": "passed",
+            "durationMs": 1834.34
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream",
+            "status": "passed",
+            "durationMs": 818.552
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering",
+            "status": "passed",
+            "durationMs": 1386.751
+          },
+          {
+            "test": "llm_test.LlmWorkflowTests.test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls",
+            "status": "passed",
+            "durationMs": 826.99
+          },
+          {
+            "test": "llm_test.ProtocolTests.test_protocol_preserves_whitespace_and_rejects_unstructured_answers",
+            "status": "passed",
+            "durationMs": 0.531
+          }
+        ]
+      },
+      {
+        "step": "python-llm_transport_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 132.107,
+        "normalSeconds": 63,
+        "maximumSeconds": 1260,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "llm_transport_test.AbsoluteDeadlineTests.test_connection_time_consumes_the_same_absolute_deadline",
+            "status": "passed",
+            "durationMs": 1.149
+          },
+          {
+            "test": "llm_transport_test.AbsoluteDeadlineTests.test_continuous_chunks_do_not_reset_deadline",
+            "status": "passed",
+            "durationMs": 0.714
+          },
+          {
+            "test": "llm_transport_test.TransportTests.test_incomplete_malformed_and_oversized_streams_fail_without_resending",
+            "status": "passed",
+            "durationMs": 2.001
+          },
+          {
+            "test": "llm_transport_test.TransportTests.test_sse_comments_crlf_unicode_and_usage_are_reassembled",
+            "status": "passed",
+            "durationMs": 0.364
+          },
+          {
+            "test": "llm_transport_test.TransportTests.test_stream_accumulator_bounds_and_rejects_invalid_delta_fields",
+            "status": "passed",
+            "durationMs": 1.35
+          },
+          {
+            "test": "llm_transport_test.TransportTests.test_structured_json_fallback_consumes_the_same_response_once",
+            "status": "passed",
+            "durationMs": 0.378
+          }
+        ]
+      },
+      {
+        "step": "python-m7_resume_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 200.737,
+        "normalSeconds": 87,
+        "maximumSeconds": 1740,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "m7_resume_test.SelectionTests.test_archive_is_scoped_to_its_own_directory_and_redacts_secrets",
+            "status": "passed",
+            "durationMs": 2.432
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_empty_plan_and_invalid_report_identity_cannot_pass_or_escape",
+            "status": "passed",
+            "durationMs": 0.16
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_exact_and_remaining_selection_preserve_order_and_omissions",
+            "status": "passed",
+            "durationMs": 0.143
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_json_and_zip_prior_evidence_have_identical_anchor",
+            "status": "passed",
+            "durationMs": 1.375
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_missing_anchor_and_empty_suite_cannot_pass",
+            "status": "passed",
+            "durationMs": 0.077
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case",
+            "status": "passed",
+            "durationMs": 0.332
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_second_failure_resumes_monitor_or_type_step_without_model_replay",
+            "status": "passed",
+            "durationMs": 0.691
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases",
+            "status": "passed",
+            "durationMs": 10.267
+          },
+          {
+            "test": "m7_resume_test.SelectionTests.test_tail_excludes_passed_gepa_and_keeps_later_modules",
+            "status": "passed",
+            "durationMs": 0.101
+          }
+        ]
+      },
+      {
+        "step": "python-native_checks_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 1805.529,
+        "normalSeconds": 71,
+        "maximumSeconds": 1420,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "native_checks_test.NativeChecksTests.test_child_deadline_terminates_entire_group_and_retains_output",
+            "status": "passed",
+            "durationMs": 130.814
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_explicit_scope_preserves_all_original_modules_and_detects_source_or_budget_drift",
+            "status": "passed",
+            "durationMs": 49.01
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_native_module_failure_is_failfast_and_keeps_leaf_report",
+            "status": "passed",
+            "durationMs": 25.685
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_native_parent_uses_frozen_role_limits_instead_of_unrelated_stage_timeout",
+            "status": "passed",
+            "durationMs": 1296.472
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_nested_run_logs_survive_workspace_cleanup_and_redacted_archive",
+            "status": "passed",
+            "durationMs": 4.349
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_slow_storage_budget_contains_every_child_and_cleanup_layer",
+            "status": "passed",
+            "durationMs": 39.802
+          },
+          {
+            "test": "native_checks_test.NativeChecksTests.test_zero_exit_without_complete_case_evidence_cannot_pass",
+            "status": "passed",
+            "durationMs": 34.88
+          }
+        ]
+      },
+      {
+        "step": "python-ollama_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 4272.65,
+        "normalSeconds": 79,
+        "maximumSeconds": 1580,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "ollama_test.ApiTests.test_settings_round_trip_csrf_origin_and_revision_guards",
+            "status": "passed",
+            "durationMs": 521.433
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_default_port_and_gateway_are_dynamic_without_http_requests",
+            "status": "passed",
+            "durationMs": 502.345
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_failures_are_recorded_and_no_retry_or_false_success_occurs",
+            "status": "passed",
+            "durationMs": 511.354
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_invalid_config_revision_and_duplicate_operations_do_not_dispatch",
+            "status": "passed",
+            "durationMs": 501.4
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_metadata_and_chat_bypass_broken_proxy_and_have_separate_evidence",
+            "status": "passed",
+            "durationMs": 513.348
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_route_discovery_rejects_ambiguous_routes_and_non_wsl",
+            "status": "passed",
+            "durationMs": 501.477
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_save_snapshot_restart_and_export_make_no_http_calls",
+            "status": "passed",
+            "durationMs": 501.29
+          },
+          {
+            "test": "ollama_test.BridgeTests.test_uploaded_diagnostic_is_preserved_and_api_only_never_sends_chat",
+            "status": "passed",
+            "durationMs": 580.901
+          }
+        ]
+      },
+      {
+        "step": "python-polling_boundary_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 100.724,
+        "normalSeconds": 39,
+        "maximumSeconds": 780,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "polling_boundary_test.PollingBoundaryTests.test_disconnected_response_is_not_retried",
+            "status": "passed",
+            "durationMs": 0.893
+          },
+          {
+            "test": "polling_boundary_test.PollingBoundaryTests.test_non_disconnect_write_error_is_not_swallowed",
+            "status": "passed",
+            "durationMs": 0.065
+          },
+          {
+            "test": "polling_boundary_test.PollingBoundaryTests.test_slow_decoration_does_not_block_supervisor_lock",
+            "status": "passed",
+            "durationMs": 1.317
+          }
+        ]
+      },
+      {
+        "step": "python-repair_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 140663.592,
+        "normalSeconds": 308,
+        "maximumSeconds": 6160,
+        "supervisorProgressMessages": 4,
+        "testCases": [
+          {
+            "test": "repair_test.EvaluatorTests.test_independent_visible_hidden_scores_and_baseline_failures",
+            "status": "passed",
+            "durationMs": 78.551
+          },
+          {
+            "test": "repair_test.EvaluatorTests.test_invalid_budgets_and_missing_sdk_fail_before_dispatch",
+            "status": "passed",
+            "durationMs": 7.532
+          },
+          {
+            "test": "repair_test.EvaluatorTests.test_unsafe_python_cannot_run_or_change_trusted_tests",
+            "status": "passed",
+            "durationMs": 0.418
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_actual_javascript_client_runs_api_reads_verified_patch_and_has_no_approval_path",
+            "status": "passed",
+            "durationMs": 19514.27
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_agent_claim_does_not_replace_test_evidence",
+            "status": "passed",
+            "durationMs": 14181.729
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_cancellation_stops_the_actual_sdk_worker_and_later_calls",
+            "status": "passed",
+            "durationMs": 16091.781
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_crlf_source_replay_preserves_candidate_bytes",
+            "status": "passed",
+            "durationMs": 15560.402
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_fragmented_sse_tool_arguments_reconstruct_and_tampering_is_rejected",
+            "status": "passed",
+            "durationMs": 21566.213
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_http_errors_have_no_sdk_retry",
+            "status": "passed",
+            "durationMs": 13466.151
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_model_call_budget_is_an_absolute_dispatch_cap",
+            "status": "passed",
+            "durationMs": 12689.055
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_real_sdk_repair_tools_independent_scores_and_evidence",
+            "status": "passed",
+            "durationMs": 14605.996
+          },
+          {
+            "test": "repair_test.SdkWorkflowTests.test_single_call_deadline_terminates_sdk_and_prevents_more_dispatches",
+            "status": "passed",
+            "durationMs": 12814.513
+          }
+        ]
+      },
+      {
+        "step": "python-runtime_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 38273.503,
+        "normalSeconds": 631,
+        "maximumSeconds": 7200,
+        "supervisorProgressMessages": 1,
+        "testCases": [
+          {
+            "test": "runtime_test.ApiTests.test_api_rejects_rebinding_host_and_unknown_routes",
+            "status": "passed",
+            "durationMs": 515.816
+          },
+          {
+            "test": "runtime_test.ApiTests.test_cold_discovery_cannot_block_read_routes_or_duplicate_probes",
+            "status": "passed",
+            "durationMs": 638.662
+          },
+          {
+            "test": "runtime_test.ApiTests.test_gepa_revision_is_rechecked_after_unlocked_sdk_preflight",
+            "status": "passed",
+            "durationMs": 504.984
+          },
+          {
+            "test": "runtime_test.ApiTests.test_mutations_require_token_and_reject_cross_origin_and_bad_bindings",
+            "status": "passed",
+            "durationMs": 516.276
+          },
+          {
+            "test": "runtime_test.ApiTests.test_poll_start_and_artifact_routes_use_actual_server_snapshots",
+            "status": "passed",
+            "durationMs": 1864.048
+          },
+          {
+            "test": "runtime_test.ApiTests.test_sdk_submission_preflight_cannot_block_state_reads",
+            "status": "passed",
+            "durationMs": 507.883
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_binding_validation_requires_one_enabled_agent_per_role",
+            "status": "passed",
+            "durationMs": 0.136
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_cancel_terminates_actual_process_and_rejects_concurrent_run",
+            "status": "passed",
+            "durationMs": 47.882
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_failure_skips_downstream_and_exposes_nonzero_exit",
+            "status": "passed",
+            "durationMs": 271.785
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_fixed_native_workflow_executes_actual_project_checks_and_artifacts",
+            "status": "passed",
+            "durationMs": 30430.639
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_one_supervisor_per_checkout_and_restart_marks_stale_work_unconfirmed",
+            "status": "passed",
+            "durationMs": 1283.199
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_real_processes_record_pids_logs_exit_codes_and_persist",
+            "status": "passed",
+            "durationMs": 1308.057
+          },
+          {
+            "test": "runtime_test.RuntimeTests.test_timeout_stops_process_and_releases_the_run_slot",
+            "status": "passed",
+            "durationMs": 272.997
+          }
+        ]
+      },
+      {
+        "step": "python-sdk_runtime_probe_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 12293.379,
+        "normalSeconds": 119,
+        "maximumSeconds": 2380,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_failed_probe_is_not_cached_and_success_cannot_be_mutated",
+            "status": "passed",
+            "durationMs": 23.182
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_exception_preserves_traceback_and_installed_version",
+            "status": "passed",
+            "durationMs": 73.798
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_over_old_ten_second_limit_completes_and_reports_progress",
+            "status": "passed",
+            "durationMs": 10278.08
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_timeout_kills_child_and_retains_partial_stage",
+            "status": "passed",
+            "durationMs": 827.795
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_launch_failure_has_the_interpreter_and_error",
+            "status": "passed",
+            "durationMs": 21.367
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_malformed_output_cannot_pass",
+            "status": "passed",
+            "durationMs": 28.648
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_missing_package_is_distinct_from_import_timeout",
+            "status": "passed",
+            "durationMs": 84.934
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_native_process_failure_is_not_reported_as_a_missing_package",
+            "status": "passed",
+            "durationMs": 97.998
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_observation_is_nonblocking_and_expired_or_changed_environment_is_unknown",
+            "status": "passed",
+            "durationMs": 20.041
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_repair_budget_covers_wsl_cost_and_rejects_invalid_calibration",
+            "status": "passed",
+            "durationMs": 21.283
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_sdk_uses_project_interpreter_and_gepa_retains_sdk_failure",
+            "status": "passed",
+            "durationMs": 94.057
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_whole_probe_deadline_still_includes_slow_interpreter_startup",
+            "status": "passed",
+            "durationMs": 521.396
+          },
+          {
+            "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_wrong_version_does_not_import_the_package",
+            "status": "passed",
+            "durationMs": 97.448
+          }
+        ]
+      },
+      {
+        "step": "python-setup_orchestrator_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 610.444,
+        "normalSeconds": 87,
+        "maximumSeconds": 1740,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_calibration_failure_retains_support_and_blocks_dispatch",
+            "status": "passed",
+            "durationMs": 16.101
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_command_deadline_terminates_silent_process",
+            "status": "passed",
+            "durationMs": 53.95
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_exit_code_and_redacted_log_are_retained",
+            "status": "passed",
+            "durationMs": 17.967
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_first_gate_failure_blocks_all_installation_commands",
+            "status": "passed",
+            "durationMs": 10.675
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_continues_reporting_after_user_approval",
+            "status": "passed",
+            "durationMs": 317.505
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_reports_overrun_and_stops_when_user_declines",
+            "status": "passed",
+            "durationMs": 103.77
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+            "status": "passed",
+            "durationMs": 0.048
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_secret_url_is_redacted",
+            "status": "passed",
+            "durationMs": 0.055
+          },
+          {
+            "test": "setup_orchestrator_test.SetupOrchestratorTests.test_setup_baseline_adapts_to_successful_stage_history",
+            "status": "passed",
+            "durationMs": 1.112
+          }
+        ]
+      },
+      {
+        "step": "python-setup_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 635.396,
+        "normalSeconds": 143,
+        "maximumSeconds": 2860,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "setup_test.GuiServerTests.test_serves_assets_but_not_checkout_secrets_or_external_symlinks",
+            "status": "passed",
+            "durationMs": 513.133
+          },
+          {
+            "test": "setup_test.InstallerTests.test_apt_installs_only_the_selected_packages",
+            "status": "passed",
+            "durationMs": 1.62
+          },
+          {
+            "test": "setup_test.InstallerTests.test_arch_mapping_and_unsupported_cpu",
+            "status": "passed",
+            "durationMs": 0.063
+          },
+          {
+            "test": "setup_test.InstallerTests.test_check_only_performs_no_install_or_write",
+            "status": "passed",
+            "durationMs": 0.822
+          },
+          {
+            "test": "setup_test.InstallerTests.test_failed_download_has_no_partial_published_tool_directory",
+            "status": "passed",
+            "durationMs": 0.673
+          },
+          {
+            "test": "setup_test.InstallerTests.test_installed_venv_is_never_recreated",
+            "status": "passed",
+            "durationMs": 0.33
+          },
+          {
+            "test": "setup_test.InstallerTests.test_installer_uses_quick_release_gated_checks",
+            "status": "passed",
+            "durationMs": 0.284
+          },
+          {
+            "test": "setup_test.InstallerTests.test_linux_node_only_and_supported_major",
+            "status": "passed",
+            "durationMs": 0.36
+          },
+          {
+            "test": "setup_test.InstallerTests.test_matching_checksum_required_before_extraction",
+            "status": "passed",
+            "durationMs": 1.902
+          },
+          {
+            "test": "setup_test.InstallerTests.test_missing_packages_are_selected_without_full_system_upgrade",
+            "status": "passed",
+            "durationMs": 0.513
+          },
+          {
+            "test": "setup_test.InstallerTests.test_missing_venv_module_selects_configured_versioned_package",
+            "status": "passed",
+            "durationMs": 1.764
+          },
+          {
+            "test": "setup_test.InstallerTests.test_missing_venv_module_without_apt_candidate_is_actionable_error",
+            "status": "passed",
+            "durationMs": 0.542
+          },
+          {
+            "test": "setup_test.InstallerTests.test_new_venv_copies_interpreter_into_project_directory",
+            "status": "passed",
+            "durationMs": 0.466
+          },
+          {
+            "test": "setup_test.InstallerTests.test_subprocess_workspace_temp_and_cache_follow_project_directory",
+            "status": "passed",
+            "durationMs": 0.683
+          },
+          {
+            "test": "setup_test.InstallerTests.test_wrong_venv_python_is_reported",
+            "status": "passed",
+            "durationMs": 0.75
+          },
+          {
+            "test": "setup_test.InstallerTests.test_wsl2_not_confused_with_wsl1_or_plain_linux",
+            "status": "passed",
+            "durationMs": 0.073
+          }
+        ]
+      },
+      {
+        "step": "python-skill_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 12790.601,
+        "normalSeconds": 119,
+        "maximumSeconds": 2380,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "skill_test.EngineTests.test_dataset_is_fixed_disjoint_and_success_is_actual_output_equality",
+            "status": "passed",
+            "durationMs": 1.764
+          },
+          {
+            "test": "skill_test.EngineTests.test_declared_policy_executes_exact_expected_text_transformations",
+            "status": "passed",
+            "durationMs": 0.118
+          },
+          {
+            "test": "skill_test.EngineTests.test_search_uses_only_training_feedback_and_counts_all_probe_evaluations",
+            "status": "passed",
+            "durationMs": 8.826
+          },
+          {
+            "test": "skill_test.EngineTests.test_skill_metadata_body_policy_and_hash_cannot_diverge",
+            "status": "passed",
+            "durationMs": 0.258
+          },
+          {
+            "test": "skill_test.SkillApiTests.test_api_evolves_approves_exports_and_rolls_back_authoritative_skill",
+            "status": "passed",
+            "durationMs": 1827.086
+          },
+          {
+            "test": "skill_test.SkillApiTests.test_skill_mutations_require_local_token_and_revision_and_ignore_browser_metrics",
+            "status": "passed",
+            "durationMs": 512.17
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_approval_activation_rollback_and_restart_preserve_immutable_versions",
+            "status": "passed",
+            "durationMs": 1300.403
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_bad_budget_revision_and_reused_id_cannot_create_or_rebind_work",
+            "status": "passed",
+            "durationMs": 1286.896
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_baseline_change_blocks_old_candidate_and_next_run_freezes_new_active_version",
+            "status": "passed",
+            "durationMs": 2584.327
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_cancelled_skill_work_cannot_be_approved",
+            "status": "passed",
+            "durationMs": 9.314
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_no_gain_from_optimized_active_skill_is_completed_but_cannot_release",
+            "status": "passed",
+            "durationMs": 2576.726
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_real_workflow_has_candidate_lineage_measured_counts_and_no_auto_activation",
+            "status": "passed",
+            "durationMs": 1284.379
+          },
+          {
+            "test": "skill_test.WorkflowTests.test_release_recomputes_evidence_and_rejects_tampered_scores",
+            "status": "passed",
+            "durationMs": 1290.9
+          }
+        ]
+      },
+      {
+        "step": "python-step_trace_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 906.856,
+        "normalSeconds": 95,
+        "maximumSeconds": 1900,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "step_trace_test.BatchTests.test_batch_matches_single_case_evidence_and_resets_namespace",
+            "status": "passed",
+            "durationMs": 189.684
+          },
+          {
+            "test": "step_trace_test.BatchTests.test_four_result_jobs_launch_one_isolated_process",
+            "status": "passed",
+            "durationMs": 30.592
+          },
+          {
+            "test": "step_trace_test.BatchTests.test_invalid_batches_syntax_and_limits_fail_closed",
+            "status": "passed",
+            "durationMs": 58.296
+          },
+          {
+            "test": "step_trace_test.BatchTests.test_malformed_child_output_or_missing_result_is_rejected",
+            "status": "passed",
+            "durationMs": 0.998
+          },
+          {
+            "test": "step_trace_test.StepApiTests.test_real_http_read_only_route_preserves_origin_and_unknown_run_boundaries",
+            "status": "passed",
+            "durationMs": 511.942
+          },
+          {
+            "test": "step_trace_test.StepTests.test_journal_failure_does_not_change_return_or_exception",
+            "status": "passed",
+            "durationMs": 0.256
+          },
+          {
+            "test": "step_trace_test.StepTests.test_journal_retention_reports_partial_history",
+            "status": "passed",
+            "durationMs": 2.305
+          },
+          {
+            "test": "step_trace_test.StepTests.test_start_finish_failure_redaction_and_duration",
+            "status": "passed",
+            "durationMs": 3.379
+          },
+          {
+            "test": "step_trace_test.StepTests.test_summary_pairs_events_and_marks_unreported_terminal_spans",
+            "status": "passed",
+            "durationMs": 1.751
+          },
+          {
+            "test": "step_trace_test.StepTests.test_sync_async_method_context_and_safe_argument_selection",
+            "status": "passed",
+            "durationMs": 4.785
+          }
+        ]
+      },
+      {
+        "step": "python-trace_journal_reuse_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 115.863,
+        "normalSeconds": 31,
+        "maximumSeconds": 620,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "trace_journal_reuse_test.JournalReuseTests.test_different_log_root_uses_routed_context",
+            "status": "passed",
+            "durationMs": 4.022
+          },
+          {
+            "test": "trace_journal_reuse_test.JournalReuseTests.test_nested_runner_spans_reuse_journal_and_preserve_events",
+            "status": "passed",
+            "durationMs": 3.194
+          }
+        ]
+      },
+      {
+        "step": "python-validation_wait_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 164.31,
+        "normalSeconds": 39,
+        "maximumSeconds": 780,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "validation_wait_test.WaitTests.test_delayed_request_reports_current_role_before_arrival",
+            "status": "passed",
+            "durationMs": 60.99
+          },
+          {
+            "test": "validation_wait_test.WaitTests.test_failure_and_timeout_are_actionable",
+            "status": "passed",
+            "durationMs": 30.809
+          },
+          {
+            "test": "validation_wait_test.WaitTests.test_startup_budget_scales_but_remains_bounded",
+            "status": "passed",
+            "durationMs": 0.1
+          }
+        ]
+      },
+      {
+        "step": "python-warmup_test",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 4615.034,
+        "normalSeconds": 71,
+        "maximumSeconds": 1420,
+        "supervisorProgressMessages": 0,
+        "testCases": [
+          {
+            "test": "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+            "status": "passed",
+            "durationMs": 1059.53
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+            "status": "passed",
+            "durationMs": 558.186
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+            "status": "passed",
+            "durationMs": 549.827
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+            "status": "passed",
+            "durationMs": 571.245
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+            "status": "passed",
+            "durationMs": 670.466
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+            "status": "passed",
+            "durationMs": 575.149
+          },
+          {
+            "test": "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch",
+            "status": "passed",
+            "durationMs": 504.894
+          }
+        ]
+      },
+      {
+        "step": "m7-source-scan",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 100.426,
+        "normalSeconds": 60,
+        "maximumSeconds": 1200,
+        "supervisorProgressMessages": 0,
+        "testCases": []
+      },
+      {
+        "step": "m7-ruff",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 31.757,
+        "normalSeconds": 60,
+        "maximumSeconds": 1200,
+        "supervisorProgressMessages": 0,
+        "testCases": []
+      },
+      {
+        "step": "m7-types",
+        "status": "completed",
+        "exitCode": 0,
+        "durationMs": 905.139,
+        "normalSeconds": 60,
+        "maximumSeconds": 1200,
+        "supervisorProgressMessages": 0,
+        "testCases": []
+      }
+    ]
+  },
+  "finalExactCase": {
+    "pattern": "llm_test.py",
+    "testsRun": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "successful": true,
+    "cases": [
+      {
+        "test": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+        "status": "passed",
+        "durationMs": 1969.389
+      }
+    ],
+    "selection": {
+      "discovered": [
+        "llm_test.LlmWorkflowTests.test_actual_worker_reflection_evaluation_review_and_versions",
+        "llm_test.LlmWorkflowTests.test_browser_client_polls_real_api_through_completion_and_version_review",
+        "llm_test.LlmWorkflowTests.test_cancel_stops_future_calls_and_shared_slot_rejects_other_work",
+        "llm_test.LlmWorkflowTests.test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline",
+        "llm_test.LlmWorkflowTests.test_disconnected_stream_does_not_complete_or_retry",
+        "llm_test.LlmWorkflowTests.test_evidence_tampering_blocks_human_release",
+        "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+        "llm_test.LlmWorkflowTests.test_invalid_or_stale_configuration_and_idempotent_replay",
+        "llm_test.LlmWorkflowTests.test_local_http_submission_history_approval_and_rollback",
+        "llm_test.LlmWorkflowTests.test_no_gain_preserves_baseline_and_counts_fewer_holdout_calls",
+        "llm_test.LlmWorkflowTests.test_provider_errors_are_not_retried_or_scored_as_success",
+        "llm_test.LlmWorkflowTests.test_reflector_cannot_change_metadata_and_failure_skips_evaluator",
+        "llm_test.LlmWorkflowTests.test_silent_model_has_a_real_single_call_timeout_and_no_retry",
+        "llm_test.LlmWorkflowTests.test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream",
+        "llm_test.LlmWorkflowTests.test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering",
+        "llm_test.LlmWorkflowTests.test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls",
+        "llm_test.ProtocolTests.test_protocol_preserves_whitespace_and_rejects_unstructured_answers"
+      ],
+      "selected": [
+        "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection"
+      ],
+      "omitted": [
+        "llm_test.LlmWorkflowTests.test_actual_worker_reflection_evaluation_review_and_versions",
+        "llm_test.LlmWorkflowTests.test_browser_client_polls_real_api_through_completion_and_version_review",
+        "llm_test.LlmWorkflowTests.test_cancel_stops_future_calls_and_shared_slot_rejects_other_work",
+        "llm_test.LlmWorkflowTests.test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline",
+        "llm_test.LlmWorkflowTests.test_disconnected_stream_does_not_complete_or_retry",
+        "llm_test.LlmWorkflowTests.test_evidence_tampering_blocks_human_release",
+        "llm_test.LlmWorkflowTests.test_invalid_or_stale_configuration_and_idempotent_replay",
+        "llm_test.LlmWorkflowTests.test_local_http_submission_history_approval_and_rollback",
+        "llm_test.LlmWorkflowTests.test_no_gain_preserves_baseline_and_counts_fewer_holdout_calls",
+        "llm_test.LlmWorkflowTests.test_provider_errors_are_not_retried_or_scored_as_success",
+        "llm_test.LlmWorkflowTests.test_reflector_cannot_change_metadata_and_failure_skips_evaluator",
+        "llm_test.LlmWorkflowTests.test_silent_model_has_a_real_single_call_timeout_and_no_retry",
+        "llm_test.LlmWorkflowTests.test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream",
+        "llm_test.LlmWorkflowTests.test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering",
+        "llm_test.LlmWorkflowTests.test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls",
+        "llm_test.ProtocolTests.test_protocol_preserves_whitespace_and_rejects_unstructured_answers"
+      ]
+    },
+    "logSha256": "a445ea33b4840613b6dc6b3779c37f27a4dbd14ca4ee7ce7a2ce753fecb804b0",
+    "controlledDelay": false,
+    "reason": "The only case-source change after the long run began removed an unused ENGINE import. Confirm the final exact case source separately."
+  },
+  "sourceScope": {
+    "changedAfterLongRunStarted": {
+      "AGENTS.md": {
+        "atRunStart": "24a977fedc17ef19a698142760df5cd826f07d12abf4007440ba960958fe610d",
+        "afterRun": "2e871f20d84928c9acada014b893c3e8545b445f196a1528c924a6d9265c9ef8"
+      },
+      "docs/ai-maintenance-lessons.md": {
+        "atRunStart": "260426434c3ee0bbdef7acdb49d07cc39de9a8edd7c21669888f444b6be0a8d9",
+        "afterRun": "0f0001e6358c2726312e3b26fb61069630f3fb7d1fcf95eb7f1708ec3f2975a2"
+      },
+      "docs/intermediate-m.md": {
+        "atRunStart": "cd72eb563e418937cf6f53f68e385095cb92931de84e66abc3678cdd62b296ff",
+        "afterRun": "c30839a6a3ada07b4ee2196de83b54334fe4b45893b23a573d253ddaaa818be1"
+      },
+      "tests/llm_test.py": {
+        "atRunStart": "d8cf33366ce46fe796e0379210066baac0b77132ef2ed02385728e5080e35e9c",
+        "afterRun": "708af3c2249e57a7d86b144fe1802b43f889123e742b8d97b530c4377ddcb4cf"
+      },
+      "tests_m/test_heartbeat_contract.py": {
+        "atRunStart": "0764b13814e0e09f4a486d4979f97064af135fefb6fb28986fa3b01068ef5324",
+        "afterRun": "c85202633a63633c0b74fe037f3724b00d6973d0832289c97b447758dab8d89e"
+      }
+    },
+    "functionalSupervisorFilesUnchangedDuringProof": [
+      "scripts/check_steps.py",
+      "platform_m/gates.py",
+      "scripts/native_check_support.py"
+    ],
+    "explanation": "Documentation and the new regression file were completed during the run; the LLM source only lost one unused import. Final exact-case and focused contracts cover those final test sources. Tail Ruff checked the final regression file. Documentation and this ledger were finalized afterward. No same-source full M7 or WSL acceptance claim."
+  },
+  "acceptance": {
+    "fullM": false,
+    "fullM7": false,
+    "targetWslForThisChange": false,
+    "scopedFailedCaseAndUnexecutedTail": true
+  }
+}

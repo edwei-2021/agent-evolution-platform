@@ -19,3 +19,7 @@ Before changing stage M acceptance, runtime discovery, workflow deadlines, or te
 - Audit successful-tool branches and post-completion verification/approval replays separately. Exact-case parent limits must contain these costs plus cleanup; split aggregate model modules before the parent cap.
 - Strict continuation runs only the failed case and unexecuted tail. Do not append already passed frontend/API/harness checks; run only directly affected new regressions separately.
 - Treat terminal-state publication as an observable resource contract: finish owned cleanup and serialize final persistence/slot release with status reads. Prove it with a paused finalizer, including success/failure/cancellation; avoid speed-dependent polling assertions.
+
+- Heartbeat arithmetic must compare values in the same clock domain. Prove clock-origin invariance and a real quiet child below its normal estimate through both supervisors; verbose slow tests do not qualify quiet paths.
+- Pair heartbeat success with silent-supervisor failure and an independent hard-deadline failure. Supervisor output never proves model progress or extends a hard deadline. Keep pre-frame startup separate from authenticated-step silence.
+- Exercise the actual failed/interrupted test teardown, not only a standalone evidence-copy helper: close owned resources, preserve logs, delete the temporary source, then verify bounded/redacted ZIP export.

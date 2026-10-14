@@ -27,6 +27,7 @@ ROOT=Path(__file__).resolve().parents[1]
 MONITOR_POLICY = 'overrun-prompt-v1'
 MAX_PROMPT_SECONDS = 30 * 60
 INTERRUPT_SIGNAL = None
+PROGRESS_INTERVAL_SECONDS = 30
 
 def prompt_after_seconds(normal):
     return max(normal, min(normal * 10, MAX_PROMPT_SECONDS))
@@ -124,9 +125,9 @@ def _wait_answer(buffer):
 
 
 def supervise(process, name, normal, maximum, interval=5, *, output_path=None,
-              progress_interval=30, interactive=True, cleanup_seconds=MODULE_CLEANUP_SECONDS):
+              progress_interval=PROGRESS_INTERVAL_SECONDS, interactive=True, cleanup_seconds=MODULE_CLEANUP_SECONDS):
     started=time.monotonic();prompted=False;approved=False;pending=False;answer_buffer=b''
-    events=queue.Queue();reader=None;last_output='';next_progress=started+progress_interval
+    events=queue.Queue();reader=None;last_output='';next_progress=started+progress_interval;progress_messages=0
     if process.stdout is not None:
         def collect():
             try:
@@ -157,21 +158,25 @@ def supervise(process, name, normal, maximum, interval=5, *, output_path=None,
         return {'exitCode':code,'durationMs':round(elapsed*1000,3),
                 'overNormalSeconds':round(max(0,elapsed-normal),1),
                 'extensionApproved':approved,'stoppedByUser':reason in ('user_declined','ctrl_c'),
+                'progressMessages':progress_messages,
                 **({'stopReason':reason} if reason else {})}
     next_overrun=None
     try:
         while process.poll() is None:
             drain()
-            elapsed=time.monotonic()-started
+            now=time.monotonic()
+            elapsed=now-started
             over=round(max(0,elapsed-normal),1)
             # A pending interactive answer must never disable this deadline.
             if elapsed>=maximum:
                 print(f'TEST_HARD_LIMIT step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} hard_limit_seconds={maximum}; stopping process',flush=True)
                 terminate()
                 return finish(124,'hard_limit')
-            if elapsed>=next_progress:
+            # Both sides are absolute monotonic timestamps; elapsed is a duration.
+            if now>=next_progress:
                 print(f'TEST_PROGRESS step={name} elapsed_seconds={int(elapsed)} over_normal_seconds={over} '
                       f'last_output={last_output or "waiting_for_test_output"}',flush=True)
+                progress_messages+=1
                 next_progress=time.monotonic()+progress_interval
             if over and (next_overrun is None or time.monotonic()>=next_overrun):
                 print(f'TEST_OVERRUN step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} normal_seconds={normal}',flush=True)
@@ -270,6 +275,7 @@ def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None,
                                          env={**os.environ,'AEP_TEST_REPORT_DIR':str(directory),
                                               **({'AEP_VALIDATION_CALIBRATION':json.dumps(calibration)} if calibration else {})})
                 observed=supervise(process,name,normal,maximum,output_path=output,interactive=interactive)
+            row['supervisorProgressMessages']=observed.get('progressMessages',0)
             row.update(status='stopped' if observed.get('stopReason')=='user_declined' else
                        'completed' if observed['exitCode']==0 else 'failed',
                        exitCode=observed['exitCode'],durationMs=observed['durationMs'],
