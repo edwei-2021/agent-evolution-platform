@@ -88,7 +88,7 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
                      'scripts/check_steps.py', 'scripts/run_test_module.py',
                      'scripts/calibrate_release_tests.py', 'scripts/check_m7_remaining.py',
                      'scripts/native_agents.py', 'scripts/native_check_plan.py', 'scripts/native_check_support.py',
-                     'scripts/gepa_validation_budget.py']),
+                     'scripts/gepa_validation_budget.py', 'scripts/check_start_selection.py']),
         ('m7-types', [node, 'node_modules/typescript/bin/tsc', '--noEmit', '--strict',
                       '--lib', 'es2020,dom', 'packages/contracts/contracts.ts']),
     ])

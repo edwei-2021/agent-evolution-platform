@@ -217,11 +217,8 @@ def stages(profile,root=ROOT):
         steps=[('repair-sdk',unit('repair_test.py','-v')),('gepa-sdk',unit('gepa_test.py','-v'))]
     elif profile=='release':
         if not sdk['available'] or not gepa_status(root)['available']:raise RuntimeError('Release checks require real pinned SDKs; skipped SDK tests are not a release pass')
-        steps=[('filesystem-calibration',[python,str(root/'scripts/calibrate_release_tests.py')]),
-               ('all-frontend',steps[-1][1])]
-        steps.extend(('python-'+path.stem,[python,str(root/'scripts/run_test_module.py'),path.name,
-                                           '--tests-dir',str(root/'tests')])
-                     for path in sorted((root/'tests').glob('*_test.py')))
+        from check_start_selection import release_plan
+        steps=release_plan(root,python,node['path'])
     elif profile!='quick':raise ValueError('Unknown test profile')
     return steps
 
@@ -304,5 +301,21 @@ if __name__=='__main__':
     parser.add_argument('--profile',choices=['quick','model','release'],default='quick')
     parser.add_argument('--non-interactive',action='store_true',help='Run to the frozen step deadlines without stdin prompts')
     parser.add_argument('--monitor-id',help=argparse.SUPPRESS)
+    parser.add_argument('--from-step',help='Start at a source-owned release step ID')
+    parser.add_argument('--from-case',help='First case in the selected Python release module')
     args=parser.parse_args()
-    raise SystemExit(run(args.profile,interactive=not args.non_interactive,monitor_id=args.monitor_id))
+    plan, metadata = None, None
+    if args.from_step or args.from_case:
+        if args.profile != 'release' or not args.from_step:
+            parser.error('--from-case/--from-step require release profile and --from-step')
+        from check_start_selection import release_tail
+        try:
+            plan, omitted = release_tail(stages('release'), ROOT, args.from_step, args.from_case)
+        except (ValueError,OSError) as exc:
+            parser.error(str(exc))
+        metadata = {'kind':'manual-release-start','fullMAcceptance':False,'fullM7Acceptance':False,
+                    'startStep':args.from_step,'fromCase':args.from_case,'omittedReleaseSteps':omitted,
+                    'priorEvidence':'omitted steps not executed or re-certified'}
+        print('RELEASE_SCOPE '+json.dumps(metadata),flush=True)
+    raise SystemExit(run(args.profile,interactive=not args.non_interactive,monitor_id=args.monitor_id,
+                         plan=plan,metadata=metadata))

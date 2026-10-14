@@ -18,7 +18,7 @@ jobs:
       - run: uv venv .venv-nanobot && uv pip install --python .venv-nanobot/bin/python -r requirements-nanobot.txt
       - run: npm ci --ignore-scripts
       - run: bash scripts/build-m-images.sh
-      - run: .venv-m/bin/python scripts/check_m.py --profile acceptance
+      - run: .venv-m/bin/python scripts/check_m.py --profile acceptance --non-interactive
       - uses: actions/upload-artifact@v4
         if: always()
         with:

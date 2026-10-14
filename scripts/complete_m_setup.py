@@ -151,7 +151,7 @@ def main(args):
                  ('frontend-lock',['npm','ci','--ignore-scripts'],1800,120)])
     if not args.setup_only:
         # Keep the 10x decision point inside the finite acceptance hard cap.
-        plan.append(('m-acceptance',[str(ROOT/'.venv-m/bin/python'),'scripts/check_m.py','--profile','acceptance'],7200,600))
+        plan.append(('m-acceptance',[str(ROOT/'.venv-m/bin/python'),'scripts/check_m.py','--profile','acceptance','--non-interactive'],7200,600))
     save()
     print('Setup report:',directory/'report.json',flush=True)
     for name,command,timeout,fallback_normal in plan:

@@ -134,10 +134,12 @@ def test_m1_frontend_gate_uses_the_project_node_runtime():
     assert m1[1][0]=='/project/.tools/node/bin/node'
 
 def test_command_monitor_streams_output_reports_overrun_and_continues():
-    command=[sys.executable,'-u','-c','import time;print("child-start",flush=True);time.sleep(.16);print("child-end",flush=True)']
+    # Positive streaming/approval behavior must survive cold child startup. The
+    # separate negative cases below still prove their original short hard caps.
+    command=[sys.executable,'-u','-c','import time;time.sleep(1.05);print("child-start",flush=True);time.sleep(.16);print("child-end",flush=True)']
     terminal=io.StringIO()
     with patch('builtins.input',return_value='y'),redirect_stdout(terminal):
-        code,output,timing=execute(command,Path.cwd(),os.environ,timeout=1,normal_seconds=.02,
+        code,output,timing=execute(command,Path.cwd(),os.environ,timeout=30,normal_seconds=.02,
                                    prompt_after=.05,interval=.01)
     assert code==0 and 'child-start' in output and 'child-end' in output
     assert 'M_CHECK_OVERRUN' in terminal.getvalue()

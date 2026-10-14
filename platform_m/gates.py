@@ -44,10 +44,15 @@ def source_snapshot(root):
               for name in sorted(set(result.stdout.splitlines())) if (root/name).is_file()}
     return digest(values), values
 
-def release_step_count(root):
+def release_step_count(root, command=None):
+    from scripts.check_start_selection import release_plan, release_tail
     from scripts.gepa_validation_budget import expand_plan
-    modules = [('python-' + path.stem, []) for path in sorted((Path(root)/'tests').glob('*_test.py'))]
-    return 2 + len(expand_plan(modules, root))
+    plan = release_plan(root, 'python', 'node')
+    if command and '--from-step' in command:
+        first = command[command.index('--from-step')+1]
+        case = command[command.index('--from-case')+1] if '--from-case' in command else None
+        plan, _ = release_tail(plan, root, first, case)
+    return len(expand_plan(plan, root))
 
 
 MONITOR_POLICY = 'm-command-watch-v1'
@@ -246,8 +251,10 @@ class Gates:
         self.source_hash, self.inputs = source_snapshot(self.root)
         self.directory = self.root/'.local/m/support'/('MCHECK-'+uuid.uuid4().hex)
         self.directory.mkdir(parents=True)
-    def run(self, plans, environment=None):
+    def run(self, plans, environment=None, *, scope=None):
+        from scripts.check_start_selection import is_release_command
         checks, failed = [], None
+        partial = scope is not None and not scope.get('fullMAcceptance', False)
         env = {**os.environ, **(environment or {})}
         temporary = self.root/'.local/tmp'
         temporary.mkdir(parents=True,exist_ok=True)
@@ -261,24 +268,27 @@ class Gates:
                 status, exit_code = 'blocked', 2
                 logs.append({'blocked_by': failed, 'command_executed': False})
             else:
-                for index, command in enumerate(commands):
+                offset = (scope or {}).get('commandOffsets', {}).get(step, 0)
+                total = (scope or {}).get('stageCommandCounts', {}).get(step, len(commands))
+                for local_index, command in enumerate(commands):
+                    index = offset + local_index
                     normal = normal_budget(self.root, step, index)
-                    nested_monitor = 'scripts/check_steps.py' in command
+                    nested_monitor = is_release_command(command)
                     child_monitor = None
                     if nested_monitor:
                         identifier = uuid.uuid4().hex
                         command = [*command, '--non-interactive', '--monitor-id', identifier]
-                        child_monitor = {'id': identifier, 'steps': release_step_count(self.root)}
+                        child_monitor = {'id': identifier, 'steps': release_step_count(self.root, command)}
                     hard_limit = CHILD_STARTUP_SECONDS if nested_monitor else min(
                         MAX_COMMAND_SECONDS, max(900, prompt_after_seconds(normal) + 60))
                     prompt_after = hard_limit + 1
                     prompt_text = 'disabled'
-                    scope = 'child_step_with_heartbeat' if nested_monitor else 'command'
+                    deadline_scope = 'child_step_with_heartbeat' if nested_monitor else 'command'
                     display = ' '.join(map(str, command[1:])) or str(command[0])
-                    print(f'INFO {debug_code} step={step} command={index+1}/{len(commands)} check_started', flush=True)
-                    print(f'M_CHECK_EXPECTED step={step} command={index+1}/{len(commands)} '
+                    print(f'INFO {debug_code} step={step} command={index+1}/{total} check_started', flush=True)
+                    print(f'M_CHECK_EXPECTED step={step} command={index+1}/{total} '
                           f'normal_seconds={normal} prompt_after_seconds={prompt_text} '
-                          f'hard_limit_seconds={hard_limit} deadline_scope={scope} argv={display}', flush=True)
+                          f'hard_limit_seconds={hard_limit} deadline_scope={deadline_scope} argv={display}', flush=True)
                     try:
                         code, output, timing = execute(command, self.root, env,
                             timeout=hard_limit, normal_seconds=normal, prompt_after=prompt_after,
@@ -298,6 +308,8 @@ class Gates:
                       'monitor_policy': MONITOR_POLICY, 'source_hash': self.source_hash,
                       'input_hashes': self.inputs, 'logs': logs, 'blocked_by': failed if status == 'blocked' else None,
                       'python': sys.version, 'remediation': REMEDIATION[step]}
+            if scope is not None:
+                report['scope'] = scope
             atomic_write(bundle, canonical(redact(report)))
             row = StepCheck(id=uuid.uuid4().hex, step=step, status=status, debug_code=debug_code,
                 source_hash=self.source_hash, input_hash=digest(self.inputs), started_at=started,
@@ -305,12 +317,15 @@ class Gates:
                     if logs else [],
                 exit_code=exit_code,
                 bundle=str(bundle.relative_to(self.root)), remediation=REMEDIATION[step])
-            self.store.check(row.model_dump())
+            if not partial:
+                self.store.check(row.model_dump())  # scoped checks cannot certify stages in the acceptance API
             checks.append(row.model_dump())
             print(f'{"INFO" if status == "passed" else "ERROR"} {debug_code} step={step} status={status} '
                   f'bundle={bundle.relative_to(self.root)}', flush=True)
-        result = {'phase': 'M', 'status': 'passed' if failed is None else 'blocked',
+        result = {'phase': 'M', 'status': ('scoped_passed' if partial else 'passed') if failed is None else 'blocked',
                   'source_hash': self.source_hash, 'checks': checks, 'finished_at': time.time()}
+        if scope is not None:
+            result['scope'] = scope
         atomic_write(self.directory/'report.json', canonical(result))
         print('Support report: '+str(self.directory/'report.json'), flush=True)
         if failed is not None:
@@ -374,7 +389,7 @@ def plans(root, python):
                 pytest+['tests_m/test_m4.py']]),
         ('M5', [pytest+['tests_m/test_m5.py']]),
         ('M6', [pytest+['tests_m/test_m6.py']]),
-        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py'],
+        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py','tests_m/test_check_selection.py'],
                 [python,'scripts/scan_m_source.py'],
                 [python,'scripts/check_m_environment.py','--sdk'],
                 [str(sdk),'scripts/check_steps.py','--profile','release'],
@@ -382,6 +397,7 @@ def plans(root, python):
                     'scripts/migrate_wsl.py','scripts/check_m.py','scripts/check_m_environment.py','scripts/serve_m.py',
                     'scripts/check_steps.py','scripts/run_test_module.py','scripts/calibrate_release_tests.py',
                     'scripts/check_m7_remaining.py','scripts/native_agents.py',
-                    'scripts/native_check_plan.py','scripts/native_check_support.py'],
+                    'scripts/native_check_plan.py','scripts/native_check_support.py',
+                    'scripts/check_start_selection.py','scripts/gepa_validation_budget.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]

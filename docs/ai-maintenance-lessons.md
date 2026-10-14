@@ -249,3 +249,9 @@ The subsequent admission-lock audit added two runtime regressions and moved expl
 | Frontend | 95 passed, zero skips | Existing clients plus pending readiness and submission-abort bounds without hidden retries |
 
 The final diff also passed Ruff, the source credential-pattern scan, generated-contract consistency, strict TypeScript checking, and whitespace/error checks. The prior WSL GEPA 12/12 result remains historical evidence for its recorded source; this maintenance run did not repeat every completed GEPA workflow or M1–M6. Local loopback tests use real pinned SDKs and controlled model servers. They do not certify the edited source on the user's WSL machine, the Windows model endpoint, Docker, or full phase M acceptance.
+
+## Start-menu handoff rules (起始選單交付規則)
+
+Manual stage/step selection must preserve original indices and explicit omissions. A partial pass cannot populate complete-stage acceptance history. Cancelled/empty input must never trigger full execution. For M7 release, select module and case from current source before dispatch; retain required calibration, SDK validation, exact-case GEPA bounds and downstream failure blocking. See [the start-menu guide](m-check-start-menu.md).
+
+Executable identity must come from the command's interpreter/script position. Searching the entire argument list misclassified Ruff because it includes `scripts/check_steps.py` as a lint target. Validate the selected child manifest against the same source-owned release tail used by execution. Keep menu prompting separate from unattended child supervision and explicitly disable it in CI/setup.
