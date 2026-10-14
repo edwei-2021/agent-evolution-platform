@@ -1,6 +1,7 @@
 """Acceptance gates stop dependent work and always preserve actionable support bundles."""
 import os
 import json
+import math
 from pathlib import Path
 import signal
 import subprocess
@@ -47,6 +48,9 @@ MONITOR_POLICY = 'm-command-watch-v1'
 REPORT_INTERVAL_SECONDS = 5
 MAX_PROMPT_SECONDS = 30 * 60
 MAX_COMMAND_SECONDS = 2 * 60 * 60
+CHILD_STARTUP_SECONDS = 360
+CHILD_HEARTBEAT_SECONDS = 120
+CHILD_CLEANUP_SECONDS = 60
 FIRST_RUN_SECONDS = {
     'M1': [15, 20], 'M2': [15, 30, 120], 'M3': [30], 'M4': [60, 30],
     'M5': [60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
@@ -83,9 +87,11 @@ def normal_budget(root, step, command_index):
 
 def execute(command, root, environment, timeout=900, normal_seconds=30,
             prompt_after=None, interval=REPORT_INTERVAL_SECONDS, input_fn=None,
-            report_overrun=True):
+            report_overrun=True, interactive=True, child_monitor=None,
+            heartbeat_seconds=CHILD_HEARTBEAT_SECONDS):
     process = subprocess.Popen(command, cwd=root, env=environment, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
+                               stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True,
+                               stdin=None if interactive else subprocess.DEVNULL)
     lines = queue.Queue()
     end = object()
     def collect():
@@ -97,18 +103,30 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
     reader = threading.Thread(target=collect, name='m-gate-output', daemon=True)
     reader.start()
     started = time.monotonic()
+    active_deadline = started + timeout
+    last_output_at = started
+    child_index = 0
+    child_step = None
+    child_report = None
+    child_step_limit = None
     prompted = approved = False
     input_fn = input_fn or input
     prompt_after = prompt_after_seconds(normal_seconds) if prompt_after is None else prompt_after
     next_report = started + normal_seconds if report_overrun else started + timeout
     output = []
+    def limits():
+        if not child_monitor:return {}
+        return {'startup_limit_seconds': timeout, 'heartbeat_seconds': heartbeat_seconds,
+                'child_step_index': child_index, 'child_step_maximum_seconds': child_step_limit,
+                'child_cleanup_seconds': CHILD_CLEANUP_SECONDS,
+                'hard_limit_seconds': round(active_deadline-started, 3)}
     def terminate():
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         try:
-            process.wait(timeout=5)
+            process.wait(timeout=CHILD_CLEANUP_SECONDS if child_monitor else 5)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
@@ -117,10 +135,11 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
             process.wait()
     try:
         stream_done = False
-        while not stream_done:
+        while not stream_done or process.poll() is None:
             elapsed = time.monotonic() - started
-            deadline = min(started + timeout, next_report,
-                           started + prompt_after if not prompted else started + timeout)
+            deadline = min(active_deadline, next_report,
+                           started + prompt_after if interactive and not prompted else active_deadline,
+                           last_output_at + heartbeat_seconds if child_monitor else active_deadline)
             wait = max(0.01, min(0.25, deadline - time.monotonic()))
             try:
                 item = lines.get(timeout=wait)
@@ -131,6 +150,27 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
             elif item is not None:
                 output.append(item)
                 print(redact(item), end='', flush=True)
+                last_output_at = time.monotonic()
+                if child_monitor and item.startswith('CHECK_MONITOR '):
+                    try:
+                        state = json.loads(item.removeprefix('CHECK_MONITOR '))
+                        seconds = state['maximumSeconds']
+                        if (state['id'] == child_monitor['id'] and type(state['index']) is int
+                                and state['index'] == child_index + 1
+                                and state['index'] <= child_monitor['steps']
+                                and type(seconds) in (int, float) and math.isfinite(seconds)
+                                and 0 < seconds <= MAX_COMMAND_SECONDS):
+                            child_index, child_step = state['index'], state['step']
+                            child_step_limit = seconds
+                            active_deadline = last_output_at + seconds + CHILD_CLEANUP_SECONDS
+                            next_report = active_deadline
+                            candidate = Path(state.get('report', ''))
+                            expected = Path(root).resolve()/'.local/test-reports'
+                            if (candidate.resolve().is_relative_to(expected.resolve())
+                                    and candidate.name == 'report.json'):
+                                child_report = str(candidate)
+                    except (ValueError, KeyError, TypeError):
+                        pass
             now = time.monotonic()
             elapsed = now - started
             overdue = max(0, elapsed - normal_seconds)
@@ -138,10 +178,10 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
                 print(f'M_CHECK_OVERRUN over_normal_seconds={overdue:.1f} elapsed_seconds={elapsed:.0f} '
                       f'normal_seconds={normal_seconds}', flush=True)
                 next_report = now + interval
-            if not prompted and elapsed >= prompt_after:
+            if interactive and not prompted and elapsed >= prompt_after:
                 prompted = True
                 print(f'M_CHECK_WAIT_DECISION exceeded_normal_seconds={overdue:.1f}; '
-                      'continue waiting? [y/N] ', end='', flush=True)
+                      'continue waiting? [y/N]', flush=True)
                 try:
                     answer = input_fn().strip().lower()
                 except (EOFError, OSError, KeyboardInterrupt):
@@ -154,24 +194,35 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
                         'elapsed_seconds': time.monotonic()-started,
                         'over_normal_seconds': max(0, time.monotonic()-started-normal_seconds),
                         'extension_approved': False, 'stopped_by_user': True,
-                        'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout}
+                        'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout, **limits()}
                 print(f'\nM_CHECK_WAIT_APPROVED continuing; over_normal_seconds={overdue:.1f}', flush=True)
                 next_report = time.monotonic() + interval
-            if elapsed >= timeout and not stream_done:
+            stalled = child_monitor and now - last_output_at >= heartbeat_seconds
+            if (now >= active_deadline or stalled) and process.poll() is None:
                 terminate()
-                output.append('\nM_CHECK_HARD_LIMIT stopping process group\n')
+                reason = 'child_output_stalled' if stalled else 'hard_limit'
+                diagnostic = {'reason': reason, 'child_step': child_step,
+                              'last_output_age_seconds': round(now-last_output_at, 3),
+                              'child_report': child_report}
+                message = 'M_CHECK_HARD_LIMIT '+json.dumps(diagnostic)+' stopping process group\n'
+                print(message, end='', flush=True)
+                output.append('\n'+message)
                 return 124, ''.join(output), {
                     'elapsed_seconds': time.monotonic()-started,
                     'over_normal_seconds': max(0, time.monotonic()-started-normal_seconds),
                     'extension_approved': approved, 'stopped_by_user': False,
-                    'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout}
+                    'stop_reason': reason, 'child_step': child_step, 'child_report': child_report,
+                    'deadline_scope': 'child_step' if child_monitor else 'command',
+                    'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout, **limits()}
         process.wait()
         elapsed = time.monotonic()-started
         return process.returncode, ''.join(output), {
             'elapsed_seconds': elapsed,
             'over_normal_seconds': max(0, elapsed-normal_seconds),
             'extension_approved': approved, 'stopped_by_user': False,
-            'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout}
+            'child_step': child_step, 'child_report': child_report,
+            'deadline_scope': 'child_step' if child_monitor else 'command',
+            'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout, **limits()}
     except KeyboardInterrupt:
         terminate()
         elapsed = time.monotonic()-started
@@ -179,7 +230,8 @@ def execute(command, root, environment, timeout=900, normal_seconds=30,
         return 130, ''.join(output), {
             'elapsed_seconds': elapsed, 'over_normal_seconds': max(0, elapsed-normal_seconds),
             'extension_approved': approved, 'stopped_by_user': True,
-            'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout}
+            'child_step': child_step, 'child_report': child_report, 'stop_reason': 'interrupted',
+            'prompt_after_seconds': prompt_after, 'hard_limit_seconds': timeout, **limits()}
 
 class Gates:
     def __init__(self, root):
@@ -206,19 +258,25 @@ class Gates:
                 for index, command in enumerate(commands):
                     normal = normal_budget(self.root, step, index)
                     nested_monitor = 'scripts/check_steps.py' in command
-                    prompt_after = MAX_COMMAND_SECONDS + 1 if nested_monitor else prompt_after_seconds(normal)
-                    hard_limit = MAX_COMMAND_SECONDS if nested_monitor else min(
-                        MAX_COMMAND_SECONDS, max(900, prompt_after + 60))
-                    prompt_text = 'managed_by_child' if nested_monitor else str(prompt_after)
+                    child_monitor = None
+                    if nested_monitor:
+                        identifier = uuid.uuid4().hex
+                        command = [*command, '--non-interactive', '--monitor-id', identifier]
+                        child_monitor = {'id': identifier, 'steps': 2 + len(list((self.root/'tests').glob('*_test.py')))}
+                    hard_limit = CHILD_STARTUP_SECONDS if nested_monitor else min(
+                        MAX_COMMAND_SECONDS, max(900, prompt_after_seconds(normal) + 60))
+                    prompt_after = hard_limit + 1
+                    prompt_text = 'disabled'
+                    scope = 'child_step_with_heartbeat' if nested_monitor else 'command'
                     display = ' '.join(map(str, command[1:])) or str(command[0])
                     print(f'INFO {debug_code} step={step} command={index+1}/{len(commands)} check_started', flush=True)
                     print(f'M_CHECK_EXPECTED step={step} command={index+1}/{len(commands)} '
                           f'normal_seconds={normal} prompt_after_seconds={prompt_text} '
-                          f'hard_limit_seconds={hard_limit} argv={display}', flush=True)
+                          f'hard_limit_seconds={hard_limit} deadline_scope={scope} argv={display}', flush=True)
                     try:
                         code, output, timing = execute(command, self.root, env,
                             timeout=hard_limit, normal_seconds=normal, prompt_after=prompt_after,
-                            report_overrun=not nested_monitor)
+                            report_overrun=not nested_monitor, interactive=False, child_monitor=child_monitor)
                     except (OSError, RuntimeError) as exc:
                         code, output, timing = 127, str(exc), {'elapsed_seconds': 0,
                             'over_normal_seconds': 0, 'extension_approved': False,
@@ -256,6 +314,25 @@ class Gates:
                     for name in ['report.json', *[step+'.json' for step, _ in plans]]:
                         path = self.directory/name
                         archive.writestr(name, canonical(redact(json.loads(path.read_text()))))
+                    for stage, _ in plans:
+                        stage_bundle = json.loads((self.directory/(stage+'.json')).read_text())
+                        for log in stage_bundle['logs']:
+                            if not log.get('child_report'):
+                                continue
+                            child = Path(log['child_report']).resolve()
+                            if not child.is_relative_to(self.root/'.local/test-reports'):
+                                continue
+                            if not child.is_file():
+                                continue
+                            nested = json.loads(child.read_text())
+                            archive.writestr('release/report.json', canonical(redact(nested)))
+                            for row in nested.get('steps', []):
+                                name = row.get('log', '')
+                                if not name or Path(name).name != name:
+                                    continue
+                                path = child.parent/name
+                                if path.is_file() and not path.is_symlink():
+                                    archive.writestr('release/'+name, redact(path.read_text(errors='replace')))
                 print('M_SUPPORT_ARCHIVE '+str(archive_path), flush=True)
             except (OSError, ValueError) as exc:
                 print('M_SUPPORT_EXPORT_FAILED '+str(exc), flush=True)

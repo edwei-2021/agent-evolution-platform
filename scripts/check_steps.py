@@ -7,6 +7,8 @@ import json
 import os
 import queue
 import signal
+import select
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -22,6 +24,7 @@ from gepa_runtime import gepa_status
 ROOT=Path(__file__).resolve().parents[1]
 MONITOR_POLICY = 'overrun-prompt-v1'
 MAX_PROMPT_SECONDS = 30 * 60
+INTERRUPT_SIGNAL = None
 
 def prompt_after_seconds(normal):
     return max(normal, min(normal * 10, MAX_PROMPT_SECONDS))
@@ -67,11 +70,11 @@ def normal_budget(profile, name, command=None, calibration=None):
         except (OSError,ValueError,KeyError,TypeError):
             from adaptive_validation import current
             io=float(current()['perCallIoAllowanceSeconds'])
-        full=smoke_budget(io)['normalSeconds']
+        full=smoke_budget(io)['workflowSeconds']+30
         # Four cases run complete serial search/final/review workflows. The
         # other eight cases cover datasets, early failures and cancellation.
         # This is a module estimate; each case still prints its own progress.
-        return max(historical,4*full+8*30)
+        return max(historical,4*full+8*60)
     if profile=='release' and name.startswith('python-'):
         test_file=ROOT/'tests'/(name.removeprefix('python-')+'.py')
         try:
@@ -90,8 +93,27 @@ def normal_budget(profile, name, command=None, calibration=None):
         return max(30,min(900,15+count*per_case),historical)
     return 900
 
-def supervise(process, name, normal, maximum, interval=5, *, output_path=None, progress_interval=30):
-    started=time.monotonic();prompted=False;approved=False;declined=False
+def _wait_answer(buffer):
+    """Poll a decision without stopping output draining or deadline checks."""
+    if isinstance(sys.stdin, io.StringIO):
+        return sys.stdin.readline().strip().lower(), buffer
+    try:
+        descriptor = sys.stdin.fileno()
+        while select.select([descriptor], [], [], 0)[0]:
+            character = os.read(descriptor, 1)
+            if not character or character == b'\n':
+                return buffer.decode(errors='replace').strip().lower(), b''
+            buffer += character
+            if len(buffer) > 1024:
+                return '', b''
+    except (OSError, ValueError, AttributeError):
+        return '', b''
+    return None, buffer
+
+
+def supervise(process, name, normal, maximum, interval=5, *, output_path=None,
+              progress_interval=30, interactive=True):
+    started=time.monotonic();prompted=False;approved=False;pending=False;answer_buffer=b''
     events=queue.Queue();reader=None;last_output='';next_progress=started+progress_interval
     if process.stdout is not None:
         def collect():
@@ -99,80 +121,70 @@ def supervise(process, name, normal, maximum, interval=5, *, output_path=None, p
                 for line in process.stdout:events.put(line)
             finally:
                 process.stdout.close()
-                events.put(None)
         reader=threading.Thread(target=collect,name='check-step-output',daemon=True);reader.start()
     def drain():
         nonlocal last_output
         while True:
             try:line=events.get_nowait()
             except queue.Empty:break
-            if line is None:continue
             last_output=line.rstrip()[-400:]
             if output_path is not None:output_path.write(line);output_path.flush()
             print(line,end='',flush=True)
-    next_overrun=None
-    while process.poll() is None:
+    def terminate():
+        try:os.killpg(process.pid,signal.SIGTERM)
+        except ProcessLookupError:pass
+        try:process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            try:os.killpg(process.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            process.wait()
+    def finish(code, reason=None):
+        if reader is not None:reader.join(timeout=1)
         drain()
         elapsed=time.monotonic()-started
-        over=round(max(0,elapsed-normal),1)
-        if elapsed>=next_progress:
-            print(f'TEST_PROGRESS step={name} elapsed_seconds={int(elapsed)} over_normal_seconds={over} '
-                  f'last_output={last_output or "waiting_for_test_output"}',flush=True)
-            next_progress=time.monotonic()+progress_interval
-        if over and (next_overrun is None or time.monotonic()>=next_overrun):
-            print(f'TEST_OVERRUN step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} normal_seconds={normal}',flush=True)
-            next_overrun=time.monotonic()+interval
-        if elapsed>=prompt_after_seconds(normal) and not prompted:
-            prompted=True
-            print(f'TEST_WAIT_DECISION step={name} exceeded_normal_seconds={over}. Continue waiting? [y/N] ',end='',flush=True)
-            try:answer=sys.stdin.readline().strip().lower()
-            except (EOFError,OSError):answer=''
-            approved=answer in ('y','yes')
-            declined=not approved
-            if declined:
-                try:os.killpg(process.pid,signal.SIGTERM)
-                except ProcessLookupError:pass
-                try:process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    try:os.killpg(process.pid,signal.SIGKILL)
-                    except ProcessLookupError:pass
-                    process.wait()
-                return {'exitCode':125,'durationMs':round((time.monotonic()-started)*1000,3),
-                        'overNormalSeconds':round(max(0,time.monotonic()-started-normal),1),
-                        'extensionApproved':False,'stoppedByUser':True,'stopReason':'user_declined'}
-            print(f'TEST_WAIT_APPROVED step={name}; continuing; over_normal_seconds={over}',flush=True)
-        if elapsed>=maximum:
-            print(f'TEST_HARD_LIMIT step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} hard_limit_seconds={maximum}; stopping process',flush=True)
-            try:os.killpg(process.pid,signal.SIGTERM)
-            except ProcessLookupError:pass
-            try:process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:os.killpg(process.pid,signal.SIGKILL)
-                except ProcessLookupError:pass
-                process.wait()
-            return {'exitCode':124,'durationMs':round((time.monotonic()-started)*1000,3),
-                    'overNormalSeconds':round(max(0,time.monotonic()-started-normal),1),
-                    'extensionApproved':approved,'stoppedByUser':False}
-        try:process.wait(timeout=min(.2,maximum-elapsed))
-        except subprocess.TimeoutExpired:pass
-        except KeyboardInterrupt:
-            try:os.killpg(process.pid,signal.SIGTERM)
-            except ProcessLookupError:pass
-            try:process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:os.killpg(process.pid,signal.SIGKILL)
-                except ProcessLookupError:pass
-                process.wait()
+        return {'exitCode':code,'durationMs':round(elapsed*1000,3),
+                'overNormalSeconds':round(max(0,elapsed-normal),1),
+                'extensionApproved':approved,'stoppedByUser':reason in ('user_declined','ctrl_c'),
+                **({'stopReason':reason} if reason else {})}
+    next_overrun=None
+    try:
+        while process.poll() is None:
+            drain()
             elapsed=time.monotonic()-started
-            return {'exitCode':130,'durationMs':round(elapsed*1000,3),
-                    'overNormalSeconds':round(max(0,elapsed-normal),1),
-                    'extensionApproved':approved,'stoppedByUser':True,'stopReason':'ctrl_c'}
-    drain()
-    if reader is not None:reader.join(timeout=1)
-    elapsed=time.monotonic()-started
-    return {'exitCode':process.returncode,'durationMs':round(elapsed*1000,3),
-            'overNormalSeconds':round(max(0,elapsed-normal),1),'extensionApproved':approved,
-            'stoppedByUser':declined}
+            over=round(max(0,elapsed-normal),1)
+            # A pending interactive answer must never disable this deadline.
+            if elapsed>=maximum:
+                print(f'TEST_HARD_LIMIT step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} hard_limit_seconds={maximum}; stopping process',flush=True)
+                terminate()
+                return finish(124,'hard_limit')
+            if elapsed>=next_progress:
+                print(f'TEST_PROGRESS step={name} elapsed_seconds={int(elapsed)} over_normal_seconds={over} '
+                      f'last_output={last_output or "waiting_for_test_output"}',flush=True)
+                next_progress=time.monotonic()+progress_interval
+            if over and (next_overrun is None or time.monotonic()>=next_overrun):
+                print(f'TEST_OVERRUN step={name} over_normal_seconds={over} elapsed_seconds={int(elapsed)} normal_seconds={normal}',flush=True)
+                next_overrun=time.monotonic()+interval
+            if interactive and elapsed>=prompt_after_seconds(normal) and not prompted:
+                prompted=pending=True
+                # The newline is required by the parent gate's line forwarder.
+                print(f'TEST_WAIT_DECISION step={name} exceeded_normal_seconds={over}. Continue waiting? [y/N]',flush=True)
+            if pending:
+                answer,answer_buffer=_wait_answer(answer_buffer)
+                if answer is not None:
+                    pending=False
+                    approved=answer in ('y','yes')
+                    if not approved:
+                        terminate()
+                        return finish(125,'user_declined')
+                    print(f'TEST_WAIT_APPROVED step={name}; continuing; over_normal_seconds={over}',flush=True)
+            try:process.wait(timeout=min(.1,max(.001,maximum-elapsed)))
+            except subprocess.TimeoutExpired:pass
+    except KeyboardInterrupt:
+        terminate()
+        return finish(143 if INTERRUPT_SIGNAL == 'SIGTERM' else 130,
+                      'sigterm' if INTERRUPT_SIGNAL == 'SIGTERM' else 'ctrl_c')
+    return finish(process.returncode)
+
 def stages(profile,root=ROOT):
     node=find_node(root)
     if not node:raise RuntimeError('Supported Node runtime is required')
@@ -201,36 +213,45 @@ def stages(profile,root=ROOT):
     elif profile!='quick':raise ValueError('Unknown test profile')
     return steps
 
-def run(profile):
+def run(profile, *, interactive=True, monitor_id=None):
     plan=stages(profile);identifier='CHECK-'+uuid.uuid4().hex;directory=ROOT/'.local/test-reports'/identifier;directory.mkdir(parents=True)
-    logs=DebugLog(ROOT);report={'schemaVersion':1,'id':identifier,'profile':profile,'monitorPolicy':MONITOR_POLICY,'startedAt':datetime.now(timezone.utc).isoformat(),'status':'running','steps':[]}
+    logs=DebugLog(ROOT);report={'schemaVersion':1,'id':identifier,'profile':profile,'monitorPolicy':MONITOR_POLICY,'startedAt':datetime.now(timezone.utc).isoformat(),'status':'running','waitPolicy':'interactive' if interactive else 'bounded_non_interactive','steps':[]}
     def save():
         target=directory/'report.json';temp=directory/'report.tmp';temp.write_text(json.dumps(report,indent=2));temp.replace(target)
     save();print(f'Test report: {directory}',flush=True)
-    for name,command in plan:
+    for index,(name,command) in enumerate(plan,1):
         row={'step':name,'status':'running','startedAt':datetime.now(timezone.utc).isoformat(),'log':name+'.log'};report['steps'].append(row);save()
         step=Step(logs,'runtime','test.'+name,identifier,profile=profile);print(f'STEP_STARTED {name}',flush=True)
         normal=normal_budget(profile,name,command)
         prompt_after=prompt_after_seconds(normal)
         maximum=min(7200,max(normal*20,normal+60,prompt_after+60))
-        row.update(normalSeconds=normal,promptAfterSeconds=prompt_after,maximumSeconds=maximum)
-        print(f'STEP_EXPECTED {name} normal_seconds={normal} prompt_after_seconds={prompt_after} hard_limit_seconds={maximum}',flush=True)
+        row.update(normalSeconds=normal,promptAfterSeconds=prompt_after if interactive else None,maximumSeconds=maximum)
+        prompt_text=prompt_after if interactive else 'disabled'
+        print(f'STEP_EXPECTED {name} normal_seconds={normal} prompt_after_seconds={prompt_text} hard_limit_seconds={maximum}',flush=True)
+        if monitor_id:
+            print('CHECK_MONITOR '+json.dumps({'id':monitor_id,'index':index,'step':name,
+                  'maximumSeconds':maximum,'report':str(directory/'report.json')}),flush=True)
         try:
             with (directory/row['log']).open('w') as output:
                 process=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                                          text=True,bufsize=1,start_new_session=True,
+                                         stdin=None if interactive else subprocess.DEVNULL,
                                          env={**os.environ,'AEP_TEST_REPORT_DIR':str(directory)})
-                observed=supervise(process,name,normal,maximum,output_path=output)
+                observed=supervise(process,name,normal,maximum,output_path=output,interactive=interactive)
             row.update(status='stopped' if observed.get('stopReason')=='user_declined' else
                        'completed' if observed['exitCode']==0 else 'failed',
                        exitCode=observed['exitCode'],durationMs=observed['durationMs'],
-                       overNormalSeconds=observed['overNormalSeconds'],extensionApproved=observed['extensionApproved'])
+                       overNormalSeconds=observed['overNormalSeconds'],extensionApproved=observed['extensionApproved'],stopReason=observed.get('stopReason'))
             if observed.get('stopReason')=='ctrl_c':row['interruptedBy']='Ctrl-C'
+            if observed.get('stopReason')=='sigterm':row['interruptedBy']='SIGTERM'
             log_text=(directory/row['log']).read_text(errors='replace')
-            row['testCases']=[json.loads(line.removeprefix('TEST_CASE_RESULT '))
-                              for line in log_text.splitlines() if line.startswith('TEST_CASE_RESULT ')]
+            row['testCases']=[]
+            for line in log_text.splitlines():
+                if not line.startswith('TEST_CASE_RESULT '):continue
+                try:row['testCases'].append(json.loads(line.removeprefix('TEST_CASE_RESULT ')))
+                except ValueError:row['incompleteCaseRecords']=row.get('incompleteCaseRecords',0)+1
             if row['status']=='stopped':row['error']='User chose to stop after the test exceeded ten times its normal duration.'
-        except OSError as exc:row.update(status='failed',error=str(exc))
+        except OSError as exc:row.update(status='failed',error=str(exc),exitCode=127,durationMs=0)
         row.update(finishedAt=datetime.now(timezone.utc).isoformat());save()
         step.finish(row['status'],row.get('error') or ('Tests failed; inspect '+row['log'] if row['status']=='failed' else None))
         print(f'STEP_{row["status"].upper()} {name} {row["durationMs"]} ms',flush=True)
@@ -240,6 +261,13 @@ def run(profile):
 
 if __name__=='__main__':
     def terminate_as_interrupt(signum, frame):
+        global INTERRUPT_SIGNAL
+        INTERRUPT_SIGNAL = signal.Signals(signum).name
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,terminate_as_interrupt)
-    parser=argparse.ArgumentParser();parser.add_argument('--profile',choices=['quick','model','release'],default='quick');args=parser.parse_args();raise SystemExit(run(args.profile))
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--profile',choices=['quick','model','release'],default='quick')
+    parser.add_argument('--non-interactive',action='store_true',help='Run to the frozen step deadlines without stdin prompts')
+    parser.add_argument('--monitor-id',help=argparse.SUPPRESS)
+    args=parser.parse_args()
+    raise SystemExit(run(args.profile,interactive=not args.non_interactive,monitor_id=args.monitor_id))

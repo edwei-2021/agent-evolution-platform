@@ -140,6 +140,103 @@ class CheckStepsTests(unittest.TestCase):
         self.assertTrue(any('TEST_HARD_LIMIT' in str(c.args[0]) and 'over_normal_seconds=' in str(c.args[0])
                             for c in output.call_args_list))
 
+    def test_non_interactive_overrun_never_reads_stdin(self):
+        import subprocess
+        process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(.25)'],start_new_session=True)
+        with patch('check_steps._wait_answer',side_effect=AssertionError('stdin must not be read')):
+            result=supervise(process,'batch-fixture',.01,1,interactive=False)
+        self.assertEqual(result['exitCode'],0)
+        self.assertFalse(result['extensionApproved'])
+
+    def test_module_sigterm_preserves_teardown_and_failed_case_evidence(self):
+        import signal
+        import subprocess
+        with tempfile.TemporaryDirectory() as root:
+            tests_dir=Path(root)
+            (tests_dir/'signal_test.py').write_text(
+                'import pathlib,time,unittest\n'
+                'class SignalCase(unittest.TestCase):\n'
+                ' def test_wait(self):\n'
+                '  print("fixture-ready",flush=True)\n'
+                '  try: time.sleep(30)\n'
+                '  except Exception: self.fail("cancellation swallowed as an ordinary error")\n'
+                ' def tearDown(self): pathlib.Path('+repr(str(tests_dir/'cleanup'))+').write_text("closed")\n')
+            process=subprocess.Popen([sys.executable,str(Path(check_steps.__file__).with_name('run_test_module.py')),
+                'signal_test.py','--tests-dir',str(tests_dir)],
+                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,start_new_session=True)
+            try:
+                # Wait for the handler to be installed and the case to begin.
+                while 'fixture-ready' not in process.stdout.readline():
+                    if process.poll() is not None:self.fail('signal fixture exited before its test')
+                process.send_signal(signal.SIGTERM)
+                output=process.communicate(timeout=5)[0]
+                self.assertEqual(process.returncode,1,output)
+                self.assertEqual((tests_dir/'cleanup').read_text(),'closed')
+                case=json.loads(next(line.removeprefix('TEST_CASE_RESULT ') for line in output.splitlines()
+                                     if line.startswith('TEST_CASE_RESULT ')))
+                self.assertEqual(case['status'],'error')
+                self.assertIn('SIGTERM',output)
+            finally:
+                if process.poll() is None:process.kill();process.wait()
+
+    def test_pending_stdin_keeps_prompt_visible_and_drains_completed_child(self):
+        import subprocess
+        read_fd,write_fd=os.pipe()
+        process=subprocess.Popen([sys.executable,'-u','-c',
+            'import time;print("before");time.sleep(.25);print("after")'],
+            stdout=subprocess.PIPE,text=True,start_new_session=True)
+        try:
+            with os.fdopen(read_fd) as source,patch('check_steps.sys.stdin',source),patch('builtins.print') as output:
+                result=supervise(process,'pending-input',.01,1)
+            self.assertEqual(result['exitCode'],0)
+            prompts=[call for call in output.call_args_list if 'TEST_WAIT_DECISION' in str(call.args)]
+            self.assertEqual(len(prompts),1)
+            self.assertNotEqual(prompts[0].kwargs.get('end'),'')
+            self.assertTrue(any('after' in str(call.args) for call in output.call_args_list))
+        finally:
+            os.close(write_fd)
+
+    def test_pending_stdin_cannot_disable_the_absolute_deadline(self):
+        import subprocess
+        read_fd,write_fd=os.pipe()
+        process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],start_new_session=True)
+        try:
+            with os.fdopen(read_fd) as source,patch('check_steps.sys.stdin',source):
+                result=supervise(process,'bounded-input',.01,.3)
+            self.assertEqual(result['exitCode'],124)
+            self.assertLess(result['durationMs'],2000)
+            self.assertEqual(result['stopReason'],'hard_limit')
+            self.assertIsNotNone(process.poll())
+        finally:
+            os.close(write_fd)
+
+    def test_batch_report_retains_policy_control_frames_and_last_output(self):
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)),\
+             patch('check_steps.stages',return_value=[('fixture',[sys.executable,'-u','-c','print("last evidence")'])]):
+            output=io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(check_steps.run('release',interactive=False,monitor_id='fixture-id'),0)
+            control=[json.loads(line.removeprefix('CHECK_MONITOR ')) for line in output.getvalue().splitlines()
+                     if line.startswith('CHECK_MONITOR ')]
+            self.assertEqual(control[0]['id'],'fixture-id')
+            self.assertEqual(control[0]['index'],1)
+            report=json.loads(Path(control[0]['report']).read_text())
+            self.assertEqual(report['waitPolicy'],'bounded_non_interactive')
+            self.assertIsNone(report['steps'][0]['promptAfterSeconds'])
+            self.assertIn('last evidence',(Path(control[0]['report']).parent/'fixture.log').read_text())
+
+    def test_partial_case_json_keeps_the_failure_report_and_raw_log(self):
+        with tempfile.TemporaryDirectory() as root,patch('check_steps.ROOT',Path(root)),\
+             patch('check_steps.stages',return_value=[('fixture',[sys.executable,'-c',
+                 'print("TEST_CASE_RESULT {broken");raise SystemExit(3)'])]):
+            self.assertEqual(check_steps.run('release',interactive=False),1)
+            path=next(Path(root).glob('.local/test-reports/*/report.json'))
+            row=json.loads(path.read_text())['steps'][0]
+            self.assertEqual(row['exitCode'],3)
+            self.assertEqual(row['incompleteCaseRecords'],1)
+            self.assertIn('{broken',(path.parent/'fixture.log').read_text())
+
     def test_ctrl_c_is_distinguished_from_declining_the_wait_prompt(self):
         class InterruptedProcess:
             pid=999999

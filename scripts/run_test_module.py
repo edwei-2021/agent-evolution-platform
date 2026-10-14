@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import signal
 import time
 import unittest
 
@@ -12,6 +13,10 @@ GEPA_FULL_CASES = ('test_actual_js_client_to_python_api_dispatch_and_result_vali
                    'test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate',
                    'test_perfect_seed_skips_proposals_and_cannot_release_without_improvement',
                    'test_heldout_regression_blocks_release_even_with_validation_improvement')
+
+
+class ModuleInterrupted(BaseException):
+    """Cancellation must bypass transport/tool handlers for ordinary errors."""
 
 
 def expected_case_seconds(identifier):
@@ -102,7 +107,15 @@ def main(argv=None):
     # improving the evidence for that first failure.
     runner = unittest.TextTestRunner(stream=sys.stderr, verbosity=2,
                                      resultclass=TimedResult, failfast=True)
-    result = runner.run(suite)
+    def interrupt_module(signum, frame):
+        # unittest records this as an error and runs tearDown, allowing active
+        # SDK workers to be cancelled and failure evidence to be preserved.
+        raise ModuleInterrupted('Test module interrupted by '+signal.Signals(signum).name)
+    previous = signal.signal(signal.SIGTERM, interrupt_module)
+    try:
+        result = runner.run(suite)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     print('TEST_MODULE_RESULT ' + json.dumps({
         'pattern': args.pattern, 'testsRun': result.testsRun,
         'failures': len(result.failures), 'errors': len(result.errors),

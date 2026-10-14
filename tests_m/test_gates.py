@@ -4,10 +4,101 @@ import os
 import subprocess
 import sys
 import zipfile
+import pytest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 from platform_m.gates import Gates, execute, normal_budget, plans
+
+
+def test_nested_steps_can_finish_after_startup_limit_without_waiting_for_input():
+    code='''import json,time
+def step(index):
+ print('CHECK_MONITOR '+json.dumps({'id':'fixture','index':index,'step':'step-'+str(index),'maximumSeconds':2}),flush=True)
+step(1);time.sleep(1.2);step(2);time.sleep(1.2);print('all steps completed',flush=True)
+'''
+    with patch('platform_m.gates.CHILD_CLEANUP_SECONDS',.05),patch('builtins.input',side_effect=AssertionError('batch stdin')):
+        code,output,timing=execute([sys.executable,'-u','-c',code],Path.cwd(),os.environ,
+            timeout=2,normal_seconds=.01,interactive=False,report_overrun=False,
+            child_monitor={'id':'fixture','steps':2},heartbeat_seconds=5)
+    assert code==0 and 'all steps completed' in output
+    assert timing['elapsed_seconds']>2
+    assert timing['child_step']=='step-2' and timing['deadline_scope']=='child_step'
+
+
+def test_nested_duplicate_control_frames_cannot_extend_one_step_forever():
+    program='''import json,time
+for _ in range(100):
+ print('CHECK_MONITOR '+json.dumps({'id':'fixture','index':1,'step':'one','maximumSeconds':.15}),flush=True)
+ time.sleep(.03)
+'''
+    with patch('platform_m.gates.CHILD_CLEANUP_SECONDS',.05):
+        code,_,timing=execute([sys.executable,'-u','-c',program],Path.cwd(),os.environ,
+            timeout=5,interactive=False,report_overrun=False,
+            child_monitor={'id':'fixture','steps':1},heartbeat_seconds=5)
+    assert code==124 and timing['stop_reason']=='hard_limit'
+    assert timing['elapsed_seconds']<5
+    assert timing['child_step']=='one'
+
+
+def test_nested_monitor_stops_a_silent_supervisor_with_the_current_step():
+    program='''import json,time
+print('CHECK_MONITOR '+json.dumps({'id':'fixture','index':1,'step':'silent-module','maximumSeconds':20}),flush=True)
+time.sleep(30)
+'''
+    code,output,timing=execute([sys.executable,'-u','-c',program],Path.cwd(),os.environ,
+        timeout=5,interactive=False,report_overrun=False,
+        child_monitor={'id':'fixture','steps':1},heartbeat_seconds=2)
+    assert code==124 and timing['stop_reason']=='child_output_stalled'
+    assert timing['child_step']=='silent-module' and 'last_output_age_seconds' in output
+    assert timing['elapsed_seconds']<5
+
+
+def test_closed_output_pipe_does_not_disable_the_command_deadline():
+    program='import os,time;print("closing-output",flush=True);os.close(1);os.close(2);time.sleep(3)'
+    code,output,timing=execute([sys.executable,'-c',program],Path.cwd(),os.environ,
+        timeout=2,interactive=False,report_overrun=False)
+    assert code==124 and timing['elapsed_seconds']<5
+    assert 'closing-output' in output
+
+
+@pytest.mark.parametrize('state',[
+    {'id':'another-supervisor','index':1,'maximumSeconds':20},
+    {'id':'fixture','index':2,'maximumSeconds':20},
+    {'id':'fixture','index':True,'maximumSeconds':20},
+    {'id':'fixture','index':1,'maximumSeconds':float('inf')},
+])
+def test_invalid_control_frames_cannot_extend_the_startup_deadline(state):
+    state['step']='invalid'
+    program='import time;print('+repr('CHECK_MONITOR '+json.dumps(state))+',flush=True);time.sleep(3)'
+    code,_,timing=execute([sys.executable,'-u','-c',program],Path.cwd(),os.environ,
+        timeout=2,interactive=False,report_overrun=False,
+        child_monitor={'id':'fixture','steps':1},heartbeat_seconds=5)
+    assert code==124 and timing['child_step'] is None
+    assert timing['elapsed_seconds']<5
+
+
+def test_failure_archive_includes_the_nested_report_and_module_log(tmp_path):
+    subprocess.run(['git','init',str(tmp_path)],capture_output=True,check=True)
+    scripts=tmp_path/'scripts';scripts.mkdir()
+    script=scripts/'check_steps.py'
+    script.write_text('''import json,pathlib,sys
+root=pathlib.Path.cwd();directory=root/'.local/test-reports/CHECK-fixture';directory.mkdir(parents=True)
+report=directory/'report.json';report.write_text(json.dumps({'status':'failed','steps':[{'log':'fixture.log'}]}))
+(directory/'fixture.log').write_text('token=private-value\\nlast child evidence')
+identifier=sys.argv[sys.argv.index('--monitor-id')+1]
+assert '--non-interactive' in sys.argv
+print('CHECK_MONITOR '+json.dumps({'id':identifier,'index':1,'step':'fixture','maximumSeconds':10,'report':str(report)}),flush=True)
+raise SystemExit(3)
+''')
+    runner=Gates(tmp_path)
+    with patch('builtins.input',side_effect=AssertionError('acceptance must not wait for stdin')):
+        result=runner.run([('M7',[[sys.executable,'scripts/check_steps.py']])])
+    assert result['status']=='blocked'
+    with zipfile.ZipFile(runner.directory/'support.zip') as archive:
+        assert json.loads(archive.read('release/report.json'))['status']=='failed'
+        saved=archive.read('release/fixture.log')
+        assert b'last child evidence' in saved and b'private-value' not in saved
 
 def test_acceptance_pytest_disables_nested_capture():
     commands=[command for _,checks in plans(Path('.'),sys.executable)
