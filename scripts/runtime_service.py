@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import uuid
+from native_check_plan import ROLE_CLEANUP_SECONDS, DEFAULT_ROLE_SECONDS
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ('coordinator', 'worker', 'evaluator', 'reflector', 'reviewer')
@@ -46,7 +47,7 @@ def validate_bindings(registry):
 
 
 class RuntimeService:
-    def __init__(self, root=ROOT, command_factory=None, stage_timeout=120):
+    def __init__(self, root=ROOT, command_factory=None, stage_timeout=DEFAULT_ROLE_SECONDS):
         self.root = Path(root).resolve()
         self.local = self.root / '.local'
         self.local.mkdir(exist_ok=True)
@@ -61,6 +62,7 @@ class RuntimeService:
         self.csrf_token = secrets.token_urlsafe(32)
         self.service_id = str(uuid.uuid4())
         self.command_factory = command_factory or self.native_command
+        self.native_checks = command_factory is None
         self.stage_timeout = stage_timeout
         self.thread = None
         self.process = None
@@ -308,6 +310,14 @@ class RuntimeService:
         if task not in ('project-health', 'skill-evolution', 'llm-evolution', 'nanobot-repair', 'gepa-evolution') or (task == 'project-health' and options is not None):
             raise ValueError('Unsupported fixed workflow')
         submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
+        native_plan = None
+        if task == 'project-health' and self.native_checks:
+            with self.lock:
+                existing = self._submission(request_id, task, submission_hash)
+                if existing is not None:
+                    return existing
+            from native_check_plan import build
+            native_plan = build(ROOT)
         prepared = None
         if task in ('nanobot-repair', 'gepa-evolution'):
             with self.lock:
@@ -340,11 +350,15 @@ class RuntimeService:
                 directory = self.local / 'runs' / identifier
                 directory.mkdir(parents=True)
                 if task=='gepa-evolution':config['runId']=identifier
+                if native_plan is not None:
+                    (directory/'native-check-plan.json').write_text(json.dumps(native_plan, indent=2))
                 (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
                 if config:
                     (directory / ('gepa-config.json' if task == 'gepa-evolution' else 'repair-config.json' if task == 'nanobot-repair' else 'llm-config.json' if task == 'llm-evolution' else 'skill-config.json')).write_text(json.dumps(config, indent=2, ensure_ascii=False))
                 timestamp = now()
                 self.current = {'id': identifier, 'requestId': request_id, 'submissionHash': submission_hash, 'task': task, 'mode': 'native-tools', 'status': 'queued', 'createdAt': timestamp, 'updatedAt': timestamp, 'endedAt': None, 'checksPassed': None, 'agents': [{**a, 'adapter': 'gepa-nanobot-sdk-role' if task == 'gepa-evolution' else 'nanobot-sdk-role' if task == 'nanobot-repair' else 'ollama-skill-role' if task == 'llm-evolution' else 'native-tool-agent', 'status': 'queued', 'task': tasks[a['role']], 'pid': None, 'processAlive': False, 'startedAt': None, 'endedAt': None, 'updatedAt': timestamp, 'exitCode': None, 'error': None, 'logTail': ''} for a in agents], 'events': [], 'artifacts': []}
+                if native_plan is not None:
+                    self.current['nativeCheckPlan'] = native_plan
                 if config:
                     self.current['gepaConfig' if task == 'gepa-evolution' else 'repairConfig' if task == 'nanobot-repair' else 'llmConfig' if task == 'llm-evolution' else 'skillConfig'] = config
                 self.event(None, f'Queued actual {task} workflow; ' + ('real GEPA and nanobot SDK calls' if task=='gepa-evolution' else 'explicit model calls, no GEPA adapter' if task in MODEL_TASKS else 'no LLM or GEPA calls'))
@@ -367,7 +381,7 @@ class RuntimeService:
             except ProcessLookupError:
                 pass
             try:
-                process.wait(timeout=2)
+                process.wait(timeout=ROLE_CLEANUP_SECONDS if self.current and self.current.get('nativeCheckPlan') else 2)
             except subprocess.TimeoutExpired:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -421,7 +435,7 @@ class RuntimeService:
                         while self.process.poll() is None:
                             if self.cancel_event.wait(0.25):
                                 self.stop_process()
-                            elif (self.current.get('task') in MODEL_TASKS and time.monotonic() - workflow_started > (self.current.get('llmConfig') or self.current.get('repairConfig') or self.current['gepaConfig'])['maxSeconds']) or (self.current.get('task') not in MODEL_TASKS and time.monotonic() - started > self.stage_timeout):
+                            elif (self.current.get('task') in MODEL_TASKS and time.monotonic() - workflow_started > (self.current.get('llmConfig') or self.current.get('repairConfig') or self.current['gepaConfig'])['maxSeconds']) or (self.current.get('task') not in MODEL_TASKS and time.monotonic() - started > self.current.get('nativeCheckPlan', {}).get('roleMaximumSeconds', {}).get(agent['role'], self.stage_timeout)):
                                 timed_out = True
                                 timeout_error = 'Workflow time limit exceeded' if provider_leased else 'Stage timed out'
                                 self.stop_process()

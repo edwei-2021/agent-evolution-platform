@@ -84,7 +84,10 @@ def test_failure_archive_includes_the_nested_report_and_module_log(tmp_path):
     script=scripts/'check_steps.py'
     script.write_text('''import json,pathlib,sys
 root=pathlib.Path.cwd();directory=root/'.local/test-reports/CHECK-fixture';directory.mkdir(parents=True)
-report=directory/'report.json';report.write_text(json.dumps({'status':'failed','steps':[{'log':'fixture.log'}]}))
+report=directory/'report.json';report.write_text(json.dumps({'profile':'release','status':'failed','steps':[{'step':'python-runtime_test','status':'failed','testCases':[{'test':'runtime_test.C.test_native','status':'failed'}],'log':'fixture.log'}]}))
+nested=directory/'failure-evidence/runtime_test/fixture';nested.mkdir(parents=True)
+(nested/'native-check-report.json').write_text(json.dumps({'activeModule':'skill_test.py','api_key':'private-value'}))
+(nested/'native-skill_test.log').write_text('password=private-value\\nlast nested case evidence')
 (directory/'fixture.log').write_text('token=private-value\\nlast child evidence')
 identifier=sys.argv[sys.argv.index('--monitor-id')+1]
 assert '--non-interactive' in sys.argv
@@ -92,13 +95,19 @@ print('CHECK_MONITOR '+json.dumps({'id':identifier,'index':1,'step':'fixture','m
 raise SystemExit(3)
 ''')
     runner=Gates(tmp_path)
-    with patch('builtins.input',side_effect=AssertionError('acceptance must not wait for stdin')):
+    output=io.StringIO()
+    with redirect_stdout(output),patch('builtins.input',side_effect=AssertionError('acceptance must not wait for stdin')):
         result=runner.run([('M7',[[sys.executable,'scripts/check_steps.py']])])
+    assert 'M7_RECOVERY_COMMAND ' in output.getvalue()
+    assert 'scripts/check_m7_remaining.py' in output.getvalue()
     assert result['status']=='blocked'
     with zipfile.ZipFile(runner.directory/'support.zip') as archive:
         assert json.loads(archive.read('release/report.json'))['status']=='failed'
         saved=archive.read('release/fixture.log')
         assert b'last child evidence' in saved and b'private-value' not in saved
+        deep=archive.read('release/failure-evidence/runtime_test/fixture/native-skill_test.log')
+        assert b'last nested case evidence' in deep and b'private-value' not in deep
+        assert json.loads(archive.read('release/failure-evidence/runtime_test/fixture/native-check-report.json'))['activeModule']=='skill_test.py'
 
 def test_acceptance_pytest_disables_nested_capture():
     commands=[command for _,checks in plans(Path('.'),sys.executable)

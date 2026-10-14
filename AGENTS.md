@@ -10,3 +10,7 @@ Before changing stage M acceptance, runtime discovery, workflow deadlines, or te
 - Use exact case selection or the scoped M7 continuation runner when diagnosing a failed tail. Never silently promote historical passed evidence to acceptance of changed source.
 - Preserve per-case evidence, failure logs, source hashes, and bounded unattended cleanup. Unknown case IDs and empty selections must fail.
 - Respect existing publication authorization. Do not ask the user to repeat long upstream checks just to discover independent downstream defects.
+
+- For every affected integration case, expand its subprocess/test-discovery graph to leaf commands. Record the expanded module list and every enclosing execution and cleanup deadline; checking only the top-level test file is insufficient.
+- A wildcard test selector requires an audited manifest. Scope growth must update its frozen budget and regression proof.
+- Before reporting a deadline repair complete, exercise a controlled child beyond the former child AND parent limits, verify process-group cleanup, and confirm temporary run logs survive into the exported support ZIP.

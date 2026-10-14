@@ -13,7 +13,7 @@ import time
 import uuid
 import zipfile
 from .contracts import StepCheck
-from .evidence import atomic_write, canonical, digest, redact
+from .evidence import atomic_write, canonical, digest, redact, archive_failure_evidence
 from .store import Store
 
 def find_node(root):
@@ -309,6 +309,7 @@ class Gates:
         print('Support report: '+str(self.directory/'report.json'), flush=True)
         if failed is not None:
             archive_path = self.directory/'support.zip'
+            recoverable_release = False
             try:
                 with zipfile.ZipFile(archive_path, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
                     for name in ['report.json', *[step+'.json' for step, _ in plans]]:
@@ -326,6 +327,10 @@ class Gates:
                                 continue
                             nested = json.loads(child.read_text())
                             archive.writestr('release/report.json', canonical(redact(nested)))
+                            broken = next((r for r in nested.get('steps', []) if r.get('status') != 'completed'), {})
+                            recoverable_release = (nested.get('profile') == 'release' and nested.get('status') == 'failed'
+                                and broken.get('step', '').startswith('python-')
+                                and any(c.get('status') in ('error', 'failed') for c in broken.get('testCases', [])))
                             for row in nested.get('steps', []):
                                 name = row.get('log', '')
                                 if not name or Path(name).name != name:
@@ -333,7 +338,13 @@ class Gates:
                                 path = child.parent/name
                                 if path.is_file() and not path.is_symlink():
                                     archive.writestr('release/'+name, redact(path.read_text(errors='replace')))
+                            archive_failure_evidence(archive, child.parent, 'release/')
                 print('M_SUPPORT_ARCHIVE '+str(archive_path), flush=True)
+                if failed == 'M7' and recoverable_release:
+                    import shlex
+                    command = [str(self.root/'.venv-m/bin/python'), 'scripts/check_m7_remaining.py',
+                               '--previous-support', str(archive_path)]
+                    print('M7_RECOVERY_COMMAND '+shlex.join(command), flush=True)
             except (OSError, ValueError) as exc:
                 print('M_SUPPORT_EXPORT_FAILED '+str(exc), flush=True)
         return result
@@ -364,6 +375,7 @@ def plans(root, python):
                 [python,'-m','ruff','check','platform_m','tests_m','scripts/generate_m_contracts.py',
                     'scripts/migrate_wsl.py','scripts/check_m.py','scripts/check_m_environment.py','scripts/serve_m.py',
                     'scripts/check_steps.py','scripts/run_test_module.py','scripts/calibrate_release_tests.py',
-                    'scripts/check_m7_remaining.py'],
+                    'scripts/check_m7_remaining.py','scripts/native_agents.py',
+                    'scripts/native_check_plan.py','scripts/native_check_support.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]

@@ -4,9 +4,57 @@ Audience: AI maintainers and human reviewers. Updated: 2026-10-14.
 
 This document records mistakes in the M7 repair process, including the latest HTTP failure, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.
 
-## Evidence and accountability
+## Current finding: missed native workflow deadline (本次缺漏)
 
-The latest uploaded evidence is M check `MCHECK-b6eebef0e2a647a08909a5159294a81c`, nested release check `CHECK-4622ea9f9cbb4ddfbdf4e7e0a61d0ce0`, source hash `be893d28e6b22d0bb645bac81b489a1063f12b2a351d06480feda445fdc124de`. M1–M6 and M7's four initial checks passed on that source. The release check reached `python-llm_test` after GEPA passed 12/12 with zero skips in 1904.618 seconds. The LLM module failed after 354.680 seconds; eight cases passed, the ninth errored, and eight remained unexecuted. Exit code 1 indicates a test error, not the monitor's hard-limit exit 124.
+The 2026-10-14 follow-up is M check `MCHECK-9d3e8d24d8ec4c32b0e20117489abc72`, nested release `CHECK-7ec86c9c4b0745d4aa0d25f33ec57cf0`, source `8a67a257ab90d6c8852518787b690f0ed6e243cc90b57af48d7f411362a01d0e`. Its relevant source files match the published repair. LLM passed 17/17, repair 12/12, and the first nine runtime cases passed. The tenth runtime case failed; three later runtime cases and eight later modules remained unexecuted.
+
+The previous audit missed `runtime_test → RuntimeService → native_agents evaluator → unittest discover s*_test.py`. The evaluator still used `subprocess.run(timeout=90)` to run five modules, while its native parent still enforced a 120-second role limit. The case's outer completion allowance did not change either inner limit. The 90-second child timer fired; the evaluator exited 1; the runtime assertion then failed. This is an audit and implementation omission. The previous local 13/13 result did not exercise a child beyond these old deadlines.
+
+| Step | Observed outcome | Meaning |
+| --- | --- | --- |
+| Asset inspection | Completed, about 1.2 seconds | Source/assets were readable |
+| JavaScript checks | Completed, about 3.9 seconds; 95 passed | Frontend checks passed |
+| Native Python evaluator | Stopped after about 91.2 seconds, including timeout handling | Its fixed 90-second subprocess limit fired |
+| Reflection and review | Skipped | Failed evaluator blocked dependent roles |
+| Runtime integration assertion | Failed after 102.724 seconds | Expected completed workflow; received failed status |
+
+The uploaded ZIP contains the evaluator traceback but omits its temporary `python-tests.log`. It cannot establish which nested Python case was active or whether it would eventually pass. Do not invent a failing inner test or claim that a model or SDK defect caused this timeout.
+
+The old `s*_test.py` expanded to `sdk_runtime_probe_test.py`, `setup_orchestrator_test.py`, `setup_test.py`, `skill_test.py`, and `step_trace_test.py`: 60 cases. This repair retains those five modules explicitly, runs them separately with case progress, rejects missing/skipped/non-passing case records even on zero process exit, and freezes scope, source hashes, calibration, per-module bounds and native role limits before dispatch. The native parent and runtime test consume the frozen plan. Native child cleanup, role cleanup, module cleanup and M parent cleanup are ordered at 30/35/50/60 seconds. The Skill completion helper also used an unrelated 15-second polling wait; it now follows terminal persistence within the existing role budget.
+
+The remaining SDK timeout fixture also assumed metadata/import startup completed within 0.5 seconds. Its import-phase test now uses a controlled clock after observing import, with a deliberately delayed 0.7-second startup. A separate real-time test verifies that the whole-probe deadline still includes startup. The production SDK deadline is unchanged. The original 60 native cases are retained; this added startup regression brings the manifest to 61 cases.
+
+Native failures preserve the temporary run's JSON/log files before cleanup, including each nested module log and active-module report. Both the full M archive and the scoped continuation archive include bounded, redacted `failure-evidence/` content, reject artifact symlinks, and record size-limit omissions. Full M failure output prints an exact `M7_RECOVERY_COMMAND` only when a valid failed Python release case is present. That command resumes the failed runtime case, its three successors, and later checks without repeating GEPA/LLM/repair.
+
+For this uploaded failure, the target checkout's existing report can be used directly after updating the source:
+
+```bash
+.venv-m/bin/python scripts/check_m7_remaining.py \
+  --previous-support .local/m/support/MCHECK-9d3e8d24d8ec4c32b0e20117489abc72/support.zip
+```
+
+This is a scoped continuation command; it does not start M1–M6 or repeat completed GEPA/LLM/repair modules.
+
+### Required evidence before the next handoff (交付前必備證據)
+
+1. Enumerate every nested `subprocess.run`, `Popen`, role launcher, unittest/pytest selector and wildcard reachable from the affected integration case. Record leaf commands and scope counts.
+2. Show each command's execution allowance, its parent allowance, termination grace and report destination. Freeze planned work before dispatch; preserve intentionally short timeout fixtures.
+3. Exercise slow execution past both former limits. A local fast pass alone cannot close this audit item. Verify the production parent reads the new plan.
+4. Fault-inject a child failure and timeout. Verify fail-fast behavior, process-group termination, exact leaf evidence and archive contents after temporary-directory cleanup.
+5. Reject an incomplete audit ledger. A module-level pass must not be labeled as an inspected subprocess graph. Scope changes and renamed test files require renewed inventory.
+
+### Follow-up verification (本次驗證)
+
+- The original native integration case passed locally in 29.435 seconds before the final fixture refinement; the complete runtime module was then rerun and passed 13/13 after that refinement, including the actual native workflow and all 61 nested native cases.
+- A real controlled child slept for 121 seconds. It ran through the native subprocess supervisor and the production runtime role supervisor, crossed both former 90/120-second limits, and completed with five successful roles in 122.264 seconds. The controlled child had a 150-second declared limit; its parent consumed the frozen plan rather than the old 120-second role limit. No model requests were sent. This is a latency fault experiment, not a WSL acceptance result.
+- Scoped recovery `CHECK-f3189da5fc59457ca3123a10db01c72c` completed 18 steps and recorded 109 successful unittest case results, plus 23 M7 API/gate pytest cases and 95 frontend tests. It began with the failed runtime case and included its three successors, eight later modules, native/monitor/selection regressions, source scan, Ruff and strict TypeScript. GEPA, LLM, repair and M1–M6 were omitted explicitly, with historical evidence retained.
+- Native scope/deadline/cleanup/failure-export regressions passed 7/7, including rejection of a zero exit code with missing case evidence. The final SDK probe module passed 13/13. The full M archive regression verifies deep native logs, redaction and a valid recovery command. Source and fixture refinements made during local review were followed by targeted reruns; the scoped report identifies its own source snapshot rather than claiming final-source whole-phase acceptance.
+
+The uploaded WSL archive does not establish an underlying Python assertion failure inside the old evaluator, because its inner log was lost. Completion on the edited source still requires target-environment evidence. The engineering omission is addressed with an explicit manifest, consumed bounds, slow-execution proof and retained leaf evidence; a new fast local result alone would not suffice.
+
+## Previous evidence and accountability
+
+The preceding uploaded evidence is M check `MCHECK-b6eebef0e2a647a08909a5159294a81c`, nested release check `CHECK-4622ea9f9cbb4ddfbdf4e7e0a61d0ce0`, source hash `be893d28e6b22d0bb645bac81b489a1063f12b2a351d06480feda445fdc124de`. M1–M6 and M7's four initial checks passed on that source. The release check reached `python-llm_test` after GEPA passed 12/12 with zero skips in 1904.618 seconds. The LLM module failed after 354.680 seconds; eight cases passed, the ninth errored, and eight remained unexecuted. Exit code 1 indicates a test error, not the monitor's hard-limit exit 124.
 
 Earlier incident details below come from the troubleshooting record and previous fixes in this repository. Do not imply that the latest support ZIP contains all earlier incidents. The maintenance mistakes included treating fast local success as sufficient, adjusting one timer without tracing its callers, and asking for broad reruns before auditing the remaining tail. The user bore the cost of those omissions.
 
@@ -27,9 +75,10 @@ Earlier incident details below come from the troubleshooting record and previous
 | A two-hour outer cap covered many individually bounded modules | The wrapper timer represented the whole release, while child limits represented each step | Supervise authenticated sequential step transitions, heartbeat, startup, and cleanup independently | Reject foreign/duplicate/invalid control frames; prove silent/stuck children remain bounded |
 | Latest LLM GET failed before submission | `/api/v1/llm/skills` built a full runtime snapshot that synchronously probed unrelated SDKs; nanobot import took 5.694 seconds while HTTP allowed 5 | State reads must not import optional SDKs synchronously. Cold and expired caches are normal operating states | Hold discovery pending while real HTTP reads finish; verify availability only after discovery completes |
 | Remaining runtime API cases had the same latent dependency | `/runtime` and `/capabilities` used the same discovery path; fixing only the first LLM route would move the failure downstream | Trace shared callees across all remaining cases and approval/rollback paths | Exercise capabilities, runtime, LLM, rule skills, repair, and GEPA reads with discovery blocked |
+| Native runtime audit missed the evaluator's five-module wildcard and 90/120-second inner limits | The review stopped at the runtime test helper and did not expand its subprocess graph; fast local execution hid the mismatch | Freeze an explicit leaf manifest and shared deadline hierarchy; run a child past the former limits | 121-second controlled nested execution, real native integration, cleanup and recursive archive regressions |
 | Repeated broad user reruns discovered independent problems one at a time | There was no exact case/tail runner or explicit scope ledger | Run the failed leaf locally, audit its successors, then execute a scoped tail with recorded omissions | Reject unknown/empty selection; preserve prior report identity and the changed source manifest; do not call a tail pass a full M pass |
 
-## Latest failure as an understandable procedure (作業流程)
+## Previous HTTP failure as an understandable procedure (作業流程)
 
 | Step | Operation | Expected result | What actually happened / correction |
 | --- | --- | --- | --- |
@@ -127,7 +176,7 @@ The uploaded failure left eight LLM cases, 13 subsequent legacy modules, and the
 Verification counts and report identifiers follow below. The user's WSL machine has not executed this edited source during this maintenance session.
 
 
-### Verified local results (本地驗證結果)
+### Prior revision local results (前次本地驗證結果)
 
 The complete scoped continuation run `CHECK-66166c391d624e8c913e8d0ef2aafd8d` completed all 22 planned steps. It recorded 148 successful unittest case results (127 in the selected legacy/selection tail and 21 monitor cases), plus 23 M7 pytest cases and 95 frontend tests. There were no skips in these case sets. Source scanning, Ruff, generated-contract checking, and strict TypeScript checking passed. The eight previously unexecuted LLM cases and all 13 original successor modules were exercised; the failing LLM HTTP case also passed independently.
 

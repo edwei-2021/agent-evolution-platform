@@ -22,12 +22,15 @@ def registry():
     return {'agents': [{'id': f'AG-{i+1:03}', 'name': role, 'role': role, 'enabled': True} for i, role in enumerate(ROLES)]}
 
 
-def wait_for(service, identifier, check, timeout=15):
+def wait_for(service, identifier, check, timeout=None):
+    timeout = timeout if timeout is not None else len(ROLES) * service.stage_timeout + 15
     until = time.monotonic() + timeout
     while time.monotonic() < until:
         run = service.get_run(identifier)
         if check(run):
             return run
+        if run['status'] in ('completed', 'failed', 'cancelled', 'interrupted'):
+            raise AssertionError('Unexpected terminal state while awaiting runtime condition: ' + str(run))
         time.sleep(0.02)
     raise AssertionError('Runtime state did not reach expected condition')
 
@@ -128,15 +131,29 @@ class RuntimeTests(unittest.TestCase):
                 run = service.start(registry(), 'request-native')
                 # This workflow launches nested JS/Python checks. Wait on terminal persistence
                 # using the supervisor's bounded per-role execution limits.
-                timeout = len(ROLES) * service.stage_timeout + 15
+                timeout = run['nativeCheckPlan']['maximumSeconds'] + 15
                 done = service.wait_for_terminal(run['id'], timeout)
                 self.assertEqual(done['status'], 'completed', done)
                 self.assertTrue(done['checksPassed'])
                 self.assertIn('review.json', done['artifacts'])
                 directory = Path(tmp) / '.local/runs' / run['id']
                 self.assertEqual(json.loads((directory / 'worker-result.json').read_text())['exitCode'], 0)
+                nested = json.loads((directory/'native-check-report.json').read_text())
+                self.assertEqual(nested['status'], 'completed')
+                self.assertEqual(len(nested['steps']), len(run['nativeCheckPlan']['modules']))
+                for row in nested['steps']:
+                    self.assertEqual(len(row['testCases']), row['cases'])
+                    self.assertTrue(all(c['status'] == 'passed' for c in row['testCases']), row)
                 self.assertFalse(json.loads((directory / 'reflection.json').read_text())['skillChanged'])
                 self.assertFalse(json.loads((directory / 'review.json').read_text())['published'])
+            except BaseException:
+                service.close()
+                from native_check_support import preserve
+                try:
+                    preserve(service, self.id())
+                except OSError as exc:
+                    print('NATIVE_TEST_SUPPORT_ERROR '+str(exc), flush=True)
+                raise
             finally:
                 service.close()
 

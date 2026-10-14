@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import check_steps
 from platform_m.gates import source_snapshot
-from platform_m.evidence import canonical, redact
+from platform_m.evidence import canonical, redact, archive_failure_evidence
 
 
 def prior_failure(path):
@@ -70,6 +70,7 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
     python = plan[0][1][0]
     m_python = str(ROOT/'.venv-m/bin/python')
     plan.extend([
+        ('native-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'native_checks_test.py']),
         ('monitor-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'check_steps_test.py']),
         ('frontend-regressions', [node, '--test', *map(str, sorted((ROOT/'tests').glob('*.test.js')))]),
         ('m7-source-scan', [m_python, str(ROOT/'scripts/scan_m_source.py')]),
@@ -78,7 +79,8 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
                      'scripts/generate_m_contracts.py', 'scripts/migrate_wsl.py',
                      'scripts/check_m.py', 'scripts/check_m_environment.py', 'scripts/serve_m.py',
                      'scripts/check_steps.py', 'scripts/run_test_module.py',
-                     'scripts/calibrate_release_tests.py', 'scripts/check_m7_remaining.py']),
+                     'scripts/calibrate_release_tests.py', 'scripts/check_m7_remaining.py',
+                     'scripts/native_agents.py', 'scripts/native_check_plan.py', 'scripts/native_check_support.py']),
         ('m7-types', [node, 'node_modules/typescript/bin/tsc', '--noEmit', '--strict',
                       '--lib', 'es2020,dom', 'packages/contracts/contracts.ts']),
     ])
@@ -118,6 +120,7 @@ def archive_report(directory):
                 bundle.writestr(path.name, canonical(redact(json.loads(path.read_text()))))
             elif path.suffix == '.log':
                 bundle.writestr(path.name, redact(path.read_text(errors='replace')))
+        archive_failure_evidence(bundle, directory)
     return archive
 
 

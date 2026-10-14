@@ -21,6 +21,7 @@ from step_trace import Step
 from setup_wsl import find_node
 from repair_runtime import sdk_status
 from gepa_runtime import gepa_status
+from native_check_plan import MODULE_CLEANUP_SECONDS
 
 ROOT=Path(__file__).resolve().parents[1]
 MONITOR_POLICY = 'overrun-prompt-v1'
@@ -60,7 +61,7 @@ def normal_budget(profile, name, command=None, calibration=None):
         estimate=10+count*calibration['perCallIoAllowanceSeconds']*.5
         return max(15,round(estimate),historical)
     if profile=='quick':return max(45,historical)
-    if profile=='release' and name in {'monitor-regressions','resume-regressions','frontend-regressions',
+    if profile=='release' and name in {'native-regressions','monitor-regressions','resume-regressions','frontend-regressions',
                                       'm7-source-scan','m7-unit','m7-ruff','m7-types'}:
         return max(60,historical)
     if profile=='model':return 600
@@ -79,6 +80,10 @@ def normal_budget(profile, name, command=None, calibration=None):
         # other eight cases cover datasets, early failures and cancellation.
         # This is a module estimate; each case still prints its own progress.
         return max(historical,4*full+8*60)
+    if profile=='release' and name=='python-runtime_test':
+        from native_check_plan import build
+        plan=build(ROOT)
+        return max(historical, 120 + sum(r['normalSeconds'] for r in plan['modules']))
     if profile=='release' and name.startswith('python-'):
         test_file=ROOT/'tests'/(name.removeprefix('python-')+'.py')
         try:
@@ -116,7 +121,7 @@ def _wait_answer(buffer):
 
 
 def supervise(process, name, normal, maximum, interval=5, *, output_path=None,
-              progress_interval=30, interactive=True):
+              progress_interval=30, interactive=True, cleanup_seconds=MODULE_CLEANUP_SECONDS):
     started=time.monotonic();prompted=False;approved=False;pending=False;answer_buffer=b''
     events=queue.Queue();reader=None;last_output='';next_progress=started+progress_interval
     if process.stdout is not None:
@@ -137,7 +142,7 @@ def supervise(process, name, normal, maximum, interval=5, *, output_path=None,
     def terminate():
         try:os.killpg(process.pid,signal.SIGTERM)
         except ProcessLookupError:pass
-        try:process.wait(timeout=30)
+        try:process.wait(timeout=cleanup_seconds)
         except subprocess.TimeoutExpired:
             try:os.killpg(process.pid,signal.SIGKILL)
             except ProcessLookupError:pass

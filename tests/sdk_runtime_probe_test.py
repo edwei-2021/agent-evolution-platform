@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import venv
@@ -74,15 +75,36 @@ class RuntimeProbeTests(unittest.TestCase):
 
     def test_import_timeout_kills_child_and_retains_partial_stage(self):
         self.package('import time\ntime.sleep(30)\n')
-        result, output = self.inspect(seconds=.5, interval=.1)
+        real_clock, real_print = time.monotonic, print
+        started = real_clock()
+        entered = []
+        def clock():
+            # This test targets the import phase, independent of WSL startup.
+            # A separate real-time test below enforces the whole-probe deadline.
+            return started + 1 if entered or real_clock()-started > runtime.PROBE_SECONDS else started
+        def progress(*args, **kwargs):
+            if args and 'SDK_PROBE_WAIT ' in str(args[0]) and 'stage=import ' in str(args[0]):
+                entered.append(True)
+            real_print(*args, **kwargs)
+        with patch.object(runtime, 'PROGRAM', 'import time;time.sleep(.7)\n'+runtime.PROGRAM), \
+             patch.object(runtime.time, 'monotonic', side_effect=clock), patch('builtins.print', side_effect=progress):
+            result, output = self.inspect(seconds=.5, interval=.1)
         self.assertFalse(result['available'])
         self.assertEqual(result['errorCode'], 'probe_timeout')
         self.assertEqual(result['version'], '0.3.5')
         self.assertEqual(result['probe']['stage'], 'import')
-        self.assertLess(result['probe']['elapsedSeconds'], 3)
         self.assertIsNotNone(result['probe']['exitCode'])
         self.assertIn('SDK_PROBE_WAIT', output)
         self.assertIn('import time:', result['probe']['stderr'])
+
+    def test_whole_probe_deadline_still_includes_slow_interpreter_startup(self):
+        with patch.object(runtime, 'PROGRAM', 'import time;time.sleep(30)\n'+runtime.PROGRAM):
+            result, _ = self.inspect(seconds=.5, interval=.1)
+        self.assertFalse(result['available'])
+        self.assertEqual(result['errorCode'], 'probe_timeout')
+        self.assertEqual(result['probe']['stage'], 'interpreter-startup')
+        self.assertIsNone(result['version'])
+        self.assertIsNotNone(result['probe']['exitCode'])
 
     def test_failed_probe_is_not_cached_and_success_cannot_be_mutated(self):
         failed = {'available': False, 'errorCode': 'probe_timeout'}

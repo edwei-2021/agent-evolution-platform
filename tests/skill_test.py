@@ -6,13 +6,12 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
-import time
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from skill_engine import baseline, dataset, digest, evaluate, execute, markdown, propose, RULES, skill, validate_skill
+from skill_engine import baseline, dataset, evaluate, execute, markdown, propose, RULES, skill, validate_skill
 from runtime_service import RuntimeService, ROLES
 from serve_gui import GuiHandler, DIST
 
@@ -22,13 +21,7 @@ def registry():
 
 
 def finish(service, run):
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        value = service.get_run(run['id'])
-        if value['status'] in ('completed', 'failed', 'cancelled', 'interrupted'):
-            return value
-        time.sleep(.025)
-    raise AssertionError('Skill run did not reach a terminal state')
+    return service.wait_for_terminal(run['id'], len(ROLES) * service.stage_timeout + 15)
 
 
 class EngineTests(unittest.TestCase):

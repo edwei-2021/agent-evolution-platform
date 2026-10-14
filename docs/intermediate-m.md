@@ -340,3 +340,10 @@ Read [AI Maintenance Lessons](ai-maintenance-lessons.md) before changing SDK dis
 State-read APIs now observe readiness immediately while optional SDK discovery runs in the background. Unknown readiness is displayed as pending; pinned SDK/version checks remain mandatory when freezing repair/GEPA submissions.
 
 Use `.venv-m/bin/python scripts/check_m7_remaining.py --previous-support /absolute/path/to/support.zip` to run the failed case and the remaining release/M7 checks. The command accepts the original M support ZIP, its nested failed release report, or a failed continuation report/ZIP. A subsequent failure resumes from its own case or check without repeating completed model modules. It reconstructs allowed commands from current source, never executes commands supplied by the old report, records historical omissions and source hashes, and emits a support ZIP. A tail result is explicitly scoped and does not certify a full M or M7 pass on changed source.
+
+
+### Follow-up: native project-health evaluator inside M7 (2026-10-14)
+
+The follow-up report records LLM 17/17 and repair 12/12 passing. `runtime_test.RuntimeTests.test_fixed_native_workflow_executes_actual_project_checks_and_artifacts` then failed when its evaluator's broad `s*_test.py` subprocess exceeded a fixed 90-second limit. The enclosing native role also had a separate 120-second limit. These nested limits were missed by the prior runtime audit; see the corrected [AI Maintenance Lessons](ai-maintenance-lessons.md).
+
+The native health check now preserves the original five Python modules in an explicit frozen plan, with separate case logs, calibrated module budgets, shared role limits and bounded cleanup. Failed temporary run logs are retained in both full/scoped support ZIPs. After a failed M7 Python case, `M7_RECOVERY_COMMAND` prints the exact continuation invocation. Use the newest failed support ZIP with the scoped runner; earlier GEPA, LLM and repair passes need not be repeated for this diagnosis. The scoped result remains separate from full phase acceptance.

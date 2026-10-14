@@ -69,3 +69,37 @@ class Artifacts:
         if hashlib.sha256(raw).hexdigest() != identifier:
             raise ValueError("Artifact integrity failure")
         return json.loads(raw)
+
+
+def archive_failure_evidence(archive, directory, prefix=''):
+    """Copy bounded, redacted nested evidence; never follow artifact symlinks."""
+    directory = Path(directory)
+    root = directory/'failure-evidence'
+    if not root.is_dir() or root.is_symlink():
+        return
+    root = root.resolve()
+    copied = total = 0
+    omitted = []
+    for path in sorted(root.rglob('*')):
+        if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(root):
+            continue
+        relative = path.relative_to(directory).as_posix()
+        if path.suffix not in ('.json', '.log'):
+            continue
+        size = path.stat().st_size
+        if copied >= 512 or size > 16_000_000 or total + size > 64_000_000:
+            omitted.append({'path': relative, 'reason': 'bounded_export_limit'})
+            continue
+        text = path.read_text(errors='replace')
+        if path.suffix == '.json':
+            try:
+                text = canonical(redact(json.loads(text)))
+            except ValueError:
+                text = redact(text)
+        else:
+            text = redact(text)
+        archive.writestr(prefix+relative, text)
+        copied += 1
+        total += size
+    archive.writestr(prefix+'failure-evidence-export.json', canonical({
+        'copiedFiles': copied, 'inputBytes': total, 'omitted': omitted}))
