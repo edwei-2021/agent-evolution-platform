@@ -7,6 +7,9 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
+import os
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from runtime_service import RuntimeService, ROLES
 from adaptive_validation import current as validation_calibration
@@ -44,6 +47,51 @@ class WarmupTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('preload did not terminate')
 
+    def test_completed_preload_is_not_visible_until_cleanup_and_slot_release(self):
+        finalizing = threading.Event()
+        resume = threading.Event()
+        original = self.bridge.logs.append
+        def pause_final_log(module, level, message, *args, **kwargs):
+            if message.startswith('Model preload PRELOAD_PASS'):
+                finalizing.set()
+                if not resume.wait(10):
+                    raise AssertionError('Finalization barrier was not released')
+            return original(module, level, message, *args, **kwargs)
+        with patch.object(self.bridge.logs, 'append', side_effect=pause_final_log):
+            try:
+                self.bridge.start_warmup(1)
+                self.assertTrue(finalizing.wait(startup_budget(self.io_seconds, 600)))
+                self.assertEqual(self.bridge.warmup_status()['status'], 'RUNNING')
+                self.assertTrue(self.bridge.operation.locked())
+                with self.assertRaises(RuntimeError):
+                    self.bridge.start_warmup(1)
+            finally:
+                resume.set()
+            job = self.finish()
+        self.assertEqual(job['status'], 'PRELOAD_PASS')
+        self.assertFalse(self.bridge.operation.locked())
+        self.assertFalse(list(self.bridge.path.parent.glob(job['id']+'-*.json')))
+        self.assertEqual(self.service.logs.list(module='ollama',run_id=job['id'])['matched'],2)
+
+    def test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry(self):
+        self.bridge.save({**self.bridge.state()['config'], 'inferenceTimeout':30}, 1)
+        Model.gate = threading.Event()
+        clock = SimpleNamespace(time=time.time,
+            monotonic=lambda:time.monotonic() + (31 if Model.entered.is_set() else 0))
+        # Advance only the bridge clock after the actual HTTP request. Startup
+        # speed cannot decide whether the supervisor's absolute limit is tested.
+        with patch('ollama_bridge.time', clock):
+            self.bridge.start_warmup(2)
+            job = self.finish()
+        self.assertTrue(Model.entered.is_set())
+        self.assertEqual(job['timeoutSeconds'],30)
+        self.assertEqual(job['status'],'FAIL')
+        self.assertIn('absolute limit',job['error'])
+        self.assertEqual(len(Model.calls),1)
+        self.assertFalse(self.bridge.operation.locked())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(job['pid'],0)
+
     def test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately(self):
         self.assertEqual(Model.calls,[]);self.bridge.snapshot();self.assertEqual(Model.calls,[])
         self.bridge.start_warmup(1);job=self.finish()
@@ -73,8 +121,9 @@ class WarmupTests(unittest.TestCase):
 
     def test_absolute_warmup_timeout_releases_slot_and_logs_failure(self):
         self.bridge.save({**self.bridge.state()['config'],'inferenceTimeout':1},1)
-        Model.gate=threading.Event();start=time.monotonic();self.bridge.start_warmup(2);job=self.finish()
-        self.assertEqual(job['status'],'FAIL');self.assertLess(time.monotonic()-start,4);self.assertEqual(len(Model.calls),1)
+        Model.gate=threading.Event();self.bridge.start_warmup(2);job=self.finish()
+        self.assertEqual(job['status'],'FAIL');self.assertEqual(job['timeoutSeconds'],1)
+        self.assertLessEqual(len(Model.calls),1)  # cold startup may expire before HTTP dispatch; never retry
         self.assertTrue(job['error']);self.assertFalse(self.bridge.operation.locked())
         self.assertEqual(self.service.logs.list(module='ollama',level='ERROR',run_id=job['id'])['matched'],1)
 

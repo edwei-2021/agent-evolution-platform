@@ -14,3 +14,8 @@ Before changing stage M acceptance, runtime discovery, workflow deadlines, or te
 - For every affected integration case, expand its subprocess/test-discovery graph to leaf commands. Record the expanded module list and every enclosing execution and cleanup deadline; checking only the top-level test file is insufficient.
 - A wildcard test selector requires an audited manifest. Scope growth must update its frozen budget and regression proof.
 - Before reporting a deadline repair complete, exercise a controlled child beyond the former child AND parent limits, verify process-group cleanup, and confirm temporary run logs survive into the exported support ZIP.
+
+- Convert every timing lesson into a resource-count invariant: GEPA requires immediate rollout verification, evaluator replay and independent reviewer replay. Validate counts against real evidence; a timeout threshold assertion alone is insufficient.
+- Audit successful-tool branches and post-completion verification/approval replays separately. Exact-case parent limits must contain these costs plus cleanup; split aggregate model modules before the parent cap.
+- Strict continuation runs only the failed case and unexecuted tail. Do not append already passed frontend/API/harness checks; run only directly affected new regressions separately.
+- Treat terminal-state publication as an observable resource contract: finish owned cleanup and serialize final persistence/slot release with status reads. Prove it with a paused finalizer, including success/failure/cancellation; avoid speed-dependent polling assertions.

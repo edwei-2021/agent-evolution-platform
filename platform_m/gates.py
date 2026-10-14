@@ -44,6 +44,12 @@ def source_snapshot(root):
               for name in sorted(set(result.stdout.splitlines())) if (root/name).is_file()}
     return digest(values), values
 
+def release_step_count(root):
+    from scripts.gepa_validation_budget import expand_plan
+    modules = [('python-' + path.stem, []) for path in sorted((Path(root)/'tests').glob('*_test.py'))]
+    return 2 + len(expand_plan(modules, root))
+
+
 MONITOR_POLICY = 'm-command-watch-v1'
 REPORT_INTERVAL_SECONDS = 5
 MAX_PROMPT_SECONDS = 30 * 60
@@ -262,7 +268,7 @@ class Gates:
                     if nested_monitor:
                         identifier = uuid.uuid4().hex
                         command = [*command, '--non-interactive', '--monitor-id', identifier]
-                        child_monitor = {'id': identifier, 'steps': 2 + len(list((self.root/'tests').glob('*_test.py')))}
+                        child_monitor = {'id': identifier, 'steps': release_step_count(self.root)}
                     hard_limit = CHILD_STARTUP_SECONDS if nested_monitor else min(
                         MAX_COMMAND_SECONDS, max(900, prompt_after_seconds(normal) + 60))
                     prompt_after = hard_limit + 1

@@ -2,9 +2,65 @@
 
 Audience: AI maintainers and human reviewers. Updated: 2026-10-14.
 
-This document records mistakes in the M7 repair process, including the latest HTTP failure, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.
+This document records mistakes in the M7 repair process, including the repeated GEPA reviewer timeout, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.
 
-## Current finding: missed native workflow deadline (本次缺漏)
+## Current finding: reviewer timeout repeated despite a written lesson (再次缺漏)
+
+Evidence supplied in the terminal transcript: outer `MCHECK-217adc0bacc24977bb47f06ca2916115`, nested `CHECK-2e7c23d60d19420997702b39a8f26d33`. Ten GEPA cases passed; `test_perfect_seed_skips_proposals_and_cannot_release_without_improvement` failed after 409.470 seconds with `Workflow time limit exceeded`, with reviewer active and 17 completed rollouts reported. The final optimizer/approval/rollback/tamper case did not execute. The current support ZIP was not attached here. Therefore the precise frozen deadline, reviewer row at termination, and any particular slow I/O operation are **unconfirmed**. The terminal duration includes setup/cleanup and is not itself the workflow deadline.
+
+**Accountability:** the lesson was incomplete in its enforcement. The previous reviewer fix used `60 + total * (7 + 5 * io)` with opaque coefficients. Its `reviewReplays` field was descriptive and did not participate in an independently checkable phase sum. The regression asserted a minimum number of seconds, so it could pass without counting the real work. The native-health fix then proved its own 90/120-second boundaries; that evidence did not qualify GEPA's successful-tool branch or reviewer workload. Asking for another broad acceptance run transferred this unfinished audit to the user.
+
+### Understandable procedure for this failed case (失敗步驟展開)
+
+| Order | Operation | Work that must be counted | Interpretation |
+| --- | --- | --- | --- |
+| 1 | Freeze the seed, grouped dataset and limits | Smoke: up to 8 search + 12 final rollouts; six requests per rollout, two reflections maximum | Limits are fixed before dispatch |
+| 2 | Run search with the perfect-seed model | Successful tasks read, write and run visible tests; four requests each in this fixture | A perfect seed can cost more per rollout than a bad seed that immediately stops |
+| 3 | Verify each completed rollout | A fresh trusted subprocess recomputes visible/hidden scores and checks tool evidence | Verification pass 1; model assertions cannot score |
+| 4 | Run baseline and selected Skills on final validation/heldout tasks | Both are evaluated even when the selected Skill equals the baseline | Same Skill does not authorize skipping independent final measurements |
+| 5 | Evaluator verifies the entire ledger | Replays every rollout with fresh trusted tests | Verification pass 2 |
+| 6 | Reviewer independently verifies the entire ledger | Repeats the trusted replay and compares evidence | Verification pass 3; the reported failure occurred in this role |
+| 7 | Record completed but ineligible result | Zero proposals and no improvement means release is refused | This assertion was blocked by the timeout |
+
+The code contains three trusted verification passes per rollout, plus the visible-test tool subprocess on a successful repair. The previous formula did not express these separately. It also did not reserve the ten-second request limits multiplied by the actual permitted request count. This is a concrete workload-accounting defect; the supplied transcript does not prove which operation consumed the remaining time on WSL.
+
+### Further defect caught in this requested tail: premature warmup completion (本輪攔下的競態)
+
+The local scoped run `CHECK-d7ca0a4ca6d74970817497323fe8509b` passed 146 cases before reaching the previously unexecuted warmup module. Its first case observed `FAIL` while `operation.locked()` was still true. The old finalizer persisted terminal status **before** writing the final log, deleting temporary request files and releasing the provider slot. This was an event-order defect, not an insufficient wait allowance.
+
+A deterministic event barrier reproduced the same defect on the successful branch: while the final log was paused, `warmup_status()` already returned `PRELOAD_PASS` even though the slot remained owned. The old implementation failed this new case in 0.864 seconds. The repair keeps the record `RUNNING` during log/file cleanup, then serializes terminal persistence and slot release with status reads. Success, timeout failure, cancellation and restart cases are checked. Final logging is outside that brief read/write critical section.
+
+The one-second timeout fixture retains its production limit. Its functional assertions cover the frozen limit, failed status, evidence and at most one request; cold startup may expire before dispatch. A separate controlled-clock case waits for an actual request, advances only the bridge clock past the frozen limit, then proves that the real worker is reaped, the slot is released and exactly one request occurred. Aggregate setup/logging time is no longer confused with the one-second request/workflow deadline.
+
+This widens the shared lesson: a visible milestone is not proof that all required work has finished. Budget accounting must cover verification and cleanup; terminal-state publication must wait for owned-resource cleanup. The original document's timer-focused audit did not enforce this lifecycle contract.
+
+### Common failure pattern and executable prevention (共同核心與防止再犯)
+
+| Common mistake | Why prose alone did not catch it | Required executable check |
+| --- | --- | --- |
+| Adjust the timer nearest the latest traceback | An enclosing or repeated phase remains outside the count | Sum named phase reserves; assert three verifier batches per actual rollout |
+| Treat successful cases as interchangeable | Perfect-seed success exercises more tools and writes than an immediately unsuccessful seed | Inspect the fixture branch; check requests, tools and verification counts on the exact failed case |
+| Test that a new timeout exceeds the old number | A threshold assertion mirrors the patch and cannot detect omitted work | Test resource counts, phase sum, invalid calibration, and parent containment |
+| Publish completion before cleanup | Fast scheduling hides a terminal-record/provider-slot race | Pause finalization with an event barrier; status stays RUNNING until owned cleanup and slot release complete |
+| Stop accounting at workflow completion | Direct verification and approval can replay all evidence again | Reserve four extra replays for direct verify, approve, duplicate approve and final-row tampering |
+| Recalibrate independently in parent and child | Different samples produce different frozen limits, even on the same checkout | Pass the parent calibration into every child; assert identical input and parent containment |
+| Use one GEPA module timer for multiple workflows | Increasing the inner limit can exceed the unchanged 7200-second parent cap | Expand GEPA into uniquely named exact-case steps; each parent includes workflow, extra replays and cleanup |
+| Append generic prechecks to a recovery run | Previously passed frontend/API/harness work gets repeated | Assert exact failed + unexecuted selection and absence of repeated prechecks; retain legacy recovery only for a failure in a legacy harness step |
+| Interpret fast Linux success as WSL qualification | Storage calibration measures a limited operation, not every possible host stall | Run controlled slow reviewer execution beyond the observed old failure duration; retain the target-environment qualification limit |
+
+The final plan uses Windows-safe log names and validates every selected GEPA case budget before the first model dispatch. The new manifest separately reserves startup, requests, visible test tools, immediate verification, evaluator replay, reviewer replay and calibrated journal/file work. Request timeout (10 seconds), trusted subprocess timeout (5 seconds), call/proposal/metric limits, independent scoring and approval checks remain enforced. Excessive calibration is rejected before dispatch rather than silently clamped. I/O allowances and startup reserve remain engineering policy, not a mathematical guarantee against arbitrary operating-system stalls; report their assumptions explicitly.
+
+### Unexecuted tail audit (未測步驟檢查)
+
+- Final GEPA case: all three workflow verification passes plus **four** post-completion replays. Duplicate approval verifies before checking the changed baseline; tampering in the last row can replay the entire ledger before rejection. Preserve these checks.
+- Later release modules: execute only modules following GEPA in current discovery order. Native runtime health expands its five-module frozen plan with existing 30/35/50/60-second cleanup containment. Previously repaired SDK discovery, startup, transport and cancellation guards remain in place.
+- M7 final checks: Ruff and strict TypeScript follow the release tail. The source scan is a directly affected guard for the changed `platform_m/gates.py`; its earlier pass is not presented as an unexecuted step. Previously passed frontend and M7 API/gate prechecks are omitted from strict continuation.
+- New or changed supervision logic requires its own focused regressions. That does not authorize repeating the ten passed GEPA integration cases or M1–M6.
+- Current input is a pasted terminal anchor, not an uploaded support archive. `--from-case` records that distinction; never fabricate an archive hash or claim its contents were inspected. Prefer `--previous-support` when the actual ZIP is available.
+
+Local verification results for this revision are recorded in `docs/m7-reviewer-followup.md`. They do not certify WSL or full phase M acceptance.
+
+## Previous finding: missed native workflow deadline (前次缺漏)
 
 The 2026-10-14 follow-up is M check `MCHECK-9d3e8d24d8ec4c32b0e20117489abc72`, nested release `CHECK-7ec86c9c4b0745d4aa0d25f33ec57cf0`, source `8a67a257ab90d6c8852518787b690f0ed6e243cc90b57af48d7f411362a01d0e`. Its relevant source files match the published repair. LLM passed 17/17, repair 12/12, and the first nine runtime cases passed. The tenth runtime case failed; three later runtime cases and eight later modules remained unexecuted.
 
@@ -126,7 +182,7 @@ Do not inflate every `timeout=5`, `wait(5)`, or fixture delay. Some intentionall
 3. Write a deterministic local reproduction using the observed failure boundary. For latency faults, use an event gate or slow isolated import. Do not rely on machine speed to make the test fail.
 4. State the invariant being restored. Prefer removing unrelated work from a read over raising its timeout. Preserve exact versions, authorization, evidence checks, independent review, and intentional timeout fixtures.
 5. Audit every unexecuted module for the same pattern before asking for target testing. Document why similar-looking timers are either relevant or intentional.
-6. Run the original failing case first; run affected earlier cases when shared code changed; run the remaining tail and final static/type checks. Inspect skips and subprocess exit codes rather than only the last `OK` line.
+6. Honor the requested scope: run the failed case and unexecuted tail. Verify shared-code changes with focused contract regressions; do not default to repeating earlier passed integration workflows. Any additional check must directly exercise the repair. Inspect skips and subprocess exit codes rather than only the last `OK` line.
 7. Review the full diff and publish the tested change with an exact scope statement. Existing publication authorization should not be repeatedly requested.
 8. A local Linux result is evidence for that environment. Do not claim target WSL acceptance, Docker acceptance, unchanged-source continuity, or a full M7 pass without corresponding evidence. Do not ask the user to repeat 31 minutes of already completed GEPA checks merely to reach the next independent failure.
 

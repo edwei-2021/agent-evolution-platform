@@ -67,14 +67,17 @@ def normal_budget(profile, name, command=None, calibration=None):
     if profile=='model':return 600
     if profile=='release' and name=='filesystem-calibration':return max(10,historical)
     if profile=='release' and name=='all-frontend':return max(45,historical)
-    if profile=='release' and name=='python-gepa_test':
+    if profile=='release' and name.split(':',1)[0].split('--',1)[0]=='python-gepa_test':
         from gepa_validation_budget import smoke_budget
         try:
-            calibration=json.loads((reports/'validation-calibration.json').read_text())
+            calibration=calibration or json.loads((reports/'validation-calibration.json').read_text())
             io=float(calibration['perCallIoAllowanceSeconds'])
         except (OSError,ValueError,KeyError,TypeError):
             from adaptive_validation import current
             io=float(current()['perCallIoAllowanceSeconds'])
+        if command and '--case' in command:
+            from gepa_validation_budget import module_budget
+            return module_budget(io, command, ROOT)['normalSeconds']
         full=smoke_budget(io)['workflowSeconds']+30
         # Four cases run complete serial search/final/review workflows. The
         # other eight cases cover datasets, early failures and cancellation.
@@ -225,6 +228,18 @@ def stages(profile,root=ROOT):
 def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None, identifier=None):
     plan=stages(profile) if plan is None else plan
     if not plan:raise ValueError('An empty check plan cannot pass')
+    from gepa_validation_budget import expand_plan
+    plan=expand_plan(plan, ROOT)
+    calibration=None
+    if any(name=='filesystem-calibration' or name.split(':',1)[0].split('--',1)[0]=='python-gepa_test' for name,_ in plan):
+        from adaptive_validation import current
+        calibration=current()
+    # Validate every selected case before dispatching the first model workflow.
+    # This also prevents a later excessive calibration from leaving a running
+    # report after earlier cases already consumed time.
+    from gepa_validation_budget import module_budget
+    gepa_limits={name:module_budget(calibration['perCallIoAllowanceSeconds'], command, ROOT)
+                 for name,command in plan if name.split(':',1)[0].split('--',1)[0]=='python-gepa_test'}
     identifier=identifier or 'CHECK-'+uuid.uuid4().hex
     if not re.fullmatch(r'CHECK-[0-9a-f]{32}',identifier):raise ValueError('Invalid check report identity')
     directory=ROOT/'.local/test-reports'/identifier;directory.mkdir(parents=True)
@@ -236,10 +251,15 @@ def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None,
     for index,(name,command) in enumerate(plan,1):
         row={'step':name,'status':'running','startedAt':datetime.now(timezone.utc).isoformat(),'log':name+'.log'};report['steps'].append(row);save()
         step=Step(logs,'runtime','test.'+name,identifier,profile=profile);print(f'STEP_STARTED {name}',flush=True)
-        normal=normal_budget(profile,name,command)
+        normal=gepa_limits[name]['normalSeconds'] if name in gepa_limits else normal_budget(profile,name,command,calibration=calibration)
         prompt_after=prompt_after_seconds(normal)
         maximum=min(7200,max(normal*20,normal+60,prompt_after+60))
+        if name in gepa_limits:
+            maximum=gepa_limits[name]['maximumSeconds']
+            row['gepaCaseBudget']=gepa_limits[name]
         row.update(normalSeconds=normal,promptAfterSeconds=prompt_after if interactive else None,maximumSeconds=maximum)
+        if calibration:
+            row['validationCalibration']=calibration
         prompt_text=prompt_after if interactive else 'disabled'
         print(f'STEP_EXPECTED {name} normal_seconds={normal} prompt_after_seconds={prompt_text} hard_limit_seconds={maximum}',flush=True)
         if monitor_id:
@@ -250,7 +270,8 @@ def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None,
                 process=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                                          text=True,bufsize=1,start_new_session=True,
                                          stdin=None if interactive else subprocess.DEVNULL,
-                                         env={**os.environ,'AEP_TEST_REPORT_DIR':str(directory)})
+                                         env={**os.environ,'AEP_TEST_REPORT_DIR':str(directory),
+                                              **({'AEP_VALIDATION_CALIBRATION':json.dumps(calibration)} if calibration else {})})
                 observed=supervise(process,name,normal,maximum,output_path=output,interactive=interactive)
             row.update(status='stopped' if observed.get('stopReason')=='user_declined' else
                        'completed' if observed['exitCode']==0 else 'failed',

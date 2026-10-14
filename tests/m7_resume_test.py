@@ -73,6 +73,22 @@ class SelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_plan(release, prior, 'monitor-regressions', 'llm_test.C.test_b', 'node')
 
+    def test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases(self):
+        perfect = 'gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement'
+        final = 'gepa_test.GepaWorkflowTests.test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate'
+        release = [('python-gepa_test', ['python', 'scripts/run_test_module.py', 'gepa_test.py']),
+                   ('python-llm_test', ['python', 'scripts/run_test_module.py', 'llm_test.py'])]
+        plan, _, _, _ = build_plan(release, {}, 'python-gepa_test', perfect, 'node')
+        self.assertEqual([command[-1] for name, command in plan if name.startswith('python-gepa_test--')], [perfect, final])
+        names = [name for name, _ in plan]
+        self.assertTrue({'native-regressions', 'monitor-regressions', 'frontend-regressions', 'm7-unit'}.isdisjoint(names))
+        self.assertEqual(names[-3:], ['m7-source-scan', 'm7-ruff', 'm7-types'])
+        prior = {'scope': {'kind':'m7-remaining', 'releaseFromCase':perfect}}
+        resumed, _, completed, _ = build_plan(release, prior, 'python-gepa_test--' + final, final, 'node')
+        self.assertEqual(resumed[1][1][-2:], ['--case', final])
+        self.assertNotIn(perfect, [command[-1] for _, command in resumed])
+        self.assertIn('python-gepa_test--' + perfect, completed)
+
     def test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case(self):
         report = {'profile': 'release', 'status': 'failed',
                   'scope': {'kind': 'm7-remaining', 'fromCase': 'llm_test.C.test_b'},

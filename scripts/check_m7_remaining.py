@@ -48,6 +48,7 @@ def prior_failure(path):
 
 
 def remaining_plan(plan, failed_step, anchor):
+    failed_step = failed_step.split(':', 1)[0].split('--', 1)[0]
     names = [name for name, _ in plan]
     if failed_step not in names:
         raise ValueError('Prior failed module no longer exists in the release plan')
@@ -69,25 +70,34 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
     plan, omitted = remaining_plan(release_plan, origin_step, origin)
     python = plan[0][1][0]
     m_python = str(ROOT/'.venv-m/bin/python')
+    legacy = scoped and (failed_step in {'native-regressions', 'monitor-regressions',
+                                        'frontend-regressions', 'm7-unit', 'resume-regressions'} or
+                         prior['scope'].get('legacyHarnessTail', False))
+    if legacy:
+        plan.extend([
+            ('native-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'native_checks_test.py']),
+            ('monitor-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'check_steps_test.py']),
+            ('frontend-regressions', [node, '--test', *map(str, sorted((ROOT/'tests').glob('*.test.js')))]),
+            ('m7-unit', [m_python, '-m', 'pytest', '-s', '-vv', '--durations=0', 'tests_m/test_m7.py', 'tests_m/test_gates.py']),
+        ])
     plan.extend([
-        ('native-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'native_checks_test.py']),
-        ('monitor-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'check_steps_test.py']),
-        ('frontend-regressions', [node, '--test', *map(str, sorted((ROOT/'tests').glob('*.test.js')))]),
         ('m7-source-scan', [m_python, str(ROOT/'scripts/scan_m_source.py')]),
-        ('m7-unit', [m_python, '-m', 'pytest', '-s', '-vv', '--durations=0', 'tests_m/test_m7.py', 'tests_m/test_gates.py']),
         ('m7-ruff', [m_python, '-m', 'ruff', 'check', 'platform_m', 'tests_m',
                      'scripts/generate_m_contracts.py', 'scripts/migrate_wsl.py',
                      'scripts/check_m.py', 'scripts/check_m_environment.py', 'scripts/serve_m.py',
                      'scripts/check_steps.py', 'scripts/run_test_module.py',
                      'scripts/calibrate_release_tests.py', 'scripts/check_m7_remaining.py',
-                     'scripts/native_agents.py', 'scripts/native_check_plan.py', 'scripts/native_check_support.py']),
+                     'scripts/native_agents.py', 'scripts/native_check_plan.py', 'scripts/native_check_support.py',
+                     'scripts/gepa_validation_budget.py']),
         ('m7-types', [node, 'node_modules/typescript/bin/tsc', '--noEmit', '--strict',
                       '--lib', 'es2020,dom', 'packages/contracts/contracts.ts']),
     ])
-    if 'python-m7_resume_test' not in [name for name, _ in plan]:
-        plan.insert(-3, ('resume-regressions', [python, str(ROOT/'scripts/run_test_module.py'), 'm7_resume_test.py']))
+    from gepa_validation_budget import expand_plan
+    plan = expand_plan(plan, ROOT)
     completed = []
     if scoped:
+        if failed_step.startswith('python-gepa_test:'):
+            failed_step = failed_step.replace('python-gepa_test:', 'python-gepa_test--', 1)
         names = [name for name, _ in plan]
         if failed_step == 'filesystem-calibration':
             pass  # It is always repeated before the remaining checks.
@@ -98,15 +108,16 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
             completed = names[:index]
             plan = plan[index:]
             command = plan[0][1]
-            if '--from-case' in command:
-                del command[command.index('--from-case'):]
+            for option in ('--case', '--from-case'):
+                if option in command:
+                    del command[command.index(option):]
             if anchor:
                 if not any(Path(arg).name == 'run_test_module.py' for arg in command):
                     raise ValueError('Case selection requires the known unittest runner')
                 pattern = command[2]
                 if not anchor.startswith(pattern.removesuffix('.py') + '.'):
                     raise ValueError('Failed case does not belong to the selected runner module')
-                command.extend(['--from-case', anchor])
+                command.extend(['--case' if failed_step.startswith(('python-gepa_test--', 'python-gepa_test:')) else '--from-case', anchor])
     # Filesystem calibration is cheap, and must precede frozen workflow budgets.
     plan.insert(0, ('filesystem-calibration', [python, str(ROOT/'scripts/calibrate_release_tests.py')]))
     return plan, omitted, completed, origin
@@ -126,11 +137,20 @@ def archive_report(directory):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--previous-support', type=Path, required=True,
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--previous-support', type=Path,
                         help='Failed M support ZIP, continuation ZIP, or release/report.json')
+    source.add_argument('--from-case', help='Explicit failed case from terminal evidence; no prior archive verification claimed')
     args = parser.parse_args(argv)
     try:
-        prior, failed_step, anchor, prior_sha = prior_failure(args.previous_support)
+        if args.previous_support:
+            prior, failed_step, anchor, prior_sha = prior_failure(args.previous_support)
+        else:
+            anchor = args.from_case
+            if not isinstance(anchor, str) or anchor.count('.') != 2:
+                raise ValueError('Expected a fully qualified failed case ID')
+            prior = {'evidenceKind': 'user-supplied terminal case anchor; archive not available'}
+            failed_step, prior_sha = 'python-' + anchor.split('.')[0], None
         m_python = ROOT/'.venv-m/bin/python'
         if not m_python.is_file():
             raise ValueError('M environment missing; run bash scripts/install-m.sh before continuation')
@@ -149,6 +169,8 @@ def main(argv=None):
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.TimeoutExpired) as exc:
         parser.error(str(exc))
     scope = {'kind': 'm7-remaining', 'fullMAcceptance': False, 'fullM7Acceptance': False,
+             'priorEvidenceKind': prior.get('evidenceKind', 'support artifact'),
+             'legacyHarnessTail': any(name == 'monitor-regressions' for name, _ in plan),
              'priorReportId': prior.get('id'), 'priorArtifactSha256': prior_sha,
              'priorEvidence': 'historical only; not re-certified against this source',
              'fromCase': origin, 'releaseFromCase': origin, 'resumedFromStep': failed_step,

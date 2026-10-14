@@ -96,7 +96,8 @@ class CheckStepsTests(unittest.TestCase):
             reports=Path(root)/'.local/test-reports';reports.mkdir(parents=True)
             (reports/'validation-calibration.json').write_text(json.dumps({'perCallIoAllowanceSeconds':2}))
             self.assertEqual(run_test_module.expected_case_seconds(
-                'gepa_test.GepaWorkflowTests.test_actual_js_client_to_python_api_dispatch_and_result_validation'),290)
+                'gepa_test.GepaWorkflowTests.test_actual_js_client_to_python_api_dispatch_and_result_validation'),
+                __import__('gepa_validation_budget').smoke_budget(2)['normalSeconds'])
             self.assertEqual(run_test_module.expected_case_seconds(
                 'gepa_test.GepaWorkflowTests.test_cancel_stops_actual_gepa_sdk_process'),60)
 

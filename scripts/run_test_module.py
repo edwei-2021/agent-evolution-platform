@@ -9,10 +9,7 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-GEPA_FULL_CASES = ('test_actual_js_client_to_python_api_dispatch_and_result_validation',
-                   'test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate',
-                   'test_perfect_seed_skips_proposals_and_cannot_release_without_improvement',
-                   'test_heldout_regression_blocks_release_even_with_validation_improvement')
+from gepa_validation_budget import FULL_CASES as GEPA_FULL_CASES
 
 
 class ModuleInterrupted(BaseException):
@@ -50,14 +47,14 @@ def expected_case_seconds(identifier):
         return 30
     if identifier.rsplit('.', 1)[-1] not in GEPA_FULL_CASES:
         return 60
-    from gepa_validation_budget import smoke_budget
+    from gepa_validation_budget import case_budget
     try:
         report=json.loads((ROOT/'.local/test-reports/validation-calibration.json').read_text())
         io=float(report['perCallIoAllowanceSeconds'])
     except (OSError,ValueError,TypeError,KeyError):
         from adaptive_validation import current
         io=float(current()['perCallIoAllowanceSeconds'])
-    return smoke_budget(io)['normalSeconds']
+    return case_budget(identifier,io)['normalSeconds']
 
 
 class TimedResult(unittest.TextTestResult):

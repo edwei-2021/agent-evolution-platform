@@ -113,10 +113,23 @@ class GepaWorkflowTests(unittest.TestCase):
     def setUp(self):
         # Include serial GEPA search and final rollouts before freezing the run.
         io_seconds = validation_calibration()['perCallIoAllowanceSeconds']
-        self.workflow_seconds = smoke_budget(io_seconds)['workflowSeconds']
+        self.budget = smoke_budget(io_seconds)
+        self.workflow_seconds = self.budget['workflowSeconds']
+        print('GEPA_FROZEN_BUDGET ' + json.dumps(self.budget), flush=True)
         self.startup_seconds = startup_budget(io_seconds, self.workflow_seconds)
         Model.calls=[];Model.mode='good';Model.gate=None;Model.entered.clear()
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
+        delay = float(os.environ.get('AEP_GEPA_TEST_REVIEW_DELAY_SECONDS', '0'))
+        if delay:
+            if not 0 < delay <= min(600, self.workflow_seconds / 2):
+                raise ValueError('Invalid controlled reviewer delay')
+            default_command = self.service.command_factory
+            def slow_review(role, directory):
+                if role == 'reviewer' and self._testMethodName == 'test_perfect_seed_skips_proposals_and_cannot_release_without_improvement':
+                    return [self.service.current['gepaConfig']['sdk']['python'],
+                            str(Path(__file__).parent/'fixtures/gepa_slow_review.py'), str(directory), str(delay)]
+                return default_command(role, directory)
+            self.service.command_factory = slow_review
         self.model=ThreadingHTTPServer(('127.0.0.1',0),Model);self.thread=threading.Thread(target=self.model.serve_forever,daemon=True);self.thread.start()
         self.service.ollama.save({**DEFAULTS,'host':'127.0.0.1','port':self.model.server_port,'model':'mock-gepa:local','inferenceTimeout':10,'maxTokens':512},0)
     def tearDown(self):
@@ -182,12 +195,27 @@ class GepaWorkflowTests(unittest.TestCase):
                 progress=run.get('gepaProgress') or {}
                 print(f'GEPA_TEST_PROGRESS role={next((a["role"] for a in run["agents"] if a["status"]=="running"), "queued")} '
                       f'phase={progress.get("phase")} rollouts={progress.get("rollouts", 0)} '
-                      f'active_rollout={progress.get("activeRollout")}',flush=True)
+                      f'active_rollout={progress.get("activeRollout")} '
+                      f'review_verified={progress.get("verification", {}).get("verifiedRollouts")}/'
+                      f'{progress.get("verification", {}).get("totalRollouts")}',flush=True)
                 next_report=time.monotonic()+10
             time.sleep(.04)
         self.fail('GEPA workflow did not terminate')
+    def assert_workload(self, done):
+        directory = self.service.local/'runs'/done['id']
+        ledger = json.loads((directory/'gepa-rollouts.json').read_text())
+        tools = [json.loads((directory/'rollouts'/row['id']/'repair-tools.json').read_text()) for row in ledger]
+        self.assertLessEqual(len(ledger), self.budget['maximumRollouts'])
+        self.assertTrue(all(len(items) <= 3 and sum(t['name']=='run_tests' for t in items) <= 1 for items in tools))
+        batches = self.service.logs.list(run_id=done['id'], query='STEP_COMPLETED trusted-tests.batch', limit=500)
+        self.assertEqual(batches['matched'], 3 * len(ledger))
+        self.assertLessEqual(len(Model.calls), self.budget['modelRequests'])
+        print('GEPA_WORKLOAD_RESULT ' + json.dumps({'rollouts':len(ledger), 'verificationBatches':batches['matched'],
+              'expectedVerificationBatches':3*len(ledger), 'modelRequests':len(Model.calls),
+              'visibleTestTools':sum(t['name']=='run_tests' for items in tools for t in items)}), flush=True)
     def test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate(self):
         Model.mode='stream';run=self.start();done=self.finish(run['id']);self.assertEqual(done['status'],'completed',done.get('error'))
+        self.assert_workload(done)
         result=done['gepaResult'];self.assertTrue(result['eligible']);self.assertEqual(result['gepaVersion'],'0.1.4');self.assertLessEqual(result['metricEvaluations'],8)
         self.assertEqual(result['final']['selected']['validation'],{'passed':2,'total':2});self.assertEqual(result['final']['selected']['heldout'],{'passed':4,'total':4})
         from step_trace import snapshot as steps_snapshot
@@ -215,8 +243,13 @@ class GepaWorkflowTests(unittest.TestCase):
         # Corrupt final data after review: approval must re-evaluate, not trust a boolean.
         ledger[-1]['score']=0;(directory/'gepa-rollouts.json').write_text(json.dumps(ledger))
         with self.assertRaises(ValueError):self.service.gepa.approve(run['id'],3)
+        batches = self.service.logs.list(run_id=done['id'], query='STEP_COMPLETED trusted-tests.batch', limit=500)
+        self.assertEqual(batches['matched'], 7 * result['rollouts'])
+        print('GEPA_APPROVAL_REPLAY_RESULT ' + json.dumps({'extraReplayPasses':4,
+              'verificationBatches':batches['matched'], 'expectedVerificationBatches':7*result['rollouts']}), flush=True)
     def test_perfect_seed_skips_proposals_and_cannot_release_without_improvement(self):
         Model.mode='perfect';done=self.finish(self.start()['id']);self.assertEqual(done['status'],'completed',done.get('error'))
+        self.assert_workload(done)
         self.assertFalse(done['gepaResult']['eligible']);self.assertEqual(done['gepaResult']['proposals'],0)
         self.assertLessEqual(done['gepaResult']['metricEvaluations'],8)
         with self.assertRaises(RuntimeError):self.service.gepa.approve(done['id'],1)

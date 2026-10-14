@@ -120,12 +120,15 @@ class OllamaBridge:
             return self.snapshot()
 
     def warmup_status(self):
-        path = self.path.parent / 'warmup.json'
-        if not path.exists(): return None
-        value = json.loads(path.read_text())
-        end = datetime.fromisoformat(value['finishedAt']).timestamp() if value.get('finishedAt') else time.time()
-        value['elapsedSeconds'] = round(max(0, end - datetime.fromisoformat(value['startedAt']).timestamp()), 1)
-        return value
+        # A terminal record and release of its provider slot are one observable
+        # transition. Reads remain RUNNING while logging/cleanup is in progress.
+        with self.lock:
+            path = self.path.parent / 'warmup.json'
+            if not path.exists(): return None
+            value = json.loads(path.read_text())
+            end = datetime.fromisoformat(value['finishedAt']).timestamp() if value.get('finishedAt') else time.time()
+            value['elapsedSeconds'] = round(max(0, end - datetime.fromisoformat(value['startedAt']).timestamp()), 1)
+            return value
 
     def recover_warmup(self):
         with self.lock:
@@ -208,7 +211,6 @@ class OllamaBridge:
         finally:
             try:
                 job.update(finishedAt=datetime.now(timezone.utc).isoformat(), elapsedMs=round((time.monotonic() - started) * 1000, 3))
-                with self.lock: atomic_write(directory / 'warmup.json', json.dumps(job))
                 self.logs.append('ollama', 'INFO' if job['status'] == 'PRELOAD_PASS' else 'WARNING' if job['status'] == 'CANCELLED' else 'ERROR',
                     'Model preload ' + job['status'] + (': ' + job['error'] if job.get('error') else ''), job['id'],
                     {k: job[k] for k in ('elapsedMs','loadDurationMs','totalDurationMs','responseModel') if k in job})
@@ -216,7 +218,10 @@ class OllamaBridge:
                 try:
                     config_path.unlink(missing_ok=True); result_path.unlink(missing_ok=True)
                 except OSError: pass
-                finally: self.operation.release()
+                finally:
+                    with self.lock:
+                        try: atomic_write(directory / 'warmup.json', json.dumps(job))
+                        finally: self.operation.release()
 
     def close(self):
         with self.lock: self.closing = True; self.warmup_cancel.set()

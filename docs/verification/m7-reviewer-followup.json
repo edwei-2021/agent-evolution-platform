@@ -1,0 +1,1486 @@
+{
+  "schemaVersion": 1,
+  "kind": "scoped-local-verification-ledger",
+  "fullMAcceptance": false,
+  "fullM7Acceptance": false,
+  "inputEvidenceKind": "user-pasted terminal transcript; original current WSL archive not attached",
+  "originalOuterReport": "MCHECK-217adc0bacc24977bb47f06ca2916115",
+  "originalReleaseReport": "CHECK-2e7c23d60d19420997702b39a8f26d33",
+  "reports": [
+    {
+      "id": "CHECK-d7ca0a4ca6d74970817497323fe8509b",
+      "status": "failed",
+      "sourceHash": "059008cdcd7227eb4ad45fca86e175dd2f43aa975f9d995cab0e3003f100c104",
+      "reportSha256": "54138289650ccc3d4b62fb9ac84c12c5d748754f461b039577c423ee27a84c13",
+      "steps": [
+        {
+          "step": "filesystem-calibration",
+          "status": "completed",
+          "testCases": []
+        },
+        {
+          "step": "python-gepa_test:gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement",
+              "status": "passed",
+              "durationMs": 491320.909
+            }
+          ]
+        },
+        {
+          "step": "python-gepa_test:gepa_test.GepaWorkflowTests.test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "gepa_test.GepaWorkflowTests.test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate",
+              "status": "passed",
+              "durationMs": 62181.633
+            }
+          ]
+        },
+        {
+          "step": "python-journal_batch_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "journal_batch_test.JournalBatchTests.test_batch_is_one_transaction_with_redaction_and_restart_visibility",
+              "status": "passed",
+              "durationMs": 14.616
+            },
+            {
+              "test": "journal_batch_test.JournalBatchTests.test_capture_chunks_batches_without_skipping_lines",
+              "status": "passed",
+              "durationMs": 18.854
+            },
+            {
+              "test": "journal_batch_test.JournalBatchTests.test_invalid_batch_cannot_partially_insert_and_retention_is_bounded",
+              "status": "passed",
+              "durationMs": 4.611
+            }
+          ]
+        },
+        {
+          "step": "python-llm_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "llm_test.LlmWorkflowTests.test_actual_worker_reflection_evaluation_review_and_versions",
+              "status": "passed",
+              "durationMs": 2593.404
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_browser_client_polls_real_api_through_completion_and_version_review",
+              "status": "passed",
+              "durationMs": 7139.395
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_cancel_stops_future_calls_and_shared_slot_rejects_other_work",
+              "status": "passed",
+              "durationMs": 1312.966
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline",
+              "status": "passed",
+              "durationMs": 2438.832
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_disconnected_stream_does_not_complete_or_retry",
+              "status": "passed",
+              "durationMs": 1332.914
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_evidence_tampering_blocks_human_release",
+              "status": "passed",
+              "durationMs": 4903.396
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+              "status": "passed",
+              "durationMs": 12989.242
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_invalid_or_stale_configuration_and_idempotent_replay",
+              "status": "passed",
+              "durationMs": 3611.424
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_local_http_submission_history_approval_and_rollback",
+              "status": "passed",
+              "durationMs": 3164.957
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_no_gain_preserves_baseline_and_counts_fewer_holdout_calls",
+              "status": "passed",
+              "durationMs": 2556.746
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_provider_errors_are_not_retried_or_scored_as_success",
+              "status": "passed",
+              "durationMs": 1244.08
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_reflector_cannot_change_metadata_and_failure_skips_evaluator",
+              "status": "passed",
+              "durationMs": 1916.183
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_silent_model_has_a_real_single_call_timeout_and_no_retry",
+              "status": "passed",
+              "durationMs": 2037.571
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream",
+              "status": "passed",
+              "durationMs": 1325.17
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering",
+              "status": "passed",
+              "durationMs": 2951.055
+            },
+            {
+              "test": "llm_test.LlmWorkflowTests.test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls",
+              "status": "passed",
+              "durationMs": 1053.59
+            },
+            {
+              "test": "llm_test.ProtocolTests.test_protocol_preserves_whitespace_and_rejects_unstructured_answers",
+              "status": "passed",
+              "durationMs": 4.314
+            }
+          ]
+        },
+        {
+          "step": "python-llm_transport_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "llm_transport_test.AbsoluteDeadlineTests.test_connection_time_consumes_the_same_absolute_deadline",
+              "status": "passed",
+              "durationMs": 6.348
+            },
+            {
+              "test": "llm_transport_test.AbsoluteDeadlineTests.test_continuous_chunks_do_not_reset_deadline",
+              "status": "passed",
+              "durationMs": 5.636
+            },
+            {
+              "test": "llm_transport_test.TransportTests.test_incomplete_malformed_and_oversized_streams_fail_without_resending",
+              "status": "passed",
+              "durationMs": 20.932
+            },
+            {
+              "test": "llm_transport_test.TransportTests.test_sse_comments_crlf_unicode_and_usage_are_reassembled",
+              "status": "passed",
+              "durationMs": 1.192
+            },
+            {
+              "test": "llm_transport_test.TransportTests.test_stream_accumulator_bounds_and_rejects_invalid_delta_fields",
+              "status": "passed",
+              "durationMs": 4.327
+            },
+            {
+              "test": "llm_transport_test.TransportTests.test_structured_json_fallback_consumes_the_same_response_once",
+              "status": "passed",
+              "durationMs": 0.868
+            }
+          ]
+        },
+        {
+          "step": "python-m7_resume_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "m7_resume_test.SelectionTests.test_archive_is_scoped_to_its_own_directory_and_redacts_secrets",
+              "status": "passed",
+              "durationMs": 21.245
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_empty_plan_and_invalid_report_identity_cannot_pass_or_escape",
+              "status": "passed",
+              "durationMs": 0.57
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_exact_and_remaining_selection_preserve_order_and_omissions",
+              "status": "passed",
+              "durationMs": 1.002
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_json_and_zip_prior_evidence_have_identical_anchor",
+              "status": "passed",
+              "durationMs": 8.206
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_missing_anchor_and_empty_suite_cannot_pass",
+              "status": "passed",
+              "durationMs": 0.821
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case",
+              "status": "passed",
+              "durationMs": 4.067
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_second_failure_resumes_monitor_or_type_step_without_model_replay",
+              "status": "passed",
+              "durationMs": 6.565
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases",
+              "status": "passed",
+              "durationMs": 73.318
+            },
+            {
+              "test": "m7_resume_test.SelectionTests.test_tail_excludes_passed_gepa_and_keeps_later_modules",
+              "status": "passed",
+              "durationMs": 0.113
+            }
+          ]
+        },
+        {
+          "step": "python-native_checks_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "native_checks_test.NativeChecksTests.test_child_deadline_terminates_entire_group_and_retains_output",
+              "status": "passed",
+              "durationMs": 237.178
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_explicit_scope_preserves_all_original_modules_and_detects_source_or_budget_drift",
+              "status": "passed",
+              "durationMs": 228.99
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_native_module_failure_is_failfast_and_keeps_leaf_report",
+              "status": "passed",
+              "durationMs": 83.121
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_native_parent_uses_frozen_role_limits_instead_of_unrelated_stage_timeout",
+              "status": "passed",
+              "durationMs": 1457.161
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_nested_run_logs_survive_workspace_cleanup_and_redacted_archive",
+              "status": "passed",
+              "durationMs": 31.276
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_slow_storage_budget_contains_every_child_and_cleanup_layer",
+              "status": "passed",
+              "durationMs": 123.771
+            },
+            {
+              "test": "native_checks_test.NativeChecksTests.test_zero_exit_without_complete_case_evidence_cannot_pass",
+              "status": "passed",
+              "durationMs": 136.676
+            }
+          ]
+        },
+        {
+          "step": "python-ollama_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "ollama_test.ApiTests.test_settings_round_trip_csrf_origin_and_revision_guards",
+              "status": "passed",
+              "durationMs": 592.883
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_default_port_and_gateway_are_dynamic_without_http_requests",
+              "status": "passed",
+              "durationMs": 504.078
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_failures_are_recorded_and_no_retry_or_false_success_occurs",
+              "status": "passed",
+              "durationMs": 551.536
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_invalid_config_revision_and_duplicate_operations_do_not_dispatch",
+              "status": "passed",
+              "durationMs": 506.615
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_metadata_and_chat_bypass_broken_proxy_and_have_separate_evidence",
+              "status": "passed",
+              "durationMs": 557.516
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_route_discovery_rejects_ambiguous_routes_and_non_wsl",
+              "status": "passed",
+              "durationMs": 503.367
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_save_snapshot_restart_and_export_make_no_http_calls",
+              "status": "passed",
+              "durationMs": 504.548
+            },
+            {
+              "test": "ollama_test.BridgeTests.test_uploaded_diagnostic_is_preserved_and_api_only_never_sends_chat",
+              "status": "passed",
+              "durationMs": 904.486
+            }
+          ]
+        },
+        {
+          "step": "python-polling_boundary_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "polling_boundary_test.PollingBoundaryTests.test_disconnected_response_is_not_retried",
+              "status": "passed",
+              "durationMs": 2.109
+            },
+            {
+              "test": "polling_boundary_test.PollingBoundaryTests.test_non_disconnect_write_error_is_not_swallowed",
+              "status": "passed",
+              "durationMs": 0.115
+            },
+            {
+              "test": "polling_boundary_test.PollingBoundaryTests.test_slow_decoration_does_not_block_supervisor_lock",
+              "status": "passed",
+              "durationMs": 4.06
+            }
+          ]
+        },
+        {
+          "step": "python-repair_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "repair_test.EvaluatorTests.test_independent_visible_hidden_scores_and_baseline_failures",
+              "status": "passed",
+              "durationMs": 410.008
+            },
+            {
+              "test": "repair_test.EvaluatorTests.test_invalid_budgets_and_missing_sdk_fail_before_dispatch",
+              "status": "passed",
+              "durationMs": 19.314
+            },
+            {
+              "test": "repair_test.EvaluatorTests.test_unsafe_python_cannot_run_or_change_trusted_tests",
+              "status": "passed",
+              "durationMs": 1.053
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_actual_javascript_client_runs_api_reads_verified_patch_and_has_no_approval_path",
+              "status": "passed",
+              "durationMs": 34742.288
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_agent_claim_does_not_replace_test_evidence",
+              "status": "passed",
+              "durationMs": 18026.294
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_cancellation_stops_the_actual_sdk_worker_and_later_calls",
+              "status": "passed",
+              "durationMs": 18408.415
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_crlf_source_replay_preserves_candidate_bytes",
+              "status": "passed",
+              "durationMs": 19246.755
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_fragmented_sse_tool_arguments_reconstruct_and_tampering_is_rejected",
+              "status": "passed",
+              "durationMs": 16935.739
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_http_errors_have_no_sdk_retry",
+              "status": "passed",
+              "durationMs": 22000.749
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_model_call_budget_is_an_absolute_dispatch_cap",
+              "status": "passed",
+              "durationMs": 23514.979
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_real_sdk_repair_tools_independent_scores_and_evidence",
+              "status": "passed",
+              "durationMs": 29025.268
+            },
+            {
+              "test": "repair_test.SdkWorkflowTests.test_single_call_deadline_terminates_sdk_and_prevents_more_dispatches",
+              "status": "passed",
+              "durationMs": 22401.588
+            }
+          ]
+        },
+        {
+          "step": "python-runtime_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "runtime_test.ApiTests.test_api_rejects_rebinding_host_and_unknown_routes",
+              "status": "passed",
+              "durationMs": 598.574
+            },
+            {
+              "test": "runtime_test.ApiTests.test_cold_discovery_cannot_block_read_routes_or_duplicate_probes",
+              "status": "passed",
+              "durationMs": 1435.069
+            },
+            {
+              "test": "runtime_test.ApiTests.test_gepa_revision_is_rechecked_after_unlocked_sdk_preflight",
+              "status": "passed",
+              "durationMs": 521.573
+            },
+            {
+              "test": "runtime_test.ApiTests.test_mutations_require_token_and_reject_cross_origin_and_bad_bindings",
+              "status": "passed",
+              "durationMs": 610.951
+            },
+            {
+              "test": "runtime_test.ApiTests.test_poll_start_and_artifact_routes_use_actual_server_snapshots",
+              "status": "passed",
+              "durationMs": 2783.271
+            },
+            {
+              "test": "runtime_test.ApiTests.test_sdk_submission_preflight_cannot_block_state_reads",
+              "status": "passed",
+              "durationMs": 706.348
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_binding_validation_requires_one_enabled_agent_per_role",
+              "status": "passed",
+              "durationMs": 0.277
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_cancel_terminates_actual_process_and_rejects_concurrent_run",
+              "status": "passed",
+              "durationMs": 288.904
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_failure_skips_downstream_and_exposes_nonzero_exit",
+              "status": "passed",
+              "durationMs": 424.513
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_fixed_native_workflow_executes_actual_project_checks_and_artifacts",
+              "status": "passed",
+              "durationMs": 54545.325
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_one_supervisor_per_checkout_and_restart_marks_stale_work_unconfirmed",
+              "status": "passed",
+              "durationMs": 1456.161
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_real_processes_record_pids_logs_exit_codes_and_persist",
+              "status": "passed",
+              "durationMs": 1450.536
+            },
+            {
+              "test": "runtime_test.RuntimeTests.test_timeout_stops_process_and_releases_the_run_slot",
+              "status": "passed",
+              "durationMs": 328.74
+            }
+          ]
+        },
+        {
+          "step": "python-sdk_runtime_probe_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_failed_probe_is_not_cached_and_success_cannot_be_mutated",
+              "status": "passed",
+              "durationMs": 1995.822
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_exception_preserves_traceback_and_installed_version",
+              "status": "passed",
+              "durationMs": 559.797
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_over_old_ten_second_limit_completes_and_reports_progress",
+              "status": "passed",
+              "durationMs": 10734.685
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_import_timeout_kills_child_and_retains_partial_stage",
+              "status": "passed",
+              "durationMs": 1174.996
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_launch_failure_has_the_interpreter_and_error",
+              "status": "passed",
+              "durationMs": 122.212
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_malformed_output_cannot_pass",
+              "status": "passed",
+              "durationMs": 122.1
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_missing_package_is_distinct_from_import_timeout",
+              "status": "passed",
+              "durationMs": 289.283
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_native_process_failure_is_not_reported_as_a_missing_package",
+              "status": "passed",
+              "durationMs": 383.905
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_observation_is_nonblocking_and_expired_or_changed_environment_is_unknown",
+              "status": "passed",
+              "durationMs": 88.836
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_repair_budget_covers_wsl_cost_and_rejects_invalid_calibration",
+              "status": "passed",
+              "durationMs": 100.7
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_sdk_uses_project_interpreter_and_gepa_retains_sdk_failure",
+              "status": "passed",
+              "durationMs": 405.91
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_whole_probe_deadline_still_includes_slow_interpreter_startup",
+              "status": "passed",
+              "durationMs": 602.472
+            },
+            {
+              "test": "sdk_runtime_probe_test.RuntimeProbeTests.test_wrong_version_does_not_import_the_package",
+              "status": "passed",
+              "durationMs": 315.907
+            }
+          ]
+        },
+        {
+          "step": "python-setup_orchestrator_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_calibration_failure_retains_support_and_blocks_dispatch",
+              "status": "passed",
+              "durationMs": 64.972
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_command_deadline_terminates_silent_process",
+              "status": "passed",
+              "durationMs": 86.86
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_exit_code_and_redacted_log_are_retained",
+              "status": "passed",
+              "durationMs": 80.007
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_first_gate_failure_blocks_all_installation_commands",
+              "status": "passed",
+              "durationMs": 42.654
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_continues_reporting_after_user_approval",
+              "status": "passed",
+              "durationMs": 460.778
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_reports_overrun_and_stops_when_user_declines",
+              "status": "passed",
+              "durationMs": 135.49
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+              "status": "passed",
+              "durationMs": 1.744
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_secret_url_is_redacted",
+              "status": "passed",
+              "durationMs": 0.121
+            },
+            {
+              "test": "setup_orchestrator_test.SetupOrchestratorTests.test_setup_baseline_adapts_to_successful_stage_history",
+              "status": "passed",
+              "durationMs": 4.382
+            }
+          ]
+        },
+        {
+          "step": "python-setup_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "setup_test.GuiServerTests.test_serves_assets_but_not_checkout_secrets_or_external_symlinks",
+              "status": "passed",
+              "durationMs": 579.935
+            },
+            {
+              "test": "setup_test.InstallerTests.test_apt_installs_only_the_selected_packages",
+              "status": "passed",
+              "durationMs": 13.904
+            },
+            {
+              "test": "setup_test.InstallerTests.test_arch_mapping_and_unsupported_cpu",
+              "status": "passed",
+              "durationMs": 1.324
+            },
+            {
+              "test": "setup_test.InstallerTests.test_check_only_performs_no_install_or_write",
+              "status": "passed",
+              "durationMs": 3.566
+            },
+            {
+              "test": "setup_test.InstallerTests.test_failed_download_has_no_partial_published_tool_directory",
+              "status": "passed",
+              "durationMs": 2.238
+            },
+            {
+              "test": "setup_test.InstallerTests.test_installed_venv_is_never_recreated",
+              "status": "passed",
+              "durationMs": 3.486
+            },
+            {
+              "test": "setup_test.InstallerTests.test_installer_uses_quick_release_gated_checks",
+              "status": "passed",
+              "durationMs": 1.12
+            },
+            {
+              "test": "setup_test.InstallerTests.test_linux_node_only_and_supported_major",
+              "status": "passed",
+              "durationMs": 1.266
+            },
+            {
+              "test": "setup_test.InstallerTests.test_matching_checksum_required_before_extraction",
+              "status": "passed",
+              "durationMs": 5.352
+            },
+            {
+              "test": "setup_test.InstallerTests.test_missing_packages_are_selected_without_full_system_upgrade",
+              "status": "passed",
+              "durationMs": 1.841
+            },
+            {
+              "test": "setup_test.InstallerTests.test_missing_venv_module_selects_configured_versioned_package",
+              "status": "passed",
+              "durationMs": 7.744
+            },
+            {
+              "test": "setup_test.InstallerTests.test_missing_venv_module_without_apt_candidate_is_actionable_error",
+              "status": "passed",
+              "durationMs": 4.916
+            },
+            {
+              "test": "setup_test.InstallerTests.test_new_venv_copies_interpreter_into_project_directory",
+              "status": "passed",
+              "durationMs": 4.267
+            },
+            {
+              "test": "setup_test.InstallerTests.test_subprocess_workspace_temp_and_cache_follow_project_directory",
+              "status": "passed",
+              "durationMs": 4.032
+            },
+            {
+              "test": "setup_test.InstallerTests.test_wrong_venv_python_is_reported",
+              "status": "passed",
+              "durationMs": 2.876
+            },
+            {
+              "test": "setup_test.InstallerTests.test_wsl2_not_confused_with_wsl1_or_plain_linux",
+              "status": "passed",
+              "durationMs": 0.077
+            }
+          ]
+        },
+        {
+          "step": "python-skill_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "skill_test.EngineTests.test_dataset_is_fixed_disjoint_and_success_is_actual_output_equality",
+              "status": "passed",
+              "durationMs": 4.744
+            },
+            {
+              "test": "skill_test.EngineTests.test_declared_policy_executes_exact_expected_text_transformations",
+              "status": "passed",
+              "durationMs": 0.629
+            },
+            {
+              "test": "skill_test.EngineTests.test_search_uses_only_training_feedback_and_counts_all_probe_evaluations",
+              "status": "passed",
+              "durationMs": 17.411
+            },
+            {
+              "test": "skill_test.EngineTests.test_skill_metadata_body_policy_and_hash_cannot_diverge",
+              "status": "passed",
+              "durationMs": 0.542
+            },
+            {
+              "test": "skill_test.SkillApiTests.test_api_evolves_approves_exports_and_rolls_back_authoritative_skill",
+              "status": "passed",
+              "durationMs": 2728.451
+            },
+            {
+              "test": "skill_test.SkillApiTests.test_skill_mutations_require_local_token_and_revision_and_ignore_browser_metrics",
+              "status": "passed",
+              "durationMs": 548.305
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_approval_activation_rollback_and_restart_preserve_immutable_versions",
+              "status": "passed",
+              "durationMs": 5271.728
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_bad_budget_revision_and_reused_id_cannot_create_or_rebind_work",
+              "status": "passed",
+              "durationMs": 1794.507
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_baseline_change_blocks_old_candidate_and_next_run_freezes_new_active_version",
+              "status": "passed",
+              "durationMs": 3809.489
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_cancelled_skill_work_cannot_be_approved",
+              "status": "passed",
+              "durationMs": 69.924
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_no_gain_from_optimized_active_skill_is_completed_but_cannot_release",
+              "status": "passed",
+              "durationMs": 4951.248
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_real_workflow_has_candidate_lineage_measured_counts_and_no_auto_activation",
+              "status": "passed",
+              "durationMs": 2766.834
+            },
+            {
+              "test": "skill_test.WorkflowTests.test_release_recomputes_evidence_and_rejects_tampered_scores",
+              "status": "passed",
+              "durationMs": 2315.765
+            }
+          ]
+        },
+        {
+          "step": "python-step_trace_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "step_trace_test.BatchTests.test_batch_matches_single_case_evidence_and_resets_namespace",
+              "status": "passed",
+              "durationMs": 949.585
+            },
+            {
+              "test": "step_trace_test.BatchTests.test_four_result_jobs_launch_one_isolated_process",
+              "status": "passed",
+              "durationMs": 105.526
+            },
+            {
+              "test": "step_trace_test.BatchTests.test_invalid_batches_syntax_and_limits_fail_closed",
+              "status": "passed",
+              "durationMs": 357.61
+            },
+            {
+              "test": "step_trace_test.BatchTests.test_malformed_child_output_or_missing_result_is_rejected",
+              "status": "passed",
+              "durationMs": 5.547
+            },
+            {
+              "test": "step_trace_test.StepApiTests.test_real_http_read_only_route_preserves_origin_and_unknown_run_boundaries",
+              "status": "passed",
+              "durationMs": 587.842
+            },
+            {
+              "test": "step_trace_test.StepTests.test_journal_failure_does_not_change_return_or_exception",
+              "status": "passed",
+              "durationMs": 3.423
+            },
+            {
+              "test": "step_trace_test.StepTests.test_journal_retention_reports_partial_history",
+              "status": "passed",
+              "durationMs": 14.939
+            },
+            {
+              "test": "step_trace_test.StepTests.test_start_finish_failure_redaction_and_duration",
+              "status": "passed",
+              "durationMs": 19.078
+            },
+            {
+              "test": "step_trace_test.StepTests.test_summary_pairs_events_and_marks_unreported_terminal_spans",
+              "status": "passed",
+              "durationMs": 19.61
+            },
+            {
+              "test": "step_trace_test.StepTests.test_sync_async_method_context_and_safe_argument_selection",
+              "status": "passed",
+              "durationMs": 49.138
+            }
+          ]
+        },
+        {
+          "step": "python-trace_journal_reuse_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "trace_journal_reuse_test.JournalReuseTests.test_different_log_root_uses_routed_context",
+              "status": "passed",
+              "durationMs": 21.162
+            },
+            {
+              "test": "trace_journal_reuse_test.JournalReuseTests.test_nested_runner_spans_reuse_journal_and_preserve_events",
+              "status": "passed",
+              "durationMs": 19.59
+            }
+          ]
+        },
+        {
+          "step": "python-validation_wait_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "validation_wait_test.WaitTests.test_delayed_request_reports_current_role_before_arrival",
+              "status": "passed",
+              "durationMs": 61.357
+            },
+            {
+              "test": "validation_wait_test.WaitTests.test_failure_and_timeout_are_actionable",
+              "status": "passed",
+              "durationMs": 34.161
+            },
+            {
+              "test": "validation_wait_test.WaitTests.test_startup_budget_scales_but_remains_bounded",
+              "status": "passed",
+              "durationMs": 0.116
+            }
+          ]
+        },
+        {
+          "step": "python-warmup_test",
+          "status": "failed",
+          "testCases": [
+            {
+              "test": "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+              "status": "failed",
+              "durationMs": 1183.989
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CHECK-ac3ca98ab599466d9ebb28fb3a699033",
+      "status": "completed",
+      "sourceHash": "75e43d9738ee5066cf93b822ce1bb5e44b4471245ad1b193f3339148863d8609",
+      "reportSha256": "3befda350c55dc84e8ba96b8c24d24affae8b191b7371292df5563b74907e0c7",
+      "steps": [
+        {
+          "step": "python-gepa_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement",
+              "status": "passed",
+              "durationMs": 61888.557
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CHECK-1611116549e74bc0b330dba5ade29e8d",
+      "status": "completed",
+      "sourceHash": "2396ac3ad8a7f21d176a1aa3aebe4aaa5fb1bece2e43c696adda0575f0571902",
+      "reportSha256": "df02dcd43b4af4f179077a6b276096541d83001fc636c8ee3961901ff0465cad",
+      "steps": [
+        {
+          "step": "filesystem-calibration",
+          "status": "completed",
+          "testCases": []
+        },
+        {
+          "step": "python-warmup_test",
+          "status": "completed",
+          "testCases": [
+            {
+              "test": "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+              "status": "passed",
+              "durationMs": 1364.566
+            },
+            {
+              "test": "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+              "status": "passed",
+              "durationMs": 775.701
+            },
+            {
+              "test": "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+              "status": "passed",
+              "durationMs": 694.083
+            },
+            {
+              "test": "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+              "status": "passed",
+              "durationMs": 933.344
+            },
+            {
+              "test": "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+              "status": "passed",
+              "durationMs": 640.395
+            },
+            {
+              "test": "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch",
+              "status": "passed",
+              "durationMs": 514.779
+            }
+          ]
+        },
+        {
+          "step": "m7-source-scan",
+          "status": "completed",
+          "testCases": []
+        },
+        {
+          "step": "m7-ruff",
+          "status": "completed",
+          "testCases": []
+        },
+        {
+          "step": "m7-types",
+          "status": "completed",
+          "testCases": []
+        }
+      ]
+    }
+  ],
+  "targetedProofs": [
+    {
+      "log": ".local-gepa-workload-regressions-final.log",
+      "sha256": "b9a34e636243c86541ed8e0089a9aab097fd16d19bd1ea37e5880f768a715a4a",
+      "result": {
+        "pattern": "gepa_budget_test.py",
+        "testsRun": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_approval_case_reserves_all_four_post_completion_replays",
+            "status": "passed",
+            "durationMs": 8.613
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_each_rollout_is_verified_three_times_not_once",
+            "status": "passed",
+            "durationMs": 0.958
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_full_module_is_split_before_parent_cap_and_rejects_unsafe_aggregate",
+            "status": "passed",
+            "durationMs": 294.936
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch",
+            "status": "passed",
+            "durationMs": 29.487
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_outer_monitor_manifest_matches_expanded_release_steps",
+            "status": "passed",
+            "durationMs": 559.969
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_parent_and_child_share_frozen_calibration_and_case_containment",
+            "status": "passed",
+            "durationMs": 543.73
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_tail_contains_only_failed_and_unexecuted_gepa_cases",
+            "status": "passed",
+            "durationMs": 177.397
+          },
+          {
+            "test": "gepa_budget_test.GepaBudgetTests.test_unsafe_case_budget_is_rejected_before_any_child_is_dispatched",
+            "status": "passed",
+            "durationMs": 31.013
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "gepa_budget_test.GepaBudgetTests.test_approval_case_reserves_all_four_post_completion_replays",
+            "gepa_budget_test.GepaBudgetTests.test_each_rollout_is_verified_three_times_not_once",
+            "gepa_budget_test.GepaBudgetTests.test_full_module_is_split_before_parent_cap_and_rejects_unsafe_aggregate",
+            "gepa_budget_test.GepaBudgetTests.test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch",
+            "gepa_budget_test.GepaBudgetTests.test_outer_monitor_manifest_matches_expanded_release_steps",
+            "gepa_budget_test.GepaBudgetTests.test_parent_and_child_share_frozen_calibration_and_case_containment",
+            "gepa_budget_test.GepaBudgetTests.test_tail_contains_only_failed_and_unexecuted_gepa_cases",
+            "gepa_budget_test.GepaBudgetTests.test_unsafe_case_budget_is_rejected_before_any_child_is_dispatched"
+          ],
+          "selected": [
+            "gepa_budget_test.GepaBudgetTests.test_approval_case_reserves_all_four_post_completion_replays",
+            "gepa_budget_test.GepaBudgetTests.test_each_rollout_is_verified_three_times_not_once",
+            "gepa_budget_test.GepaBudgetTests.test_full_module_is_split_before_parent_cap_and_rejects_unsafe_aggregate",
+            "gepa_budget_test.GepaBudgetTests.test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch",
+            "gepa_budget_test.GepaBudgetTests.test_outer_monitor_manifest_matches_expanded_release_steps",
+            "gepa_budget_test.GepaBudgetTests.test_parent_and_child_share_frozen_calibration_and_case_containment",
+            "gepa_budget_test.GepaBudgetTests.test_tail_contains_only_failed_and_unexecuted_gepa_cases",
+            "gepa_budget_test.GepaBudgetTests.test_unsafe_case_budget_is_rejected_before_any_child_is_dispatched"
+          ],
+          "omitted": []
+        }
+      }
+    },
+    {
+      "log": ".local-gepa-monitor-regression.log",
+      "sha256": "bd0625fcb937acd1f6914a7dc1872058cd2f272d8192d51b5a57ef15d4ac68ed",
+      "result": {
+        "pattern": "check_steps_test.py",
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "check_steps_test.CheckStepsTests.test_gepa_module_budget_includes_multiple_full_workflows",
+            "status": "passed",
+            "durationMs": 6.228
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "check_steps_test.CheckStepsTests.test_batch_report_retains_policy_control_frames_and_last_output",
+            "check_steps_test.CheckStepsTests.test_child_output_is_streamed_and_saved_as_progress_evidence",
+            "check_steps_test.CheckStepsTests.test_ctrl_c_is_distinguished_from_declining_the_wait_prompt",
+            "check_steps_test.CheckStepsTests.test_failure_stops_next_stage_and_preserves_stdout_and_exit_code",
+            "check_steps_test.CheckStepsTests.test_first_release_module_budget_uses_filesystem_calibration_and_case_count",
+            "check_steps_test.CheckStepsTests.test_gepa_cases_show_distinct_workload_estimates",
+            "check_steps_test.CheckStepsTests.test_gepa_module_budget_includes_multiple_full_workflows",
+            "check_steps_test.CheckStepsTests.test_hard_limit_reports_overrun_before_stopping",
+            "check_steps_test.CheckStepsTests.test_module_sigterm_preserves_teardown_and_failed_case_evidence",
+            "check_steps_test.CheckStepsTests.test_monitor_reports_each_overrun_and_continues_after_approval",
+            "check_steps_test.CheckStepsTests.test_non_interactive_overrun_never_reads_stdin",
+            "check_steps_test.CheckStepsTests.test_overrun_reports_duration_and_user_decline_stops_process",
+            "check_steps_test.CheckStepsTests.test_partial_case_json_keeps_the_failure_report_and_raw_log",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_cannot_disable_the_absolute_deadline",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_keeps_prompt_visible_and_drains_completed_child",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_reports_each_case_and_actual_duration",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_stops_after_first_failure",
+            "check_steps_test.CheckStepsTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+            "check_steps_test.CheckStepsTests.test_quick_plan_and_release_sdk_requirement",
+            "check_steps_test.CheckStepsTests.test_release_python_budgets_are_module_specific_and_adapt_from_history",
+            "check_steps_test.CheckStepsTests.test_success_report_has_each_started_and_completed_step"
+          ],
+          "selected": [
+            "check_steps_test.CheckStepsTests.test_gepa_module_budget_includes_multiple_full_workflows"
+          ],
+          "omitted": [
+            "check_steps_test.CheckStepsTests.test_batch_report_retains_policy_control_frames_and_last_output",
+            "check_steps_test.CheckStepsTests.test_child_output_is_streamed_and_saved_as_progress_evidence",
+            "check_steps_test.CheckStepsTests.test_ctrl_c_is_distinguished_from_declining_the_wait_prompt",
+            "check_steps_test.CheckStepsTests.test_failure_stops_next_stage_and_preserves_stdout_and_exit_code",
+            "check_steps_test.CheckStepsTests.test_first_release_module_budget_uses_filesystem_calibration_and_case_count",
+            "check_steps_test.CheckStepsTests.test_gepa_cases_show_distinct_workload_estimates",
+            "check_steps_test.CheckStepsTests.test_hard_limit_reports_overrun_before_stopping",
+            "check_steps_test.CheckStepsTests.test_module_sigterm_preserves_teardown_and_failed_case_evidence",
+            "check_steps_test.CheckStepsTests.test_monitor_reports_each_overrun_and_continues_after_approval",
+            "check_steps_test.CheckStepsTests.test_non_interactive_overrun_never_reads_stdin",
+            "check_steps_test.CheckStepsTests.test_overrun_reports_duration_and_user_decline_stops_process",
+            "check_steps_test.CheckStepsTests.test_partial_case_json_keeps_the_failure_report_and_raw_log",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_cannot_disable_the_absolute_deadline",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_keeps_prompt_visible_and_drains_completed_child",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_reports_each_case_and_actual_duration",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_stops_after_first_failure",
+            "check_steps_test.CheckStepsTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+            "check_steps_test.CheckStepsTests.test_quick_plan_and_release_sdk_requirement",
+            "check_steps_test.CheckStepsTests.test_release_python_budgets_are_module_specific_and_adapt_from_history",
+            "check_steps_test.CheckStepsTests.test_success_report_has_each_started_and_completed_step"
+          ]
+        }
+      }
+    },
+    {
+      "log": ".local-gepa-estimate-regression.log",
+      "sha256": "cd0869f17b108e1cb70ac673df566e13a364dea27c5264900dc3626681d06704",
+      "result": {
+        "pattern": "check_steps_test.py",
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "check_steps_test.CheckStepsTests.test_gepa_cases_show_distinct_workload_estimates",
+            "status": "passed",
+            "durationMs": 3.099
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "check_steps_test.CheckStepsTests.test_batch_report_retains_policy_control_frames_and_last_output",
+            "check_steps_test.CheckStepsTests.test_child_output_is_streamed_and_saved_as_progress_evidence",
+            "check_steps_test.CheckStepsTests.test_ctrl_c_is_distinguished_from_declining_the_wait_prompt",
+            "check_steps_test.CheckStepsTests.test_failure_stops_next_stage_and_preserves_stdout_and_exit_code",
+            "check_steps_test.CheckStepsTests.test_first_release_module_budget_uses_filesystem_calibration_and_case_count",
+            "check_steps_test.CheckStepsTests.test_gepa_cases_show_distinct_workload_estimates",
+            "check_steps_test.CheckStepsTests.test_gepa_module_budget_includes_multiple_full_workflows",
+            "check_steps_test.CheckStepsTests.test_hard_limit_reports_overrun_before_stopping",
+            "check_steps_test.CheckStepsTests.test_module_sigterm_preserves_teardown_and_failed_case_evidence",
+            "check_steps_test.CheckStepsTests.test_monitor_reports_each_overrun_and_continues_after_approval",
+            "check_steps_test.CheckStepsTests.test_non_interactive_overrun_never_reads_stdin",
+            "check_steps_test.CheckStepsTests.test_overrun_reports_duration_and_user_decline_stops_process",
+            "check_steps_test.CheckStepsTests.test_partial_case_json_keeps_the_failure_report_and_raw_log",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_cannot_disable_the_absolute_deadline",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_keeps_prompt_visible_and_drains_completed_child",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_reports_each_case_and_actual_duration",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_stops_after_first_failure",
+            "check_steps_test.CheckStepsTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+            "check_steps_test.CheckStepsTests.test_quick_plan_and_release_sdk_requirement",
+            "check_steps_test.CheckStepsTests.test_release_python_budgets_are_module_specific_and_adapt_from_history",
+            "check_steps_test.CheckStepsTests.test_success_report_has_each_started_and_completed_step"
+          ],
+          "selected": [
+            "check_steps_test.CheckStepsTests.test_gepa_cases_show_distinct_workload_estimates"
+          ],
+          "omitted": [
+            "check_steps_test.CheckStepsTests.test_batch_report_retains_policy_control_frames_and_last_output",
+            "check_steps_test.CheckStepsTests.test_child_output_is_streamed_and_saved_as_progress_evidence",
+            "check_steps_test.CheckStepsTests.test_ctrl_c_is_distinguished_from_declining_the_wait_prompt",
+            "check_steps_test.CheckStepsTests.test_failure_stops_next_stage_and_preserves_stdout_and_exit_code",
+            "check_steps_test.CheckStepsTests.test_first_release_module_budget_uses_filesystem_calibration_and_case_count",
+            "check_steps_test.CheckStepsTests.test_gepa_module_budget_includes_multiple_full_workflows",
+            "check_steps_test.CheckStepsTests.test_hard_limit_reports_overrun_before_stopping",
+            "check_steps_test.CheckStepsTests.test_module_sigterm_preserves_teardown_and_failed_case_evidence",
+            "check_steps_test.CheckStepsTests.test_monitor_reports_each_overrun_and_continues_after_approval",
+            "check_steps_test.CheckStepsTests.test_non_interactive_overrun_never_reads_stdin",
+            "check_steps_test.CheckStepsTests.test_overrun_reports_duration_and_user_decline_stops_process",
+            "check_steps_test.CheckStepsTests.test_partial_case_json_keeps_the_failure_report_and_raw_log",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_cannot_disable_the_absolute_deadline",
+            "check_steps_test.CheckStepsTests.test_pending_stdin_keeps_prompt_visible_and_drains_completed_child",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_reports_each_case_and_actual_duration",
+            "check_steps_test.CheckStepsTests.test_per_module_runner_stops_after_first_failure",
+            "check_steps_test.CheckStepsTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+            "check_steps_test.CheckStepsTests.test_quick_plan_and_release_sdk_requirement",
+            "check_steps_test.CheckStepsTests.test_release_python_budgets_are_module_specific_and_adapt_from_history",
+            "check_steps_test.CheckStepsTests.test_success_report_has_each_started_and_completed_step"
+          ]
+        }
+      }
+    },
+    {
+      "log": ".local-gepa-scope-regression-final.log",
+      "sha256": "de10803f1b2bce13a1a2d3a83c59d3284412ce30a7aaf43c4b2a302379659c56",
+      "result": {
+        "pattern": "m7_resume_test.py",
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases",
+            "status": "passed",
+            "durationMs": 57.177
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "m7_resume_test.SelectionTests.test_archive_is_scoped_to_its_own_directory_and_redacts_secrets",
+            "m7_resume_test.SelectionTests.test_empty_plan_and_invalid_report_identity_cannot_pass_or_escape",
+            "m7_resume_test.SelectionTests.test_exact_and_remaining_selection_preserve_order_and_omissions",
+            "m7_resume_test.SelectionTests.test_json_and_zip_prior_evidence_have_identical_anchor",
+            "m7_resume_test.SelectionTests.test_missing_anchor_and_empty_suite_cannot_pass",
+            "m7_resume_test.SelectionTests.test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case",
+            "m7_resume_test.SelectionTests.test_second_failure_resumes_monitor_or_type_step_without_model_replay",
+            "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases",
+            "m7_resume_test.SelectionTests.test_tail_excludes_passed_gepa_and_keeps_later_modules"
+          ],
+          "selected": [
+            "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases"
+          ],
+          "omitted": [
+            "m7_resume_test.SelectionTests.test_archive_is_scoped_to_its_own_directory_and_redacts_secrets",
+            "m7_resume_test.SelectionTests.test_empty_plan_and_invalid_report_identity_cannot_pass_or_escape",
+            "m7_resume_test.SelectionTests.test_exact_and_remaining_selection_preserve_order_and_omissions",
+            "m7_resume_test.SelectionTests.test_json_and_zip_prior_evidence_have_identical_anchor",
+            "m7_resume_test.SelectionTests.test_missing_anchor_and_empty_suite_cannot_pass",
+            "m7_resume_test.SelectionTests.test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case",
+            "m7_resume_test.SelectionTests.test_second_failure_resumes_monitor_or_type_step_without_model_replay",
+            "m7_resume_test.SelectionTests.test_tail_excludes_passed_gepa_and_keeps_later_modules"
+          ]
+        }
+      }
+    },
+    {
+      "log": ".local-warmup-clock-proof.log",
+      "sha256": "226f6f2992fef8070b587b5d3078d19d443c5609625c961996a1bf4d34aa2638",
+      "result": {
+        "pattern": "warmup_test.py",
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+            "status": "passed",
+            "durationMs": 1667.087
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+            "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+            "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+            "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+            "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+            "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+            "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch"
+          ],
+          "selected": [
+            "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry"
+          ],
+          "omitted": [
+            "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+            "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+            "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+            "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+            "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+            "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch"
+          ]
+        }
+      }
+    },
+    {
+      "log": ".local-warmup-final-failure-case.log",
+      "sha256": "9643236b232c0bfe84ce4bbde5deb99d12b9c99efded13392bae695154967ee7",
+      "result": {
+        "pattern": "warmup_test.py",
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "successful": true,
+        "cases": [
+          {
+            "test": "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+            "status": "passed",
+            "durationMs": 1267.447
+          }
+        ],
+        "selection": {
+          "discovered": [
+            "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+            "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+            "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+            "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+            "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+            "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+            "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch"
+          ],
+          "selected": [
+            "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure"
+          ],
+          "omitted": [
+            "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+            "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+            "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+            "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+            "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+            "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch"
+          ]
+        }
+      }
+    }
+  ],
+  "distinctTailCaseIds": [
+    "gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement",
+    "gepa_test.GepaWorkflowTests.test_real_optimizer_runner_final_isolation_approval_rollback_and_tamper_gate",
+    "journal_batch_test.JournalBatchTests.test_batch_is_one_transaction_with_redaction_and_restart_visibility",
+    "journal_batch_test.JournalBatchTests.test_capture_chunks_batches_without_skipping_lines",
+    "journal_batch_test.JournalBatchTests.test_invalid_batch_cannot_partially_insert_and_retention_is_bounded",
+    "llm_test.LlmWorkflowTests.test_actual_worker_reflection_evaluation_review_and_versions",
+    "llm_test.LlmWorkflowTests.test_browser_client_polls_real_api_through_completion_and_version_review",
+    "llm_test.LlmWorkflowTests.test_cancel_stops_future_calls_and_shared_slot_rejects_other_work",
+    "llm_test.LlmWorkflowTests.test_continuous_partial_chunks_do_not_extend_the_absolute_call_deadline",
+    "llm_test.LlmWorkflowTests.test_disconnected_stream_does_not_complete_or_retry",
+    "llm_test.LlmWorkflowTests.test_evidence_tampering_blocks_human_release",
+    "llm_test.LlmWorkflowTests.test_full_profile_has_exact_call_accounting_and_separate_holdout_selection",
+    "llm_test.LlmWorkflowTests.test_invalid_or_stale_configuration_and_idempotent_replay",
+    "llm_test.LlmWorkflowTests.test_local_http_submission_history_approval_and_rollback",
+    "llm_test.LlmWorkflowTests.test_no_gain_preserves_baseline_and_counts_fewer_holdout_calls",
+    "llm_test.LlmWorkflowTests.test_provider_errors_are_not_retried_or_scored_as_success",
+    "llm_test.LlmWorkflowTests.test_reflector_cannot_change_metadata_and_failure_skips_evaluator",
+    "llm_test.LlmWorkflowTests.test_silent_model_has_a_real_single_call_timeout_and_no_retry",
+    "llm_test.LlmWorkflowTests.test_stream_progress_is_visible_before_completion_and_watchdog_stops_active_stream",
+    "llm_test.LlmWorkflowTests.test_streamed_workflow_reassembles_evidence_and_reviewer_rejects_tampering",
+    "llm_test.LlmWorkflowTests.test_whole_run_deadline_terminates_waiting_process_and_prevents_more_calls",
+    "llm_test.ProtocolTests.test_protocol_preserves_whitespace_and_rejects_unstructured_answers",
+    "llm_transport_test.AbsoluteDeadlineTests.test_connection_time_consumes_the_same_absolute_deadline",
+    "llm_transport_test.AbsoluteDeadlineTests.test_continuous_chunks_do_not_reset_deadline",
+    "llm_transport_test.TransportTests.test_incomplete_malformed_and_oversized_streams_fail_without_resending",
+    "llm_transport_test.TransportTests.test_sse_comments_crlf_unicode_and_usage_are_reassembled",
+    "llm_transport_test.TransportTests.test_stream_accumulator_bounds_and_rejects_invalid_delta_fields",
+    "llm_transport_test.TransportTests.test_structured_json_fallback_consumes_the_same_response_once",
+    "m7_resume_test.SelectionTests.test_archive_is_scoped_to_its_own_directory_and_redacts_secrets",
+    "m7_resume_test.SelectionTests.test_empty_plan_and_invalid_report_identity_cannot_pass_or_escape",
+    "m7_resume_test.SelectionTests.test_exact_and_remaining_selection_preserve_order_and_omissions",
+    "m7_resume_test.SelectionTests.test_json_and_zip_prior_evidence_have_identical_anchor",
+    "m7_resume_test.SelectionTests.test_missing_anchor_and_empty_suite_cannot_pass",
+    "m7_resume_test.SelectionTests.test_scoped_type_failure_zip_keeps_provenance_without_inventing_a_case",
+    "m7_resume_test.SelectionTests.test_second_failure_resumes_monitor_or_type_step_without_model_replay",
+    "m7_resume_test.SelectionTests.test_strict_gepa_tail_does_not_repeat_passed_prechecks_or_ten_gepa_cases",
+    "m7_resume_test.SelectionTests.test_tail_excludes_passed_gepa_and_keeps_later_modules",
+    "native_checks_test.NativeChecksTests.test_child_deadline_terminates_entire_group_and_retains_output",
+    "native_checks_test.NativeChecksTests.test_explicit_scope_preserves_all_original_modules_and_detects_source_or_budget_drift",
+    "native_checks_test.NativeChecksTests.test_native_module_failure_is_failfast_and_keeps_leaf_report",
+    "native_checks_test.NativeChecksTests.test_native_parent_uses_frozen_role_limits_instead_of_unrelated_stage_timeout",
+    "native_checks_test.NativeChecksTests.test_nested_run_logs_survive_workspace_cleanup_and_redacted_archive",
+    "native_checks_test.NativeChecksTests.test_slow_storage_budget_contains_every_child_and_cleanup_layer",
+    "native_checks_test.NativeChecksTests.test_zero_exit_without_complete_case_evidence_cannot_pass",
+    "ollama_test.ApiTests.test_settings_round_trip_csrf_origin_and_revision_guards",
+    "ollama_test.BridgeTests.test_default_port_and_gateway_are_dynamic_without_http_requests",
+    "ollama_test.BridgeTests.test_failures_are_recorded_and_no_retry_or_false_success_occurs",
+    "ollama_test.BridgeTests.test_invalid_config_revision_and_duplicate_operations_do_not_dispatch",
+    "ollama_test.BridgeTests.test_metadata_and_chat_bypass_broken_proxy_and_have_separate_evidence",
+    "ollama_test.BridgeTests.test_route_discovery_rejects_ambiguous_routes_and_non_wsl",
+    "ollama_test.BridgeTests.test_save_snapshot_restart_and_export_make_no_http_calls",
+    "ollama_test.BridgeTests.test_uploaded_diagnostic_is_preserved_and_api_only_never_sends_chat",
+    "polling_boundary_test.PollingBoundaryTests.test_disconnected_response_is_not_retried",
+    "polling_boundary_test.PollingBoundaryTests.test_non_disconnect_write_error_is_not_swallowed",
+    "polling_boundary_test.PollingBoundaryTests.test_slow_decoration_does_not_block_supervisor_lock",
+    "repair_test.EvaluatorTests.test_independent_visible_hidden_scores_and_baseline_failures",
+    "repair_test.EvaluatorTests.test_invalid_budgets_and_missing_sdk_fail_before_dispatch",
+    "repair_test.EvaluatorTests.test_unsafe_python_cannot_run_or_change_trusted_tests",
+    "repair_test.SdkWorkflowTests.test_actual_javascript_client_runs_api_reads_verified_patch_and_has_no_approval_path",
+    "repair_test.SdkWorkflowTests.test_agent_claim_does_not_replace_test_evidence",
+    "repair_test.SdkWorkflowTests.test_cancellation_stops_the_actual_sdk_worker_and_later_calls",
+    "repair_test.SdkWorkflowTests.test_crlf_source_replay_preserves_candidate_bytes",
+    "repair_test.SdkWorkflowTests.test_fragmented_sse_tool_arguments_reconstruct_and_tampering_is_rejected",
+    "repair_test.SdkWorkflowTests.test_http_errors_have_no_sdk_retry",
+    "repair_test.SdkWorkflowTests.test_model_call_budget_is_an_absolute_dispatch_cap",
+    "repair_test.SdkWorkflowTests.test_real_sdk_repair_tools_independent_scores_and_evidence",
+    "repair_test.SdkWorkflowTests.test_single_call_deadline_terminates_sdk_and_prevents_more_dispatches",
+    "runtime_test.ApiTests.test_api_rejects_rebinding_host_and_unknown_routes",
+    "runtime_test.ApiTests.test_cold_discovery_cannot_block_read_routes_or_duplicate_probes",
+    "runtime_test.ApiTests.test_gepa_revision_is_rechecked_after_unlocked_sdk_preflight",
+    "runtime_test.ApiTests.test_mutations_require_token_and_reject_cross_origin_and_bad_bindings",
+    "runtime_test.ApiTests.test_poll_start_and_artifact_routes_use_actual_server_snapshots",
+    "runtime_test.ApiTests.test_sdk_submission_preflight_cannot_block_state_reads",
+    "runtime_test.RuntimeTests.test_binding_validation_requires_one_enabled_agent_per_role",
+    "runtime_test.RuntimeTests.test_cancel_terminates_actual_process_and_rejects_concurrent_run",
+    "runtime_test.RuntimeTests.test_failure_skips_downstream_and_exposes_nonzero_exit",
+    "runtime_test.RuntimeTests.test_fixed_native_workflow_executes_actual_project_checks_and_artifacts",
+    "runtime_test.RuntimeTests.test_one_supervisor_per_checkout_and_restart_marks_stale_work_unconfirmed",
+    "runtime_test.RuntimeTests.test_real_processes_record_pids_logs_exit_codes_and_persist",
+    "runtime_test.RuntimeTests.test_timeout_stops_process_and_releases_the_run_slot",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_failed_probe_is_not_cached_and_success_cannot_be_mutated",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_import_exception_preserves_traceback_and_installed_version",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_import_over_old_ten_second_limit_completes_and_reports_progress",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_import_timeout_kills_child_and_retains_partial_stage",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_launch_failure_has_the_interpreter_and_error",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_malformed_output_cannot_pass",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_missing_package_is_distinct_from_import_timeout",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_native_process_failure_is_not_reported_as_a_missing_package",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_observation_is_nonblocking_and_expired_or_changed_environment_is_unknown",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_repair_budget_covers_wsl_cost_and_rejects_invalid_calibration",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_sdk_uses_project_interpreter_and_gepa_retains_sdk_failure",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_whole_probe_deadline_still_includes_slow_interpreter_startup",
+    "sdk_runtime_probe_test.RuntimeProbeTests.test_wrong_version_does_not_import_the_package",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_calibration_failure_retains_support_and_blocks_dispatch",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_command_deadline_terminates_silent_process",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_exit_code_and_redacted_log_are_retained",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_first_gate_failure_blocks_all_installation_commands",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_continues_reporting_after_user_approval",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_long_step_reports_overrun_and_stops_when_user_declines",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_prompt_is_ten_times_normal_capped_at_thirty_minutes",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_secret_url_is_redacted",
+    "setup_orchestrator_test.SetupOrchestratorTests.test_setup_baseline_adapts_to_successful_stage_history",
+    "setup_test.GuiServerTests.test_serves_assets_but_not_checkout_secrets_or_external_symlinks",
+    "setup_test.InstallerTests.test_apt_installs_only_the_selected_packages",
+    "setup_test.InstallerTests.test_arch_mapping_and_unsupported_cpu",
+    "setup_test.InstallerTests.test_check_only_performs_no_install_or_write",
+    "setup_test.InstallerTests.test_failed_download_has_no_partial_published_tool_directory",
+    "setup_test.InstallerTests.test_installed_venv_is_never_recreated",
+    "setup_test.InstallerTests.test_installer_uses_quick_release_gated_checks",
+    "setup_test.InstallerTests.test_linux_node_only_and_supported_major",
+    "setup_test.InstallerTests.test_matching_checksum_required_before_extraction",
+    "setup_test.InstallerTests.test_missing_packages_are_selected_without_full_system_upgrade",
+    "setup_test.InstallerTests.test_missing_venv_module_selects_configured_versioned_package",
+    "setup_test.InstallerTests.test_missing_venv_module_without_apt_candidate_is_actionable_error",
+    "setup_test.InstallerTests.test_new_venv_copies_interpreter_into_project_directory",
+    "setup_test.InstallerTests.test_subprocess_workspace_temp_and_cache_follow_project_directory",
+    "setup_test.InstallerTests.test_wrong_venv_python_is_reported",
+    "setup_test.InstallerTests.test_wsl2_not_confused_with_wsl1_or_plain_linux",
+    "skill_test.EngineTests.test_dataset_is_fixed_disjoint_and_success_is_actual_output_equality",
+    "skill_test.EngineTests.test_declared_policy_executes_exact_expected_text_transformations",
+    "skill_test.EngineTests.test_search_uses_only_training_feedback_and_counts_all_probe_evaluations",
+    "skill_test.EngineTests.test_skill_metadata_body_policy_and_hash_cannot_diverge",
+    "skill_test.SkillApiTests.test_api_evolves_approves_exports_and_rolls_back_authoritative_skill",
+    "skill_test.SkillApiTests.test_skill_mutations_require_local_token_and_revision_and_ignore_browser_metrics",
+    "skill_test.WorkflowTests.test_approval_activation_rollback_and_restart_preserve_immutable_versions",
+    "skill_test.WorkflowTests.test_bad_budget_revision_and_reused_id_cannot_create_or_rebind_work",
+    "skill_test.WorkflowTests.test_baseline_change_blocks_old_candidate_and_next_run_freezes_new_active_version",
+    "skill_test.WorkflowTests.test_cancelled_skill_work_cannot_be_approved",
+    "skill_test.WorkflowTests.test_no_gain_from_optimized_active_skill_is_completed_but_cannot_release",
+    "skill_test.WorkflowTests.test_real_workflow_has_candidate_lineage_measured_counts_and_no_auto_activation",
+    "skill_test.WorkflowTests.test_release_recomputes_evidence_and_rejects_tampered_scores",
+    "step_trace_test.BatchTests.test_batch_matches_single_case_evidence_and_resets_namespace",
+    "step_trace_test.BatchTests.test_four_result_jobs_launch_one_isolated_process",
+    "step_trace_test.BatchTests.test_invalid_batches_syntax_and_limits_fail_closed",
+    "step_trace_test.BatchTests.test_malformed_child_output_or_missing_result_is_rejected",
+    "step_trace_test.StepApiTests.test_real_http_read_only_route_preserves_origin_and_unknown_run_boundaries",
+    "step_trace_test.StepTests.test_journal_failure_does_not_change_return_or_exception",
+    "step_trace_test.StepTests.test_journal_retention_reports_partial_history",
+    "step_trace_test.StepTests.test_start_finish_failure_redaction_and_duration",
+    "step_trace_test.StepTests.test_summary_pairs_events_and_marks_unreported_terminal_spans",
+    "step_trace_test.StepTests.test_sync_async_method_context_and_safe_argument_selection",
+    "trace_journal_reuse_test.JournalReuseTests.test_different_log_root_uses_routed_context",
+    "trace_journal_reuse_test.JournalReuseTests.test_nested_runner_spans_reuse_journal_and_preserve_events",
+    "validation_wait_test.WaitTests.test_delayed_request_reports_current_role_before_arrival",
+    "validation_wait_test.WaitTests.test_failure_and_timeout_are_actionable",
+    "validation_wait_test.WaitTests.test_startup_budget_scales_but_remains_bounded",
+    "warmup_test.WarmupTests.test_absolute_warmup_timeout_releases_slot_and_logs_failure",
+    "warmup_test.WarmupTests.test_completed_preload_is_not_visible_until_cleanup_and_slot_release",
+    "warmup_test.WarmupTests.test_deadline_clock_stops_real_worker_after_observed_dispatch_without_retry",
+    "warmup_test.WarmupTests.test_explicit_preload_has_no_prompt_generation_and_is_persisted_separately",
+    "warmup_test.WarmupTests.test_invalid_stale_and_malformed_requests_never_claim_preload_success",
+    "warmup_test.WarmupTests.test_preload_blocks_overlap_and_cancels_without_unload_or_retry",
+    "warmup_test.WarmupTests.test_service_restart_marks_old_active_preload_unconfirmed_without_dispatch"
+  ],
+  "finalCodeSha256": {
+    "platform_m/gates.py": "d133c8f03bc40888b1e93d2ad0b83bfe9103fb7673c211eec2d1cb69b7ab9cf8",
+    "scripts/check_m7_remaining.py": "4f4440dd7d92e80b83105dc7da09d343d997e65fc8a7a9ca40cbe7d38a630820",
+    "scripts/check_steps.py": "4c17a9df9c5bd74968b3f362428e1b5e07a8c9ea5455ea727b5330d18477b1a6",
+    "scripts/gepa_validation_budget.py": "6a5ad1289f9e1bf7b0c8bdd293beeb7be263f9fafcf01e49600a712c41e54855",
+    "scripts/run_test_module.py": "778ea8b4eb0791b1cc934ec1643f90164cd5cbcc64568cee2f7006242af13c64",
+    "scripts/ollama_bridge.py": "f2b421702fa2c93d1e00054d6f77c8e79959fc6bcb4b9f1e9be9c865101bd85f",
+    "tests/gepa_budget_test.py": "df0e141e7c1fea15bd536ebe0ce78a05a2a5014367da0a4d630b161b98c9dc50",
+    "tests/gepa_test.py": "82d973a307653170b18d6b4fcffcc22bf0d283c68cda8ad1f56d894d4044f8ef",
+    "tests/m7_resume_test.py": "cc57ffb0f928950f47c48f207f14c9e6cc6791b3802b3358119cf6f16716ee24",
+    "tests/check_steps_test.py": "c2ceecf9c105ac1333f83bdd3d080046616a30efa87d923edc9ece68429533cb",
+    "tests/warmup_test.py": "ddd2d3a8657d36d4799333e58ca563d1e5883f421658f66fa6082b5d60354967",
+    "tests/fixtures/gepa_slow_review.py": "904df8bea05674537508ba5da4d29f3f105b597f68507dd395e4d07a3962a311"
+  },
+  "sourceQualification": "Different scoped source snapshots are preserved. Final supervisor has a separate real failed-case run and focused contracts; warmup fix has separate continuation/clock evidence. No aggregate same-source M/M7 acceptance claimed.",
+  "controlledReviewDelaySeconds": 410,
+  "gepaWorkloads": [
+    {
+      "case": "perfect-seed",
+      "rollouts": 17,
+      "trustedVerificationBatches": 51,
+      "requests": 68
+    },
+    {
+      "case": "approval",
+      "rollouts": 18,
+      "workflowVerificationBatches": 54,
+      "allVerificationBatches": 126,
+      "extraReplayPasses": 4
+    }
+  ]
+}
