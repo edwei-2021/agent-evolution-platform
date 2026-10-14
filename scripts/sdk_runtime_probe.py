@@ -5,10 +5,13 @@ import math
 from pathlib import Path
 import subprocess
 import time
+import threading
 
 PROBE_SECONDS = 120
 PROBE_INTERVAL = 10
 PREFIX = 'AEP_SDK_PROBE '
+_observed = {}
+_observation_lock = threading.Lock()
 
 PROGRAM = r'''
 import importlib, importlib.metadata, json, sys, traceback
@@ -140,13 +143,33 @@ def _successful_probe(executable, distribution, module, required, symbol, marker
     return json.dumps(status)
 
 
-def package_status(executable, distribution, module, required, symbol='', marker=0):
+def package_status(executable, distribution, module, required, symbol='', marker=0, *, cached_only=False):
     try:
         stamp = Path(executable).stat().st_mtime_ns
     except OSError:
         stamp = 0
+    key = (str(executable), distribution, module, required, symbol, (marker, stamp),
+           int(time.monotonic() // 300))
+    if cached_only:
+        with _observation_lock:
+            observed = _observed.get(key)
+        if observed is not None:
+            return json.loads(observed)
+        return {'available': False, 'version': None, 'requiredVersion': required,
+                'python': str(executable), 'errorCode': 'not_probed',
+                'error': 'SDK discovery is pending; availability is not yet confirmed'}
     try:
-        return json.loads(_successful_probe(str(executable), distribution, module, required, symbol,
-                                            (marker, stamp), int(time.monotonic() // 300)))
+        result = _successful_probe(*key)
+        # Read-only API observations never start an interpreter. This cache
+        # has the same executable/marker/time-window identity as the probe.
+        with _observation_lock:
+            if len(_observed) >= 16:
+                _observed.pop(next(iter(_observed)))
+            _observed[key] = result
+        return json.loads(result)
     except _UnsuccessfulProbe as exc:
+        with _observation_lock:
+            if len(_observed) >= 16:
+                _observed.pop(next(iter(_observed)))
+            _observed[key] = json.dumps(exc.status)
         return exc.status

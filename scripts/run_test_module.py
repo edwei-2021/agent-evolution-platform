@@ -19,6 +19,30 @@ class ModuleInterrupted(BaseException):
     """Cancellation must bypass transport/tool handlers for ordinary errors."""
 
 
+def cases(suite):
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            yield from cases(test)
+        else:
+            yield test
+
+
+def select_suite(suite, *, case=None, from_case=None):
+    discovered = list(cases(suite))
+    identifiers = [test.id() for test in discovered]
+    anchor = case or from_case
+    if not identifiers or len(set(identifiers)) != len(identifiers):
+        raise ValueError('Test discovery must produce unique, nonempty case IDs')
+    if anchor and anchor not in identifiers:
+        raise ValueError('Unknown test case: ' + anchor)
+    selected = ([discovered[identifiers.index(case)]] if case else
+                discovered[identifiers.index(from_case):] if from_case else discovered)
+    return unittest.TestSuite(selected), {
+        'discovered': identifiers, 'selected': [test.id() for test in selected],
+        'omitted': [identifier for identifier in identifiers if identifier not in {test.id() for test in selected}],
+    }
+
+
 def expected_case_seconds(identifier):
     if not identifier.startswith('gepa_test.'):
         return None
@@ -93,6 +117,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('pattern', help='one unittest filename pattern, e.g. llm_test.py')
     parser.add_argument('--tests-dir', type=Path, default=Path('tests'))
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--case', help='Run exactly one fully qualified case ID')
+    selection.add_argument('--from-case', help='Run the named case and the remaining cases in discovery order')
     args = parser.parse_args(argv)
     if Path(args.pattern).name != args.pattern or not args.pattern.endswith('_test.py'):
         parser.error('pattern must be a single *_test.py filename')
@@ -102,6 +129,11 @@ def main(argv=None):
     sys.path.insert(0, str(tests_dir))
     suite = unittest.defaultTestLoader.discover(str(tests_dir), pattern=args.pattern,
                                                 top_level_dir=str(tests_dir))
+    try:
+        suite, selected = select_suite(suite, case=args.case, from_case=args.from_case)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print('TEST_SELECTION ' + json.dumps(selected), flush=True)
     # A release gate only needs the first failing case to block the next step.
     # Continuing after a bounded workflow timeout can add minutes without
     # improving the evidence for that first failure.
@@ -121,6 +153,7 @@ def main(argv=None):
         'failures': len(result.failures), 'errors': len(result.errors),
         'skipped': len(result.skipped), 'successful': result.wasSuccessful(),
         'cases': result.case_results,
+        'selection': selected,
     }, ensure_ascii=False), flush=True)
     return 0 if result.wasSuccessful() else 1
 

@@ -161,6 +161,8 @@ class SdkWorkflowTests(unittest.TestCase):
         done=self.finish(run['id']);self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),1)
         self.assertEqual(done['repairProgress']['failedCalls'],1);self.assertFalse(self.service.ollama.operation.locked())
     def test_actual_javascript_client_runs_api_reads_verified_patch_and_has_no_approval_path(self):
+        from repair_runtime import sdk_status
+        self.assertTrue(sdk_status(self.service.root)['available'])  # explicit SDK preflight
         import subprocess
         from setup_wsl import find_node
         node=find_node()

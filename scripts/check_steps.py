@@ -6,6 +6,7 @@ from datetime import datetime,timezone
 import json
 import os
 import queue
+import re
 import signal
 import select
 import io
@@ -59,6 +60,9 @@ def normal_budget(profile, name, command=None, calibration=None):
         estimate=10+count*calibration['perCallIoAllowanceSeconds']*.5
         return max(15,round(estimate),historical)
     if profile=='quick':return max(45,historical)
+    if profile=='release' and name in {'monitor-regressions','resume-regressions','frontend-regressions',
+                                      'm7-source-scan','m7-unit','m7-ruff','m7-types'}:
+        return max(60,historical)
     if profile=='model':return 600
     if profile=='release' and name=='filesystem-calibration':return max(10,historical)
     if profile=='release' and name=='all-frontend':return max(45,historical)
@@ -213,9 +217,14 @@ def stages(profile,root=ROOT):
     elif profile!='quick':raise ValueError('Unknown test profile')
     return steps
 
-def run(profile, *, interactive=True, monitor_id=None):
-    plan=stages(profile);identifier='CHECK-'+uuid.uuid4().hex;directory=ROOT/'.local/test-reports'/identifier;directory.mkdir(parents=True)
+def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None, identifier=None):
+    plan=stages(profile) if plan is None else plan
+    if not plan:raise ValueError('An empty check plan cannot pass')
+    identifier=identifier or 'CHECK-'+uuid.uuid4().hex
+    if not re.fullmatch(r'CHECK-[0-9a-f]{32}',identifier):raise ValueError('Invalid check report identity')
+    directory=ROOT/'.local/test-reports'/identifier;directory.mkdir(parents=True)
     logs=DebugLog(ROOT);report={'schemaVersion':1,'id':identifier,'profile':profile,'monitorPolicy':MONITOR_POLICY,'startedAt':datetime.now(timezone.utc).isoformat(),'status':'running','waitPolicy':'interactive' if interactive else 'bounded_non_interactive','steps':[]}
+    if metadata is not None:report['scope']=metadata
     def save():
         target=directory/'report.json';temp=directory/'report.tmp';temp.write_text(json.dumps(report,indent=2));temp.replace(target)
     save();print(f'Test report: {directory}',flush=True)

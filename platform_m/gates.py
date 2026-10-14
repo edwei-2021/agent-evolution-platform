@@ -363,6 +363,7 @@ def plans(root, python):
                 [str(sdk),'scripts/check_steps.py','--profile','release'],
                 [python,'-m','ruff','check','platform_m','tests_m','scripts/generate_m_contracts.py',
                     'scripts/migrate_wsl.py','scripts/check_m.py','scripts/check_m_environment.py','scripts/serve_m.py',
-                    'scripts/check_steps.py','scripts/run_test_module.py','scripts/calibrate_release_tests.py'],
+                    'scripts/check_steps.py','scripts/run_test_module.py','scripts/calibrate_release_tests.py',
+                    'scripts/check_m7_remaining.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]

@@ -68,6 +68,9 @@ class RuntimeService:
         self.completion_event = threading.Event()
         self.current = None
         self.closed = False
+        self.discovery_lock = threading.Lock()
+        self.discovery_thread = None
+        self.discovery_identity = None
         from debug_log import DebugLog
         self.logs = DebugLog(self.root)
         self.logs.keep_open()
@@ -219,6 +222,40 @@ class RuntimeService:
             f'Model call #{call["id"]} {status}: {error}', directory.name,
             {'elapsedMs': call['elapsedMs'], 'timeoutSeconds': call.get('timeoutSeconds')})
 
+    def sdk_snapshot(self):
+        """Observe readiness immediately; one background discovery per window.
+
+        Dispatch still uses the synchronous, pinned SDK probes in freeze().
+        Never hold the workflow mutex while importing optional packages.
+        """
+        from repair_runtime import sdk_status
+        from gepa_runtime import gepa_status
+        sdk = sdk_status(self.root, cached_only=True)
+        optimizer = gepa_status(self.root, sdk, cached_only=True)
+        try:
+            stamp = Path(sdk['python']).stat().st_mtime_ns
+        except OSError:
+            stamp = 0
+        identity = (int(time.monotonic() // 300), sdk['python'], stamp)
+        with self.discovery_lock:
+            pending = sdk.get('errorCode') == 'not_probed' or optimizer.get('errorCode') == 'not_probed'
+            if (pending and not self.closed and self.discovery_identity != identity
+                    and (self.discovery_thread is None or not self.discovery_thread.is_alive())):
+                self.discovery_identity = identity
+                def discover():
+                    try:
+                        observed = sdk_status(self.root)
+                        gepa_status(self.root, observed)
+                    except Exception as exc:
+                        # A read endpoint must not fail because an optional
+                        # environment changed while discovery was running.
+                        if not self.closed:
+                            self.logs.append('runtime', 'ERROR', 'SDK discovery failed',
+                                             details={'error': str(exc)})
+                self.discovery_thread = threading.Thread(target=discover, name='sdk-discovery', daemon=True)
+                self.discovery_thread.start()
+        return sdk, optimizer
+
     def snapshot(self):
         with self.lock, self.connect() as db:
             runs = [json.loads(row[0]) for row in db.execute('SELECT data FROM runs ORDER BY created DESC LIMIT 10')]
@@ -239,14 +276,30 @@ class RuntimeService:
             llm_workspace.update(latestRun=self.decorate(llm_runs[0]) if llm_runs else None, runs=[{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in llm_runs])
         with self.lock, self.connect() as db:
             repair_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'nanobot-repair'][:10]
-        from repair_runtime import sdk_status
-        repair_workspace = {'engine': 'nanobot-python-repair-v1', 'sdk': sdk_status(self.root), 'latestRun': self.decorate(repair_runs[0]) if repair_runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in repair_runs]}
+        sdk, optimizer = self.sdk_snapshot()
+        repair_workspace = {'engine': 'nanobot-python-repair-v1', 'sdk': sdk, 'latestRun': self.decorate(repair_runs[0]) if repair_runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'createdAt': r['createdAt']} for r in repair_runs]}
         with self.lock, self.connect() as db:
             gepa_runs = [json.loads(r[0]) for r in db.execute('SELECT data FROM runs ORDER BY created DESC') if json.loads(r[0]).get('task') == 'gepa-evolution'][:10]
-        gepa_workspace = self.gepa.snapshot()
+        gepa_workspace = self.gepa.snapshot(cached_only=True)
+        gepa_workspace.update(sdk=sdk, optimizer=optimizer)
         gepa_workspace.update(latestRun=self.decorate(gepa_runs[0]) if gepa_runs else None, runs=[{'id':r['id'],'status':r['status'],'createdAt':r['createdAt']} for r in gepa_runs])
         return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace, 'repair': repair_workspace, 'gepa': gepa_workspace,
                 'provider': {'revision': self.ollama.state()['revision'], 'config': self.ollama.state()['config'], 'busy': self.ollama.operation.locked(), 'warmup': self.ollama.warmup_status()}}
+
+    def _submission(self, request_id, task, submission_hash):
+        """Check admission/idempotency while the caller holds self.lock."""
+        if self.closed:
+            raise RuntimeError('Runtime service is stopping')
+        with self.connect() as db:
+            prior = db.execute('SELECT data FROM runs WHERE request_id=?', (request_id,)).fetchone()
+        if prior:
+            existing = json.loads(prior[0])
+            if existing.get('submissionHash', submission_hash) != submission_hash or existing.get('task') != task:
+                raise RuntimeError('Idempotency request ID is already bound to a different submission')
+            return self.decorate(existing)
+        if self.current and self.current['status'] not in TERMINAL:
+            raise RuntimeError('A workflow is already running; cancel or wait before starting another')
+        return None
 
     def start(self, registry, request_id, task='project-health', options=None):
         agents = validate_bindings(registry)
@@ -255,19 +308,22 @@ class RuntimeService:
         if task not in ('project-health', 'skill-evolution', 'llm-evolution', 'nanobot-repair', 'gepa-evolution') or (task == 'project-health' and options is not None):
             raise ValueError('Unsupported fixed workflow')
         submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
+        prepared = None
+        if task in ('nanobot-repair', 'gepa-evolution'):
+            with self.lock:
+                existing = self._submission(request_id, task, submission_hash)
+                if existing is not None:
+                    return existing
+            # Cold or expired SDK imports must not hold the workflow mutex.
+            # No run/model slot is allocated until admission is rechecked below.
+            prepared = self.repair.freeze(options) if task == 'nanobot-repair' else self.gepa.freeze(options)
         with self.lock:
-            if self.closed:
-                raise RuntimeError('Runtime service is stopping')
-            with self.connect() as db:
-                prior = db.execute('SELECT data FROM runs WHERE request_id=?', (request_id,)).fetchone()
-            if prior:
-                existing = json.loads(prior[0])
-                if existing.get('submissionHash', submission_hash) != submission_hash or existing.get('task') != task:
-                    raise RuntimeError('Idempotency request ID is already bound to a different submission')
-                return self.decorate(existing)
-            if self.current and self.current['status'] not in TERMINAL:
-                raise RuntimeError('A workflow is already running; cancel or wait before starting another')
-            config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else self.repair.freeze(options) if task == 'nanobot-repair' else self.gepa.freeze(options) if task == 'gepa-evolution' else None
+            existing = self._submission(request_id, task, submission_hash)
+            if existing is not None:
+                return existing
+            config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else prepared
+            if task == 'gepa-evolution':
+                self.gepa.check_revision(options['expectedRevision'])
             from skill_agents import TASKS as SKILL_TASKS
             from llm_engine import TASKS as LLM_TASKS
             from repair_engine import TASKS as REPAIR_TASKS
@@ -278,6 +334,8 @@ class RuntimeService:
                     raise RuntimeError('An Ollama request is already running; wait first')
                 agents.sort(key=lambda a: ('coordinator', 'worker', 'reflector', 'evaluator', 'reviewer').index(a['role']))
             try:
+                if task in MODEL_TASKS and config['provider']['revision'] != self.ollama.state()['revision']:
+                    raise RuntimeError('Provider settings changed; refresh first')
                 identifier = 'RUN-' + str(uuid.uuid4())
                 directory = self.local / 'runs' / identifier
                 directory.mkdir(parents=True)

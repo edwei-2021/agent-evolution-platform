@@ -252,6 +252,9 @@ class GepaWorkflowTests(unittest.TestCase):
         self.assertFalse(self.service.ollama.operation.locked())
         path=self.service.local/'runs'/done['id']/'gepa-calls.json';self.assertEqual(json.loads(path.read_text())[-1]['status'],'failed')
     def test_actual_js_client_to_python_api_dispatch_and_result_validation(self):
+        from gepa_runtime import gepa_status
+        readiness=gepa_status(self.service.root)  # explicit pinned SDK preflight
+        self.assertTrue(readiness['available'],readiness)
         from setup_wsl import find_node
         class QuietHandler(GuiHandler):
             def log_message(self,*args):pass

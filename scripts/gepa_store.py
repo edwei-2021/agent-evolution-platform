@@ -17,12 +17,13 @@ class GepaStore:
             baseline={'id':'GSV-baseline','label':'G0','parentId':None,'runId':None,'createdAt':service.timestamp(),'skill':skill(SKILL['body']),'evidence':None}
             db.execute('INSERT OR IGNORE INTO gepa_versions VALUES (?,NULL,?)',(baseline['id'],json.dumps(baseline)))
             db.execute('INSERT OR IGNORE INTO gepa_state VALUES (1,1,?)',(baseline['id'],))
-    def snapshot(self):
+    def snapshot(self, *, cached_only=True):
         with self.service.lock,self.service.connect() as db:
             revision,active_id=db.execute('SELECT revision,active_id FROM gepa_state').fetchone()
             versions=[json.loads(r[0]) for r in db.execute('SELECT data FROM gepa_versions ORDER BY rowid')]
+        sdk=sdk_status(self.service.root,cached_only=cached_only)
         return {'schemaVersion':1,'engine':ENGINE,'revision':revision,'activeVersionId':active_id,'active':next(v for v in versions if v['id']==active_id),'versions':versions,
-          'sdk':sdk_status(self.service.root),'optimizer':gepa_status(self.service.root)}
+          'sdk':sdk,'optimizer':gepa_status(self.service.root,sdk,cached_only=cached_only)}
     def check_revision(self,expected):
         if type(expected) is not int or expected<1:raise ValueError('expectedRevision must be a positive integer')
         if self.service.closed or self.snapshot()['revision']!=expected:raise RuntimeError('GEPA Skill state changed; refresh first')
@@ -32,7 +33,7 @@ class GepaStore:
         data=dataset(options['profile']);mini=1 if options['profile']=='smoke' else 3
         for key,low,high in [('maxSeconds',60,7200),('callTimeoutSeconds',10,3600),('taskCallBudget',2,12),('metricBudget',len(data['validation'])+2*mini+len(data['validation']),80),('proposalBudget',1,8)]:
             if type(options[key]) is not int or not low<=options[key]<=high:raise ValueError(f'{key} must be an integer in {low}..{high}')
-        self.check_revision(options['expectedRevision']);snap=self.snapshot()
+        self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
         if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
         with self.service.ollama.lock:provider=self.service.ollama.state()
         if type(options['providerRevision']) is not int or options['providerRevision']!=provider['revision']:raise RuntimeError('Provider settings changed; refresh first')

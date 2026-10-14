@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -162,6 +163,90 @@ class ApiTests(unittest.TestCase):
         request = Request(self.base + path, data=json.dumps(body).encode() if body is not None else None, headers=merged)
         with urlopen(request, timeout=5) as response:
             return json.load(response)
+
+    def test_cold_discovery_cannot_block_read_routes_or_duplicate_probes(self):
+        import sdk_runtime_probe as probes
+        release, entered = threading.Event(), threading.Event()
+        probes._successful_probe.cache_clear()
+        probes._observed.clear()
+        def slow_probe(executable, distribution, module, required, symbol=''):
+            entered.set()
+            if not release.wait(10):
+                raise AssertionError('read endpoint waited for optional SDK import')
+            return {'available': True, 'version': required, 'python': str(executable),
+                    'requiredVersion': required, 'errorCode': None, 'error': None}
+        try:
+            with patch.object(probes, 'probe', side_effect=slow_probe) as probe:
+                caps = self.request('/api/v1/runtime/capabilities')
+                self.assertFalse(caps['nanobotInstalled'])
+                self.assertTrue(entered.wait(2))
+                for path in ('/api/v1/llm/skills', '/api/v1/skills', '/api/v1/runtime',
+                             '/api/v1/repair', '/api/v1/gepa', '/api/v1/runtime/capabilities'):
+                    self.request(path)  # real HTTP timeout remains five seconds
+                self.assertEqual(probe.call_count, 1)
+                self.assertFalse(self.runtime.ollama.operation.locked())
+                release.set()
+                self.runtime.discovery_thread.join(5)
+                self.assertFalse(self.runtime.discovery_thread.is_alive())
+                live = self.request('/api/v1/runtime')
+                self.assertTrue(live['repair']['sdk']['available'])
+                self.assertTrue(live['gepa']['optimizer']['available'])
+                self.assertEqual(probe.call_count, 2)  # one nanobot and one GEPA probe
+                # Replacing the interpreter identity within the same five-minute
+                # window must schedule discovery again, not stay pending forever.
+                candidate = self.runtime.root/'.venv-nanobot/bin/python'
+                candidate.parent.mkdir(parents=True)
+                candidate.write_text('fixture interpreter identity')
+                self.runtime.sdk_snapshot()
+                self.runtime.discovery_thread.join(5)
+                self.assertTrue(self.request('/api/v1/runtime')['repair']['sdk']['available'])
+                self.assertEqual(probe.call_count, 4)
+                self.assertEqual(self.request('/api/v1/llm/skills')['activeVersionId'], 'LSV-baseline')
+        finally:
+            release.set()
+            if self.runtime.discovery_thread:
+                self.runtime.discovery_thread.join(5)
+            probes._successful_probe.cache_clear()
+            probes._observed.clear()
+
+    def test_sdk_submission_preflight_cannot_block_state_reads(self):
+        from ollama_bridge import DEFAULTS
+        self.runtime.ollama.save({**DEFAULTS, 'host': '127.0.0.1', 'port': 1, 'model': 'not-dispatched'}, 0)
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        def slow_sdk(root):
+            entered.set()
+            release.wait(10)
+            return {'available': False, 'error': 'fixture SDK failure'}
+        def submit():
+            try:
+                self.runtime.start(registry(), 'cold-submit', 'nanobot-repair', {
+                    'maxSeconds': 60, 'callTimeoutSeconds': 10, 'callBudget': 8, 'providerRevision': 1})
+            except RuntimeError as exc:
+                errors.append(str(exc))
+        thread = threading.Thread(target=submit)
+        try:
+            with patch('repair_store.sdk_status', side_effect=slow_sdk):
+                thread.start()
+                self.assertTrue(entered.wait(2))
+                live = self.request('/api/v1/runtime')
+                self.assertIsNone(live['latestRun'])
+                self.assertFalse(self.runtime.ollama.operation.locked())
+                release.set();thread.join(5)
+                self.assertEqual(errors, ['fixture SDK failure'])
+        finally:
+            release.set();thread.join(5)
+
+    def test_gepa_revision_is_rechecked_after_unlocked_sdk_preflight(self):
+        def changed(options):
+            with self.runtime.connect() as db:
+                db.execute('UPDATE gepa_state SET revision=revision+1')
+            return {'provider': {'revision': 0}}
+        with patch.object(self.runtime.gepa, 'freeze', side_effect=changed):
+            with self.assertRaisesRegex(RuntimeError, 'state changed'):
+                self.runtime.start(registry(), 'stale-preflight', 'gepa-evolution', {'expectedRevision': 1})
+        self.assertIsNone(self.runtime.current)
+        self.assertFalse(self.runtime.ollama.operation.locked())
 
     def test_poll_start_and_artifact_routes_use_actual_server_snapshots(self):
         caps = self.request('/api/v1/runtime/capabilities')

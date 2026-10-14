@@ -5,10 +5,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import argparse
 import hmac
-import importlib.util
 import json
 import re
-import shutil
 import sys
 import tempfile
 import time
@@ -82,10 +80,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
         try:
             if path == '/api/v1/runtime/capabilities':
                 from setup_wsl import find_node
-                from repair_runtime import sdk_status
-                sdk = sdk_status(runtime.root)
-                from gepa_runtime import gepa_status
-                optimizer = gepa_status(runtime.root)
+                sdk, optimizer = runtime.sdk_snapshot()
                 self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': optimizer['available'], 'gepaVersion': optimizer['version'], 'gepaWorkerAvailable': optimizer['available'], 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())

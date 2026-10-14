@@ -59,7 +59,9 @@ class CheckStepsTests(unittest.TestCase):
                   if line.startswith('TEST_CASE_RESULT ')]
             self.assertEqual(len(rows),1)
             self.assertEqual(rows[0]['status'],'error')
-            self.assertNotIn('test_b_later',result.stdout+result.stderr)
+            started=[json.loads(line.removeprefix('TEST_CASE_STARTED '))['test']
+                     for line in result.stdout.splitlines() if line.startswith('TEST_CASE_STARTED ')]
+            self.assertEqual(started,['sample_test.Sample.test_a_error'])
             summary=json.loads(next(line.removeprefix('TEST_MODULE_RESULT ')
                                     for line in result.stdout.splitlines()
                                     if line.startswith('TEST_MODULE_RESULT ')))

@@ -44,3 +44,25 @@ test('GEPA version actions use their own revisions and definitive rejection perm
  reject=false;client.gepaMetrics=6;await client.startGepa(initialRegistry());await client.approveGepa('RUN-gepa');await client.activateGepa('GSV-baseline');
  assert.deepEqual(JSON.parse(calls.find(c=>c.path.endsWith('/approve')).options.body),{expectedRevision:1});assert.ok(calls.some(c=>c.path==='/api/v1/gepa/versions/GSV-baseline/activate'));
 });
+
+test('pending SDK discovery is visible and keeps GEPA dispatch disabled',()=>{
+ const data=snapshot();data.gepa.sdk={available:false,version:null,errorCode:'not_probed'};
+ const html=gepaView({data,capabilities:caps,enabled:true,error:null});
+ assert.match(html,/偵測中，請稍候/);
+ assert.match(html,/<button[^>]*data-gepa-start[^>]*disabled/);
+});
+
+test('two SDK revalidations may exceed the read timeout but remain bounded without retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let signal,posts=0,ready;const posted=new Promise(resolve=>{ready=resolve;});
+ const client=new RuntimeClient({fetcher:async(path,options)=>{
+  if(path.endsWith('/capabilities'))return response(caps);
+  if(path==='/api/v1/llm/ollama')return response({revision:1});
+  if(options.method==='POST'){posts++;signal=options.signal;ready();return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('bounded submission abort')),{once:true}));}
+  return response(snapshot());
+ }});
+ await client.refresh();const pending=assert.rejects(client.startGepa(initialRegistry()),/bounded submission abort/);
+ await posted;t.mock.timers.tick(8001);assert.equal(signal.aborted,false);
+ t.mock.timers.tick(270000);await pending;assert.equal(signal.aborted,true);assert.equal(posts,1);
+ assert.ok(client.pendingGepaSubmission);
+});

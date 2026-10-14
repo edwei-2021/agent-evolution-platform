@@ -41,3 +41,25 @@ test('read-only repair evidence previews retain artifact boundaries and escaped 
  assert.ok(!html.includes(payload));assert.match(html,/&lt;script&gt;/);assert.match(html,/6 \/ 6/);assert.match(html,/data-execution-progress/);assert.match(html,/不建立新 Skill 版本/);
  truncated=true;await assert.rejects(client.readRepairEvidence('RUN-repair'),/預覽超限/);
 });
+
+test('pending SDK discovery is visible and keeps repair dispatch disabled',()=>{
+ const data=snapshot();data.repair.sdk={available:false,version:null,errorCode:'not_probed',error:'pending'};
+ const html=repairView({data,capabilities:caps,enabled:true,error:null});
+ assert.match(html,/偵測中，請稍候/);
+ assert.match(html,/<button[^>]*data-repair-start[^>]*disabled/);
+});
+
+test('SDK revalidation may exceed the read timeout but remains bounded without retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let signal,posts=0,ready;const posted=new Promise(resolve=>{ready=resolve;});
+ const client=new RuntimeClient({fetcher:async(path,options)=>{
+  if(path.endsWith('/capabilities'))return response(caps);
+  if(path==='/api/v1/llm/ollama')return response({revision:1});
+  if(options.method==='POST'){posts++;signal=options.signal;ready();return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('bounded submission abort')),{once:true}));}
+  return response(snapshot());
+ }});
+ await client.refresh();const pending=assert.rejects(client.startRepair(initialRegistry()),/bounded submission abort/);
+ await posted;t.mock.timers.tick(8001);assert.equal(signal.aborted,false);
+ t.mock.timers.tick(150000);await pending;assert.equal(signal.aborted,true);assert.equal(posts,1);
+ assert.ok(client.pendingRepairSubmission);
+});

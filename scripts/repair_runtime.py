@@ -10,13 +10,17 @@ else:
 SDK_VERSION = '0.3.5'
 
 
-def inspect_runtime(root, installed_marker):
+def inspect_runtime(root, installed_marker, *, cached_only=False):
     candidate = Path(root) / '.venv-nanobot/bin/python'
     executable = str(candidate) if candidate.is_file() else sys.executable
-    return package_status(executable, 'nanobot-ai', 'nanobot', SDK_VERSION, 'Nanobot', installed_marker)
+    return package_status(executable, 'nanobot-ai', 'nanobot', SDK_VERSION, 'Nanobot', installed_marker,
+                          cached_only=cached_only)
 
 
-def sdk_status(root):
+def sdk_status(root, *, cached_only=False):
     path = Path(root) / '.venv-nanobot/bin/python'
-    marker = path.stat().st_mtime_ns if path.is_file() else 0
-    return inspect_runtime(str(Path(root).resolve()), marker)
+    try:
+        marker = path.stat().st_mtime_ns
+    except OSError:
+        marker = 0
+    return inspect_runtime(str(Path(root).resolve()), marker, cached_only=cached_only)

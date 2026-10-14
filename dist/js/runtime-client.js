@@ -221,7 +221,8 @@ export class RuntimeClient{
     this.actionBusy=true;this.onUpdate();
     try{
       if(!this.pendingRepairSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingRepairSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),maxSeconds:this.repairSeconds,callTimeoutSeconds:this.repairCallSeconds,callBudget:this.repairBudget,providerRevision:provider.revision};}
-      try{await this.request('/api/v1/repair/runs',{method:'POST',body:this.pendingRepairSubmission});this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairEvidence=null;await this.refresh();}
+      // Submission may revalidate an expired SDK observation: 120s probe + 30s response grace.
+      try{await this.request('/api/v1/repair/runs',{method:'POST',body:this.pendingRepairSubmission,timeoutMs:150000});this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairEvidence=null;await this.refresh();}
       catch(error){if(error.status&&error.status<500)this.pendingRepairSubmission=null;throw error;}
     }finally{this.actionBusy=false;this.onUpdate();}
   }
@@ -241,7 +242,8 @@ export class RuntimeClient{
     return this.skillMutation(async()=>{
       if(!this.data.gepa?.sdk.available||!this.data.gepa?.optimizer.available)throw Error('請安裝 nanobot 與 GEPA');
       if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision};}
-      try{await this.request('/api/v1/gepa/runs',{method:'POST',body:this.pendingGepaSubmission});}
+      // Two serial pinned probes (nanobot + GEPA), then response/dispatch grace.
+      try{await this.request('/api/v1/gepa/runs',{method:'POST',body:this.pendingGepaSubmission,timeoutMs:270000});}
       catch(error){if(error.status>=400&&error.status<500)this.pendingGepaSubmission=null;throw error;}
       this.pendingGepaSubmission=null;this.selectedGepaRun=null;
     },'gepa');

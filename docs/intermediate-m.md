@@ -2,6 +2,8 @@
 
 This delivery adds M service components and machine checks to the v0.7.1 runtime. Existing GUI/model settings and legacy runs remain supported. It does not certify the entire hardened platform as complete. Container acceptance must run on Docker-capable Ubuntu/WSL; real Windows model quality and full production migration remain unverified.
 
+For the current M7 failure, use the [failure recovery guidance](#m7-failure-recovery-and-ai-maintenance-失敗接續與維護經驗) and [AI maintenance lessons](ai-maintenance-lessons.md). Historical full-run instructions below describe earlier revisions; the scoped continuation command avoids repeating passed upstream checks when diagnosing the failed M7 tail.
+
 ## 1. Delivered programs by step (各步驟程式)
 
 | Step | Programs/scripts | Implemented checks | Remaining phase closure |
@@ -329,3 +331,12 @@ The parent no longer applies a two-hour aggregate cap to the entire release plan
 GEPA's initial module estimate now covers four complete workflow budgets with cleanup and the remaining short cases, instead of four optimistic average durations. Model-call limits, rollout/reviewer checks, approval/rollback/tamper assertions and production workflow defaults remain enforced. A failed acceptance ZIP now includes the nested release report and module logs along with the outer stage reports.
 
 Local validation: supervision regressions 21/21; gate, watchdog, malformed-control and archive checks 20/20; Ruff passed. The real pinned GEPA module also passed 12/12 with zero skips under both supervisors in about 110 seconds. That controlled run used a five-second parent startup allowance and a 0.15-second interactive threshold, with stdin access forbidden; it completed beyond those thresholds using the frozen module deadline and persisted all twelve case results. WSL M7 and full phase M acceptance remain unverified for this revision.
+
+
+## M7 failure recovery and AI maintenance (失敗接續與維護經驗)
+
+Read [AI Maintenance Lessons](ai-maintenance-lessons.md) before changing SDK discovery, timing, or acceptance supervision. The document records the earlier deadline/monitor failures, the cold SDK import behind the five-second LLM HTTP failure, and the audit of the unexecuted M7 tail.
+
+State-read APIs now observe readiness immediately while optional SDK discovery runs in the background. Unknown readiness is displayed as pending; pinned SDK/version checks remain mandatory when freezing repair/GEPA submissions.
+
+Use `.venv-m/bin/python scripts/check_m7_remaining.py --previous-support /absolute/path/to/support.zip` to run the failed case and the remaining release/M7 checks. The command accepts the original M support ZIP, its nested failed release report, or a failed continuation report/ZIP. A subsequent failure resumes from its own case or check without repeating completed model modules. It reconstructs allowed commands from current source, never executes commands supplied by the old report, records historical omissions and source hashes, and emits a support ZIP. A tail result is explicitly scoped and does not certify a full M or M7 pass on changed source.

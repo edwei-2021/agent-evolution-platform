@@ -24,9 +24,11 @@ class RuntimeProbeTests(unittest.TestCase):
         self.python = self.environment / 'bin/python'
         self.site = next((self.environment / 'lib').glob('python*/site-packages'))
         runtime._successful_probe.cache_clear()
+        runtime._observed.clear()
 
     def tearDown(self):
         runtime._successful_probe.cache_clear()
+        runtime._observed.clear()
         self.temporary.cleanup()
 
     def package(self, source='class Nanobot: pass\n', version='0.3.5'):
@@ -91,6 +93,22 @@ class RuntimeProbeTests(unittest.TestCase):
             result['available'] = False
             self.assertTrue(runtime.package_status(self.python, 'nanobot-ai', 'nanobot', '0.3.5')['available'])
             self.assertEqual(probe.call_count, 2)
+
+    def test_observation_is_nonblocking_and_expired_or_changed_environment_is_unknown(self):
+        success = {'available': True, 'version': '0.3.5'}
+        args = (self.python, 'nanobot-ai', 'nanobot', '0.3.5')
+        with patch.object(runtime, 'probe', return_value=success) as probe:
+            with patch.object(runtime.time, 'monotonic', return_value=300):
+                self.assertEqual(runtime.package_status(*args, cached_only=True)['errorCode'], 'not_probed')
+                probe.assert_not_called()
+                runtime.package_status(*args)
+                self.assertTrue(runtime.package_status(*args, cached_only=True)['available'])
+                self.assertEqual(runtime.package_status(*args, marker=99, cached_only=True)['errorCode'], 'not_probed')
+            with patch.object(runtime.time, 'monotonic', return_value=600):
+                self.assertEqual(runtime.package_status(*args, cached_only=True)['errorCode'], 'not_probed')
+                self.assertEqual(probe.call_count, 1)
+                runtime.package_status(*args)
+                self.assertEqual(probe.call_count, 2)
 
     def test_launch_failure_has_the_interpreter_and_error(self):
         with redirect_stdout(io.StringIO()):
