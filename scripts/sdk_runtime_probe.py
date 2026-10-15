@@ -61,6 +61,10 @@ def probe(executable, distribution, module, required, symbol='', *, seconds=PROB
         raise ValueError('Invalid SDK probe deadline')
     command = [str(executable), '-I', '-u', '-X', 'importtime', '-c', PROGRAM, distribution, module, required, symbol]
     started = time.monotonic()
+    from diagnostic_log import DiagnosticLog
+    diagnostics = DiagnosticLog()
+    diagnostics.write('sdk', 'probe.started', package=distribution, python=str(executable),
+                      requiredVersion=required, timeoutSeconds=seconds, modelRequests=0)
     stdout = stderr = ''
     status = {'available': False, 'version': None, 'requiredVersion': required,
               'python': str(executable), 'error': None, 'errorCode': None}
@@ -89,6 +93,8 @@ def probe(executable, distribution, module, required, symbol='', *, seconds=PROB
                     if isinstance(partial, bytes):
                         partial = partial.decode('utf-8', errors='replace')
                     stage = _events(partial).get('stage', 'interpreter-startup')
+                    diagnostics.write('sdk', 'probe.waiting', package=distribution, stage=stage,
+                                      elapsedSeconds=round(time.monotonic()-started,3), timeoutSeconds=seconds)
                     print(f'SDK_PROBE_WAIT package={distribution} stage={stage} '
                           f'elapsed_seconds={time.monotonic()-started:.1f} maximum_seconds={seconds}',
                           flush=True)
@@ -123,6 +129,8 @@ def probe(executable, distribution, module, required, symbol='', *, seconds=PROB
     summary.update(stage=status['probe']['stage'], elapsedSeconds=status['probe']['elapsedSeconds'],
                    timeoutSeconds=seconds)
     print('SDK_PROBE_RESULT ' + json.dumps(summary, ensure_ascii=False), flush=True)
+    diagnostics.write('sdk', 'probe.finished', level='INFO' if status['available'] else 'ERROR',
+                      package=distribution, **summary, exitCode=status['probe']['exitCode'], stderrTail=stderr[-900:])
     if not status['available']:
         print('SDK_PROBE_DIAGNOSTICS ' + json.dumps(status['probe'], ensure_ascii=False), flush=True)
     return status

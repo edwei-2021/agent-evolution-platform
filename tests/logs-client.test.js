@@ -26,6 +26,7 @@ test('log rendering escapes all output, shows local time, freshness and bounded 
  const html=logsView(client.snapshot(),{data:{runs:[]}});
  assert.ok(!html.includes(payload));assert.match(html,/&lt;img/);assert.match(html,/Asia\/Taipei/);assert.match(html,/保留上次紀錄/);
  assert.match(html,/匯出目前 JSONL/);assert.match(html,/Windows Ollama server.log/);
+ assert.match(html,/href="\/api\/v1\/debug\/support" download>下載診斷包/);
 });
 test('invalid metadata, invented levels, duplicate IDs and broken cursors are rejected',()=>{
  for(const mutate of [p=>p.records[0].level='OK',p=>p.records.push(row(2)),p=>p.nextBefore=999,p=>p.modules.push('" onclick="bad')]){

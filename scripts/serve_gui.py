@@ -10,10 +10,24 @@ import re
 import sys
 import tempfile
 import time
+import os
+import platform
+import subprocess
+import uuid
 from urllib.parse import urlsplit, parse_qs
 
 DIST = Path(__file__).resolve().parents[1] / 'dist'
 DEFAULT_PORT = 8765
+
+
+class DiagnosticServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        from diagnostic_log import DiagnosticLog, exception_details
+        exc = sys.exc_info()[1]
+        runtime = getattr(self,'runtime',None)
+        DiagnosticLog(runtime.root if runtime else DIST.parent).write('http','request.unhandled',
+            level='ERROR',client=client_address[0],**exception_details(exc))
+        super().handle_error(request,client_address)
 
 
 def ollama_bridge(runtime):
@@ -25,9 +39,20 @@ def ollama_bridge(runtime):
 
 
 class GuiHandler(SimpleHTTPRequestHandler):
+    def log_request(self, code='-', size='-'):
+        from diagnostic_log import DiagnosticLog
+        runtime = getattr(self.server,'runtime',None)
+        DiagnosticLog(runtime.root if runtime else DIST.parent).write('http', 'http.access',
+            level='ERROR' if isinstance(code,int) and code>=500 else 'WARNING' if isinstance(code,int) and code>=400 else 'INFO',
+            method=self.command, path=urlsplit(self.path).path[:240], status=code, bytes=size,
+            client=self.client_address[0])
+        super().log_request(code,size)
+
     def json_response(self, status, data):
         runtime = getattr(self.server, 'runtime', None)
         path = urlsplit(self.path).path
+        if runtime and path == '/api/v1/runtime' and status == 200:
+            runtime.diagnostics.observe(data)
         if runtime and hasattr(runtime, 'logs') and path != '/api/v1/debug/logs' and (self.command == 'POST' or status >= 400):
             match = re.search(r'(?:RUN|WARM)-[A-Za-z0-9-]+', path)
             runtime.logs.append('api', 'ERROR' if status >= 500 else 'WARNING' if status >= 400 else 'INFO',
@@ -92,6 +117,18 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, runtime.snapshot()['skills'])
             elif path == '/api/v1/llm/ollama':
                 self.json_response(200, ollama_bridge(runtime).snapshot())
+            elif path == '/api/v1/debug/support':
+                from export_diagnostics import build_bundle
+                payload = build_bundle(runtime.root)
+                try:
+                    self.send_response(200)
+                    self.send_header('Content-Type','application/zip')
+                    self.send_header('Content-Disposition','attachment; filename="diagnostics.zip"')
+                    self.send_header('Content-Length',str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except (BrokenPipeError,ConnectionResetError):
+                    self.close_connection = True
             elif path == '/api/v1/debug/logs':
                 values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                 if set(values) - {'module','level','runId','q','before','limit'} or any(len(v) != 1 for v in values.values()):
@@ -248,9 +285,28 @@ def main(argv=None):
         parser.error('Python 3.11+ required')
     if not (DIST / 'index.html').is_file():
         parser.error('dist/index.html is missing')
+    from diagnostic_log import DiagnosticLog, exception_details
+    diagnostics = DiagnosticLog(DIST.parent)
+    os.environ['AEP_DIAGNOSTIC_ROOT'] = str(DIST.parent)
+    os.environ['AEP_DIAGNOSTIC_SESSION'] = uuid.uuid4().hex
     try:
-        server = ThreadingHTTPServer(('127.0.0.1', args.port), partial(GuiHandler, directory=str(DIST)))
+        revision = subprocess.run(['git','rev-parse','HEAD'],cwd=DIST.parent,
+                                  capture_output=True,text=True,timeout=2).stdout.strip()
+    except (OSError,subprocess.TimeoutExpired):
+        revision = None
+    encoding_cache=Path(os.environ.get('TIKTOKEN_CACHE_DIR',str(DIST.parent/'.local/cache/tiktoken')))
+    try:encoding_ready=(encoding_cache/'9b5ad71b2ce5302211f9c61530b329a4922fc6a4').is_file()
+    except OSError:encoding_ready=None
+    recorded=diagnostics.write('startup','service.starting',root=str(DIST.parent),cwd=str(Path.cwd()),
+        python=sys.executable,pythonVersion=sys.version,platform=platform.platform(),
+        port=args.port,staticOnly=args.static_only,revision=revision,tempDirectory=tempfile.gettempdir(),
+        proxyEnvironmentPresent=any(os.environ.get(k) for k in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY')),
+        encodingCachePath=str(encoding_cache),encodingCacheReady=encoding_ready)
+    if not recorded:print('Diagnostic files unavailable; inspect workspace permissions and free space.',file=sys.stderr)
+    try:
+        server = DiagnosticServer(('127.0.0.1', args.port), partial(GuiHandler, directory=str(DIST)))
     except OSError as exc:
+        diagnostics.write('startup','service.bind_failed',level='ERROR',port=args.port,**exception_details(exc))
         print(f'Cannot start GUI on port {args.port}: {exc}. Choose another port with --port <number>.', file=sys.stderr)
         return 1
     runtime = None
@@ -260,10 +316,13 @@ def main(argv=None):
             runtime = RuntimeService(DIST.parent)
             server.runtime = runtime
         except (RuntimeError, OSError) as exc:
+            diagnostics.write('startup','runtime.start_failed',level='ERROR',**exception_details(exc))
             server.server_close()
             print(f'Cannot start local runtime: {exc}', file=sys.stderr)
             return 1
-    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. LLM Skill runs call the saved model only after explicit submission; no startup probes or GEPA adapter.', flush=True)
+    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. Model requests require explicit submission; SDK discovery is separate from model inference.', flush=True)
+    diagnostics.write('startup','service.ready',port=args.port,serviceId=runtime.service_id if runtime else None)
+    print('Diagnostic logs: '+str(diagnostics.directory),flush=True)
     with server:
         try:
             server.serve_forever()
@@ -272,8 +331,14 @@ def main(argv=None):
         finally:
             if runtime:
                 runtime.close()
+            diagnostics.write('startup','service.stopped',serviceId=runtime.service_id if runtime else None)
     return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        from diagnostic_log import DiagnosticLog, exception_details
+        DiagnosticLog(DIST.parent).write('startup','process.unhandled',level='ERROR',**exception_details(exc))
+        raise

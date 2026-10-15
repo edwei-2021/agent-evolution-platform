@@ -78,6 +78,7 @@ class OllamaBridge:
         from debug_log import DebugLog
         self.logs = DebugLog(self.root)
         self.warmup_thread = None
+        self.warmup_process = None
         self.warmup_cancel = threading.Event()
         self.closing = False
         self.evidence_path = Path(__file__).resolve().parents[1] / 'docs/verification/ollama-user-evidence.json'
@@ -158,6 +159,11 @@ class OllamaBridge:
                 self.warmup_cancel.clear()
                 self.logs.append('ollama', 'INFO', 'Model preload started', job['id'],
                     {'model': job['config']['model'], 'timeoutSeconds': job['timeoutSeconds'], 'keepAliveMinutes': keep_alive_minutes})
+                from diagnostic_log import DiagnosticLog
+                DiagnosticLog(self.root).write('warmup', 'warmup.queued', correlation_id=job['id'],
+                    endpoint=job['endpoint'], model=job['config']['model'], revision=revision,
+                    timeoutSeconds=job['timeoutSeconds'], keepAliveMinutes=keep_alive_minutes,
+                    preparation='empty-prompt preload; generation not verified')
                 self.warmup_thread = threading.Thread(target=self._warmup, args=(job,), daemon=True)
                 self.warmup_thread.start()
                 return self.warmup_status()
@@ -169,6 +175,9 @@ class OllamaBridge:
             job = self.warmup_status()
             if not job or job['id'] != identifier: raise KeyError('Model preload not found')
             if job['status'] == 'RUNNING':
+                from diagnostic_log import DiagnosticLog
+                DiagnosticLog(self.root).write('warmup', 'warmup.cancel_requested', correlation_id=identifier,
+                                              reason='operator_request')
                 if not self.warmup_thread or not self.warmup_thread.is_alive(): raise RuntimeError('Preload is not owned by this service')
                 self.warmup_cancel.set()
                 self.logs.append('ollama', 'WARNING', 'Preload cancellation requested; no model unload request sent', identifier)
@@ -178,6 +187,10 @@ class OllamaBridge:
         directory = self.path.parent
         config_path, result_path = directory / (job['id'] + '-config.json'), directory / (job['id'] + '-result.json')
         process = None
+        reader = None
+        from diagnostic_log import DiagnosticLog
+        diagnostics = DiagnosticLog(self.root)
+        diagnostics.write('warmup', 'worker.starting', correlation_id=job['id'])
         started = time.monotonic()
         def stop():
             if process and process.poll() is None:
@@ -194,23 +207,52 @@ class OllamaBridge:
                 job.update(status='CANCELLED', error='Preload cancelled before dispatch')
             else:
                 process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('warmup_worker.py')), str(config_path), str(result_path)],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+                self.warmup_process = process
+                def collect_output():
+                    total = 0
+                    while True:
+                        chunk = process.stdout.read(1024)
+                        if not chunk:break
+                        if total < 65536:
+                            diagnostics.write('warmup', 'worker.output', correlation_id=job['id'],
+                                output=chunk.decode(errors='replace'), truncated=total+len(chunk)>65536)
+                        total += len(chunk)
+                reader = threading.Thread(target=collect_output, name='warmup-output', daemon=True)
+                reader.start()
                 job['pid'] = process.pid
+                diagnostics.write('warmup', 'worker.started', correlation_id=job['id'], pid=process.pid)
                 with self.lock: atomic_write(directory / 'warmup.json', json.dumps(job))
+                next_progress = time.monotonic()+10
                 while process.poll() is None:
                     if self.warmup_cancel.wait(.1):
                         stop(); job.update(status='CANCELLED', error='Local preload stopped; Ollama may still be loading the dispatched request'); break
                     if time.monotonic() - started >= job['timeoutSeconds']:
                         stop(); job.update(status='FAIL', error=f'Model preload exceeded its {job["timeoutSeconds"]}s absolute limit; no retry sent'); break
+                    if time.monotonic() >= next_progress:
+                        diagnostics.write('warmup', 'worker.waiting', correlation_id=job['id'],
+                            elapsedMs=round((time.monotonic()-started)*1000,3), pid=process.pid,
+                            timeoutSeconds=job['timeoutSeconds'], processAlive=process.poll() is None)
+                        next_progress = time.monotonic()+10
                 if job['status'] == 'RUNNING':
                     result = json.loads(result_path.read_text()) if result_path.exists() else {'error': 'Preload worker ended without a result'}
-                    if process.returncode or result.get('error'): job.update(status='FAIL', error=result.get('error', 'Preload worker failed'))
+                    if process.returncode or result.get('error'): job.update(status='FAIL', error=result.get('error', 'Preload worker failed'),
+                        **({'transport': result['transport']} if 'transport' in result else {}))
                     else: job.update(status='PRELOAD_PASS', **result)
+                reader.join(timeout=1)
+                diagnostics.write('warmup', 'worker.exited', correlation_id=job['id'],
+                    exitCode=process.returncode, outputReaderAlive=reader.is_alive())
         except Exception as exc:
             stop(); job.update(status='FAIL', error=str(exc))
         finally:
             try:
+                if reader:reader.join(timeout=1)
                 job.update(finishedAt=datetime.now(timezone.utc).isoformat(), elapsedMs=round((time.monotonic() - started) * 1000, 3))
+                diagnostics.write('warmup', 'warmup.finished', correlation_id=job['id'],
+                    level='ERROR' if job['status']=='FAIL' else 'WARNING' if job['status']=='CANCELLED' else 'INFO',
+                    status=job['status'], elapsedMs=job['elapsedMs'], error=job.get('error'),
+                    transport=job.get('transport'), timeoutSeconds=job['timeoutSeconds'],
+                    processAlive=bool(process and process.poll() is None), generationVerified=False)
                 self.logs.append('ollama', 'INFO' if job['status'] == 'PRELOAD_PASS' else 'WARNING' if job['status'] == 'CANCELLED' else 'ERROR',
                     'Model preload ' + job['status'] + (': ' + job['error'] if job.get('error') else ''), job['id'],
                     {k: job[k] for k in ('elapsedMs','loadDurationMs','totalDurationMs','responseModel') if k in job})
@@ -224,6 +266,10 @@ class OllamaBridge:
                         finally: self.operation.release()
 
     def close(self):
+        if self.warmup_thread and self.warmup_thread.is_alive():
+            from diagnostic_log import DiagnosticLog
+            DiagnosticLog(self.root).write('warmup', 'warmup.cancel_requested',
+                reason='service_shutdown', correlation_id=(self.warmup_status() or {}).get('id'))
         with self.lock: self.closing = True; self.warmup_cancel.set()
         if self.warmup_thread: self.warmup_thread.join(timeout=3)
 
@@ -241,24 +287,37 @@ class OllamaBridge:
         atomic_write(target, '# Generated client settings; no connectivity test was performed.\n' +
                      ''.join(f'export {key}={shlex.quote(value)}\n' for key, value in values.items()))
 
-    def request(self, base, path, config, payload=None):
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    def request(self, base, path, config, payload=None, *, trace=None):
+        from diagnostic_log import TransportTrace, safe_url
+        trace = trace or TransportTrace(self.root, category='ollama')
+        opener = trace.opener()
         req = urllib.request.Request(base + path,
             data=json.dumps(payload).encode() if payload is not None else None,
             headers={'Content-Type': 'application/json'})
         timeout = config['inferenceTimeout'] if payload is not None else config['metadataTimeout']
+        trace.event('request.started', endpoint=safe_url(base+path), timeoutSeconds=timeout,
+                    method='POST' if payload is not None else 'GET', model=config.get('model'), proxyBypassed=True)
         try:
             with opener.open(req, timeout=timeout) as response:
+                trace.event('response.reading')
                 # Bound remote responses; never follow arbitrary large model output.
                 raw = response.read(2_000_001)
+                trace.first_data(bytes=len(raw))
                 if len(raw) > 2_000_000:
                     raise ValueError('Ollama response exceeds 2 MB')
                 data = json.loads(raw)
         except urllib.error.HTTPError as exc:
+            trace.failed(exc)
             detail = exc.read(2048).decode(errors='replace')
             raise ValueError(f'Ollama HTTP {exc.code}: {detail}') from exc
+        except Exception as exc:
+            trace.failed(exc)
+            raise
         if not isinstance(data, dict) or data.get('error'):
+            trace.failed(ValueError('Invalid Ollama response'))
             raise ValueError('Invalid Ollama response: ' + str(data.get('error') if isinstance(data, dict) else data))
+        trace.event('request.completed', done=data.get('done'), responseModel=data.get('model'),
+                    loadDurationNs=data.get('load_duration'), totalDurationNs=data.get('total_duration'))
         return data
 
     def run(self, kind, revision, prompt=None):

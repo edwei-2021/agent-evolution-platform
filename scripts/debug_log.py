@@ -92,6 +92,10 @@ class DebugLog:
                 encoded=json.dumps({'truncated':True,'preview':encoded[:3500]},ensure_ascii=False)
             rows.append((datetime.now(timezone.utc).isoformat(),record['module'],record['level'],
                          record.get('run_id'),redact(record['message'])[:2048],encoded))
+        # Sidecars remain available if the supplementary SQLite journal fails.
+        from diagnostic_log import DiagnosticLog
+        try:DiagnosticLog(self.path.parents[1]).mirror(records)
+        except (OSError,ValueError,TypeError):pass
         if not self.available:return False
         try:
             with self.connect() as db:

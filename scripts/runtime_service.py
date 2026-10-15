@@ -75,6 +75,8 @@ class RuntimeService:
         self.discovery_identity = None
         from debug_log import DebugLog
         self.logs = DebugLog(self.root)
+        from diagnostic_log import DiagnosticLog
+        self.diagnostics = DiagnosticLog(self.root)
         self.logs.keep_open()
         self.browser_log_times = []
         with self.connect() as db:

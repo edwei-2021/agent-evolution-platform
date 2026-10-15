@@ -97,7 +97,14 @@ class RepairRunner:
             if first:record['firstChunkAt']=changes['lastChunkAt']
             if first or 'responseStartedAt' in changes or time.monotonic()-last_update>=1:publish();last_update=time.monotonic()
         try:
-            record['response'],events=stream_chat(cfg['provider']['endpoint'],settings,payload,update,ToolAccumulator)
+            from diagnostic_log import TransportTrace
+            trace=TransportTrace(cfg.get('logRoot', self.directory.parents[2]),
+                                 correlation_id=cfg.get('correlationRunId', self.directory.name))
+            trace.event('call.context', callId=record['id'], artifactId=self.directory.name, kind=record['kind'])
+            try:
+                record['response'],events=stream_chat(cfg['provider']['endpoint'],settings,payload,update,ToolAccumulator,trace=trace)
+            finally:
+                record['transport']=trace.result()
             if events is not None:record['streamEvents']=events
             message=record['response']['choices'][0]['message'];calls=message.get('tool_calls',[])
             if not isinstance(calls,list) or len(calls)>8:raise ValueError('Malformed tool call list')

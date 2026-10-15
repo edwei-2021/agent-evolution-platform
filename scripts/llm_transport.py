@@ -57,24 +57,32 @@ class StreamAccumulator:
                 'finish_reason': self.finish}], 'usage': self.usage}
 
 
-def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAccumulator):
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAccumulator, *, trace=None):
+    opener = trace.opener() if trace else urllib.request.build_opener(urllib.request.ProxyHandler({}))
     request = urllib.request.Request(base + '/v1/chat/completions',
         data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json',
         'Accept': 'text/event-stream, application/json'})
     deadline = time.monotonic() + settings['inferenceTimeout']
+    if trace:
+        from diagnostic_log import safe_url
+        trace.event('request.started', endpoint=safe_url(base+'/v1/chat/completions'),
+                    model=settings.get('model'), timeoutSeconds=settings['inferenceTimeout'], proxyBypassed=True)
     try:
         with opener.open(request, timeout=settings['inferenceTimeout']) as response:
             on_update({'responseStartedAt': time.time()})
+            if trace:trace.event('response.reading')
             if response.headers.get_content_type() == 'application/json':
                 # Some compatible servers ignore stream. Consume this one reply;
                 # never resend the request or silently fall back to a second call.
                 raw = response.read(2_000_001)
+                if trace:trace.first_data(bytes=len(raw))
                 if len(raw) > 2_000_000:
                     raise ValueError('Model response exceeds 2 MB')
                 if time.monotonic() >= deadline:
                     raise TimeoutError('Model call exceeded its absolute time limit')
-                return json.loads(raw), None
+                result = json.loads(raw)
+                if trace:trace.event('request.completed', bytes=len(raw))
+                return result, None
             if response.headers.get_content_type() != 'text/event-stream':
                 raise ValueError('Expected an SSE or JSON model response')
             accumulator = accumulator_factory()
@@ -94,9 +102,16 @@ def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAc
                 elif not line and event_lines:
                     data, event_lines = '\n'.join(event_lines), []
                     if data == '[DONE]':
-                        return accumulator.reply(), accumulator.events
+                        result = accumulator.reply()
+                        if trace:trace.event('request.completed', bytes=size, events=len(accumulator.events))
+                        return result, accumulator.events
+                    if trace and not accumulator.events:trace.first_data(bytes=size)
                     accumulator.add(json.loads(data))
                     on_update({**accumulator.summary(), 'lastChunkAt': time.time()})
     except urllib.error.HTTPError as exc:
+        if trace:trace.failed(exc)
         detail = exc.read(2048).decode(errors='replace')
         raise ValueError(f'Ollama HTTP {exc.code}: {detail}') from exc
+    except Exception as exc:
+        if trace:trace.failed(exc)
+        raise

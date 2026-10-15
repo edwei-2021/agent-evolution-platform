@@ -153,12 +153,21 @@ class Runner:
                 publish()
                 last_publish = time.monotonic()
         try:
+            from diagnostic_log import TransportTrace
+            trace = TransportTrace(self.directory.parents[2], correlation_id=self.directory.name)
+            trace.event('call.context', callId=record['id'], kind=kind)
             if payload['stream']:
-                record['response'], events = stream_chat(provider['endpoint'], settings, payload, update)
+                try:
+                    record['response'], events = stream_chat(provider['endpoint'], settings, payload, update, trace=trace)
+                finally:
+                    record['transport'] = trace.result()
                 if events is not None:
                     record['streamEvents'] = events
             else:
-                record['response'] = self.client.request(provider['endpoint'], '/v1/chat/completions', settings, payload)
+                try:
+                    record['response'] = self.client.request(provider['endpoint'], '/v1/chat/completions', settings, payload, trace=trace)
+                finally:
+                    record['transport'] = trace.result()
             content(record['response'])
             record['status'] = 'completed'
         except TimeoutError as exc:
