@@ -4,6 +4,7 @@
 Default: metadata only at http://127.0.0.1:8081/v1. Explicit --stage chat,
 tools or all enables bounded model requests. No retries, endpoint fallback,
 model downloads, server setup, firewall edits or saved-provider changes.
+Use --from-env to reuse ASK.py's OPENAI_BASE_URL / OPENAI_API_KEY / STRATA_MODEL.
 """
 import argparse
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ import os
 from pathlib import Path
 import platform
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -214,8 +216,16 @@ def endpoint(args):
         raise ValueError('Use an HTTP(S) base URL without credentials, query or fragment')
     if not url.hostname or not url.path.endswith('/v1') or any(ord(c) < 33 for c in base):
         raise ValueError('Base URL must have a host and end in /v1')
-    if url.hostname != 'localhost':
+    try:
         address = ipaddress.ip_address(url.hostname)
+    except ValueError:
+        # Explicit DNS names follow ASK.py too. Resolution happens only in the
+        # owned request worker, where the parent's absolute deadline bounds it.
+        name = url.hostname.encode('idna').decode('ascii').rstrip('.')
+        if len(name) > 253 or any(not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', label)
+                                  for label in name.split('.')):
+            raise ValueError('Invalid base URL host')
+    else:
         if address.is_unspecified or address.is_multicast:
             raise ValueError('Use a reachable unicast address, not a server bind address')
     if url.port is not None and not 1 <= url.port <= 65535:
@@ -238,6 +248,8 @@ class Diagnostic:
             'connectTimeoutSeconds': args.connect_timeout, 'requestTimeoutSeconds': args.timeout,
             'environment': {'platform': platform.platform(), 'python': platform.python_version(),
                 'isWsl': 'microsoft' in platform.release().lower(), 'proxyBypassed': True,
+                'apiKeyEnvironment': args.api_key_env,
+                'configurationSource': 'ask-environment' if getattr(args, 'from_env', False) else 'arguments/defaults',
                 'authorization': 'environment' if self.secret else 'local-placeholder'},
             'requests': [], 'checks': [], 'modelRequests': 0, 'capabilities': {}}
 
@@ -319,6 +331,11 @@ class Diagnostic:
         except BaseException as exc:
             record.update(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed',
                           error=f'{type(exc).__name__}: {exc}')
+            if (record['phase'] == 'connect.started' and self.report['environment']['isWsl']
+                    and urlsplit(self.base).hostname in ('127.0.0.1', 'localhost', '::1')):
+                record['hint'] = ('This request used WSL loopback, not a verified Windows endpoint. '
+                    'If ASK.py works in this shell, use --from-env to reuse its endpoint/key/model; '
+                    'no alternate address was attempted.')
             self.log('check.failed', **record)
             if optional and isinstance(exc, Exception) and record.get('httpStatus') == 404:
                 record['status'] = 'unsupported'
@@ -379,8 +396,11 @@ class Diagnostic:
             ids = [m['id'] for m in models]
             self.report['modelIds'] = ids
             self.check('models', modelIds=ids)
-            if self.args.model and self.args.model not in ids:
-                raise ValueError('Selected model ID is absent from /v1/models; no inference sent')
+            if self.args.model:
+                self.report['requestedModelListed'] = self.args.model in ids
+                if self.args.model not in ids:
+                    self.log('model.id_not_listed', requestedModel=self.args.model,
+                        note='An explicit model alias is not rewritten; generation will verify whether the server accepts it.')
             status = self.request('status', '/status', optional=True)
             if status is not None:
                 self.report['serverStatus'] = {k: status.get(k) for k in
@@ -452,6 +472,8 @@ def main(argv=None):
     target = parser.add_mutually_exclusive_group()
     target.add_argument('--base-url', help='Literal OpenAI base URL; default http://127.0.0.1:8081/v1')
     target.add_argument('--host', help='Explicit Windows IPv4, or auto for the WSL NAT gateway; no fallback')
+    target.add_argument('--from-env', action='store_true',
+                        help='Reuse ASK.py OPENAI_BASE_URL, OPENAI_API_KEY and STRATA_MODEL; no env file is read')
     parser.add_argument('--port', type=int, help='With --host only; default 8081')
     parser.add_argument('--stage', choices=STAGES, default='metadata')
     parser.add_argument('--api-only', action='store_true', help='Alias for --stage metadata')
@@ -463,9 +485,22 @@ def main(argv=None):
     parser.add_argument('--max-tokens', type=int, default=256)
     parser.add_argument('--reasoning-effort', choices=('default', 'none', 'low', 'medium', 'high'), default='default',
                         help='default omits the field, matching current production payloads')
-    parser.add_argument('--api-key-env', default='STRATA_API_KEY', help='Read key from this environment variable; never saved')
+    parser.add_argument('--api-key-env', help='Key variable; default STRATA_API_KEY, or OPENAI_API_KEY with --from-env')
     parser.add_argument('--out-dir', default='.local/strata-tests')
     args = parser.parse_args(argv)
+    if args.from_env:
+        if args.port is not None or args.model is not None or args.api_key_env is not None:
+            parser.error('--from-env uses the exact ASK.py configuration; do not combine with --port, --model or --api-key-env')
+        names = ('OPENAI_BASE_URL', 'OPENAI_API_KEY', 'STRATA_MODEL')
+        missing = [name for name in names if not os.environ.get(name, '').strip()]
+        if missing:
+            parser.error('Missing environment variable(s): '+', '.join(missing)+
+                         '. Use the same prepared WSL shell as the working ASK.py.')
+        args.base_url = os.environ['OPENAI_BASE_URL']
+        args.model = os.environ['STRATA_MODEL']
+        args.api_key_env = 'OPENAI_API_KEY'
+    else:
+        args.api_key_env = args.api_key_env or 'STRATA_API_KEY'
     if args.interactive:
         if not sys.stdin.isatty():
             parser.error('--interactive requires a terminal; use --stage in scripts')
@@ -490,6 +525,8 @@ def main(argv=None):
         parser.error('--api-key-env must be an environment variable name')
     try:
         base, selection = endpoint(args)
+        if args.from_env:
+            selection = 'ask-environment:OPENAI_BASE_URL'
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         parser.error(str(exc))
     try:

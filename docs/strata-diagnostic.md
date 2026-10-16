@@ -12,6 +12,23 @@ The user's fork, [edwei-2021/Strata](https://github.com/edwei-2021/Strata), was 
 
 The provided endpoint is **`http://127.0.0.1:8081/v1`**. The script uses that literal URL by default. It never silently switches host or port. A successful Windows-local request does not establish WSL reachability. Run the diagnostic from the same WSL distribution that runs the GUI.
 
+### Reuse a working ASK.py environment (沿用已驗證的 ASK 設定)
+
+`ASK.py` reads its endpoint from `OPENAI_BASE_URL`, its key from `OPENAI_API_KEY` and its model from `STRATA_MODEL`. A diagnostic using the literal loopback default and `STRATA_API_KEY` is a different configuration. A WSL `ConnectionRefusedError` at `connect.started` tests only that chosen listener; it says nothing about the working environment's endpoint or Strata's API capabilities.
+
+In the **same prepared WSL shell** where ASK works:
+
+```bash
+git pull --ff-only
+python3 scripts/test_windows_strata.py --from-env --stage all --reasoning-effort none
+```
+
+This explicitly consumes those three environment variables. No environment file is opened or executed. Missing values and conflicting `--base-url`, `--host`, `--port`, `--model` or `--api-key-env` options fail before any request. The report names the configuration source and key variable, without recording the key. An explicit environment URL can contain a DNS hostname; DNS resolution runs inside the request worker's absolute deadline. There is no endpoint or credential fallback.
+
+For metadata only use `--from-env --api-only`. To match ASK's single ordinary POST without metadata preflight, use `--from-env --stage chat --reasoning-effort none`. To test only the previously unverified tool exchange, use `--from-env --stage tools --reasoning-effort none`.
+
+This mode reuses ASK's **endpoint/key/model**, not every generation option: `reasoning_effort=none` is explicit above, output defaults to 256 tokens and the diagnostic still sends `temperature=0`. Its connect and absolute request deadlines remain unchanged (ASK uses one longer socket timeout). A pass records the options actually tested.
+
 ## Run in stages (分階段執行)
 
 Use the existing checkout; the script needs only Python's standard library. It is also usable as one downloaded Python file without the rest of the repository.
@@ -24,7 +41,7 @@ python3 scripts/test_windows_strata.py --api-only
 
 Default / `--api-only` / `--stage metadata` sends only `GET /v1/models` and `GET /v1/status`. The latter is optional for older versions returning 404. Other errors, including authentication and connectivity failures, remain failures. The model ID list and available loaded/engine/context/activity/timing status are recorded. No generation request is sent. Metadata success is **`METADATA_ONLY_PASS`**, never a claim that a model can generate or use tools.
 
-After metadata passes, copy the exact returned model ID:
+After metadata passes, copy the exact returned model ID, or use the already verified environment mode above:
 
 ```bash
 python3 scripts/test_windows_strata.py --stage all --model '<exact-model-id>'
@@ -40,6 +57,8 @@ python3 scripts/test_windows_strata.py --stage tools --model '<exact-model-id>'
 ```
 
 These stages skip metadata; supply the already verified model ID. `--interactive` provides a four-choice stage menu and asks for the model ID when generation is selected. It requires a terminal.
+
+An explicit model alias is not rewritten to the first returned ID. The reviewed server's `model_for()` also serves request names beyond its listed aliases. If the chosen ID is absent from the list, the diagnostic records `requestedModelListed=false` and a warning; an actual generation must establish whether the server accepts it. Metadata alone never establishes alias usability.
 
 ### Thinking and output limits (Thinking 與輸出上限)
 
@@ -65,6 +84,8 @@ python3 scripts/test_windows_strata.py --host auto --port 8081 --api-only
 `auto` reads the current WSL default IPv4 gateway; it is never an automatic fallback. An explicit `--host <Windows-IPv4>` is also supported. Keep the successful endpoint identical for later generation commands using the same address options. An HTTP 403 may involve Strata's allowed-host policy; 401 concerns its API key. The diagnostic does not modify either setting. It bypasses HTTP proxy environment variables and refuses redirects, including redirects to another host.
 
 For an authenticated server, set `STRATA_API_KEY` locally (or name another variable with `--api-key-env`). The script reads it from the environment; there is no key argument or saved key. Without it, a fixed local placeholder is sent. Avoid pasting real credentials into a shared terminal transcript.
+
+The explicit `--from-env` mode selects `OPENAI_API_KEY` even if `STRATA_API_KEY` is also set, matching ASK. Without that flag, ambient `OPENAI_BASE_URL` / `OPENAI_API_KEY` do not silently redirect the diagnostic or switch credentials.
 
 ## Evidence and deadlines (證據與期限)
 

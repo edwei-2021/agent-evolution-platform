@@ -143,7 +143,8 @@ class StrataDiagnosticTests(unittest.TestCase):
         self.temp.cleanup()
 
     def command(self, *options):
-        return [sys.executable, str(SCRIPT), '--base-url', self.base, '--out-dir', self.temp.name,
+        target = [] if '--from-env' in options else ['--base-url', self.base]
+        return [sys.executable, str(SCRIPT), *target, '--out-dir', self.temp.name,
                 '--metadata-timeout', '15', '--timeout', '30', *options]
 
     def run_check(self, *options, env=None, expected=0):
@@ -190,6 +191,59 @@ class StrataDiagnosticTests(unittest.TestCase):
         self.assertEqual(len(Handler.calls), 2)
         self.assertTrue(all(c[1]['reasoning_effort'] == 'none' for c in Handler.calls))
         self.assertEqual(report['status'], 'TOOL_ROUNDTRIP_PASS')
+
+    def test_from_env_uses_ask_endpoint_key_and_model_for_every_stage(self):
+        secret = 'fixture-openai-key-only'
+        env = {**os.environ, 'OPENAI_BASE_URL': self.base+'/', 'OPENAI_API_KEY': secret,
+               'STRATA_MODEL': 'fixture-model', 'STRATA_API_KEY': 'different-provider-key'}
+        report, result = self.run_check('--from-env', '--stage', 'all', '--reasoning-effort', 'none', env=env)
+        self.assertEqual(report['status'], 'COMPATIBILITY_PASS')
+        self.assertEqual(report['baseUrl'], self.base)
+        self.assertEqual(report['model'], 'fixture-model')
+        self.assertEqual(report['endpointSelection'], 'ask-environment:OPENAI_BASE_URL')
+        self.assertEqual(report['environment']['apiKeyEnvironment'], 'OPENAI_API_KEY')
+        self.assertEqual(report['environment']['configurationSource'], 'ask-environment')
+        self.assertEqual(len(Handler.calls), 5)
+        self.assertTrue(all(c[2]['Authorization'] == 'Bearer '+secret for c in Handler.calls))
+        for _, body, _ in Handler.calls:
+            if body is not None:
+                self.assertEqual(body['model'], 'fixture-model')
+                self.assertEqual(body['reasoning_effort'], 'none')
+        for p in Path(self.temp.name).rglob('*'):
+            if p.is_file():
+                self.assertNotIn(secret.encode(), p.read_bytes())
+        self.assertNotIn(secret, result.stdout+result.stderr)
+
+    def test_from_env_chat_is_one_post_without_metadata_preflight(self):
+        env = {**os.environ, 'OPENAI_BASE_URL': self.base, 'OPENAI_API_KEY': 'fixture-only',
+               'STRATA_MODEL': 'fixture-model'}
+        report, _ = self.run_check('--from-env', '--stage', 'chat', '--reasoning-effort', 'none', env=env)
+        self.assertEqual(report['status'], 'CHAT_PASS')
+        self.assertEqual(len(Handler.calls), 1)
+        self.assertEqual(Handler.calls[0][0], '/v1/chat/completions')
+
+    def test_from_env_missing_fields_fail_before_network_without_fallback(self):
+        env = {k: v for k, v in os.environ.items() if k not in ('OPENAI_BASE_URL', 'OPENAI_API_KEY', 'STRATA_MODEL')}
+        result = subprocess.run(self.command('--from-env'), env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        for name in ('OPENAI_BASE_URL', 'OPENAI_API_KEY', 'STRATA_MODEL'):
+            self.assertIn(name, result.stderr)
+        self.assertEqual(Handler.calls, [])
+        self.assertEqual(list(Path(self.temp.name).iterdir()), [])
+
+    def test_from_env_rejects_conflicting_cli_settings(self):
+        for options in [('--model', 'other'), ('--port', '8081'), ('--api-key-env', 'OTHER_KEY'),
+                        ('--base-url', self.base), ('--host', '127.0.0.1')]:
+            result = subprocess.run(self.command('--from-env', *options), capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 2, result.stdout+result.stderr)
+        self.assertEqual(Handler.calls, [])
+
+    def test_explicit_model_alias_is_sent_without_rewriting_to_listing(self):
+        report, _ = self.run_check('--stage', 'all', '--model', 'fixture-alias')
+        self.assertEqual(report['status'], 'COMPATIBILITY_PASS')
+        self.assertFalse(report['requestedModelListed'])
+        self.assertEqual(report['modelIds'], ['fixture-model'])
+        self.assertTrue(all(c[1]['model'] == 'fixture-alias' for c in Handler.calls if c[1] is not None))
 
     def test_json_fallback_is_supported_but_does_not_claim_sse(self):
         Handler.mode = 'json-fallback'
@@ -359,13 +413,36 @@ class StrataDiagnosticTests(unittest.TestCase):
 
     def test_endpoint_is_literal_and_gateway_requires_explicit_selection(self):
         args = argparse_args()
-        with patch.object(diagnostic.subprocess, 'check_output') as command:
+        with patch.object(diagnostic.subprocess, 'check_output') as command, \
+                patch.dict(os.environ, {'OPENAI_BASE_URL': 'http://192.0.2.2:9999/v1'}):
             self.assertEqual(diagnostic.endpoint(args), ('http://127.0.0.1:8081/v1', 'provided-loopback-default'))
             command.assert_not_called()
         args.host = 'auto'
         with patch.object(diagnostic.platform, 'release', return_value='microsoft-standard-WSL2'), \
                 patch.object(diagnostic.subprocess, 'check_output', return_value='[{"gateway":"192.0.2.1"}]'):
             self.assertEqual(diagnostic.endpoint(args), ('http://192.0.2.1:8081/v1', 'explicit-gateway'))
+
+    def test_explicit_dns_endpoint_is_accepted_without_parent_resolution(self):
+        args = argparse_args()
+        args.base_url = 'http://windows-fixture.local:8081/v1'
+        with patch.object(socket, 'getaddrinfo', side_effect=AssertionError('No parent DNS lookup')):
+            self.assertEqual(diagnostic.endpoint(args), (args.base_url, 'explicit-base-url'))
+
+    def test_wsl_loopback_refusal_explains_ask_environment_without_switching(self):
+        args = SimpleNamespace(api_key_env='STRATA_API_KEY', out_dir=self.temp.name,
+            stage='metadata', model=None, reasoning_effort='default', max_tokens=256,
+            connect_timeout=5, metadata_timeout=15, timeout=30)
+        with socket.socket() as reserved:
+            reserved.bind(('127.0.0.1', 0))
+            base = f'http://127.0.0.1:{reserved.getsockname()[1]}/v1'
+            with patch.object(diagnostic.platform, 'release', return_value='microsoft-standard-WSL2'):
+                client = diagnostic.Diagnostic(args, base, 'provided-loopback-default')
+            with self.assertRaises(ValueError):
+                client.request('models', '/models')
+        self.assertIn('--from-env', client.report['requests'][0]['hint'])
+        self.assertEqual(client.report['requests'][0]['url'], base+'/models')
+        self.assertTrue(client.report['requests'][0]['workerReaped'])
+        self.assertEqual(Handler.calls, [])
 
     def test_invalid_cli_fails_before_any_network_request(self):
         for options in [('--stage', 'all'), ('--base-url', 'http://u:p@127.0.0.1/v1'),
