@@ -43,7 +43,7 @@ def main(args):
         if not body.strip() or len(body.encode())>8000:
             raise ValueError('Invalid Skill body')
     image = image_id(args.image)
-    provider = OllamaBridge(ROOT).state()
+    provider = OllamaBridge(ROOT).frozen()
     frozen = {'dataset':ds,'bodies':{k:digest(v) for k,v in bodies.items()},'image':image,
               'provider':provider,'code':provenance(),'m_source_hash':source_snapshot(ROOT)[0],
               'calls':args.calls,'seconds':args.seconds,

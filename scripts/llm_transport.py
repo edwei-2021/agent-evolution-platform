@@ -3,6 +3,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from model_provider import headers as provider_headers, protect_opener
 
 
 class StreamAccumulator:
@@ -59,9 +60,10 @@ class StreamAccumulator:
 
 def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAccumulator, *, trace=None):
     opener = trace.opener() if trace else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = protect_opener(opener, settings)
     request = urllib.request.Request(base + '/v1/chat/completions',
         data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json',
-        'Accept': 'text/event-stream, application/json'})
+        'Accept': 'text/event-stream, application/json', **provider_headers(settings)})
     deadline = time.monotonic() + settings['inferenceTimeout']
     if trace:
         from diagnostic_log import safe_url
@@ -110,6 +112,8 @@ def stream_chat(base, settings, payload, on_update, accumulator_factory=StreamAc
                     on_update({**accumulator.summary(), 'lastChunkAt': time.time()})
     except urllib.error.HTTPError as exc:
         if trace:trace.failed(exc)
+        if settings.get('provider') == 'strata':
+            raise ValueError(f'Strata HTTP {exc.code}; response body omitted') from exc
         detail = exc.read(2048).decode(errors='replace')
         raise ValueError(f'Ollama HTTP {exc.code}: {detail}') from exc
     except Exception as exc:

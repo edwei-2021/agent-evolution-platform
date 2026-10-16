@@ -131,4 +131,15 @@ test('app form events preserve settings through click, submit, navigation and LL
   const starts=calls.filter(c=>c.path==='/api/v1/repair/runs');assert.equal(starts.length,1);
   const body=JSON.parse(starts[0].options.body);assert.equal(body.callBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.registry.agents.length,5);
  });
+ await t.test('Strata selection, typed URL and effort reach the real save handler without model requests',async()=>{
+  failure=false;runtime.provider.busy=false;
+  await click(button(null,{page:'integrations'}));for(let i=0;i<20;i++)await Promise.resolve();
+  const before=calls.length;
+  await dispatch('change',{target:{value:'strata',matches:selector=>selector==='[data-model-provider]'}});
+  assert.match(html,/name="baseUrl"/);assert.equal(calls.length,before);
+  const fields={provider:'strata',baseUrl:'http://fixture.invalid:8081/v1',apiKeyEnv:'FIXTURE_KEY',reasoningEffort:'none',model:'fixture-strata',metadataTimeout:'10',inferenceTimeout:'600',maxTokens:'256'};
+  await submit(form('ollama-settings-form',fields));assert.equal(saved.config.provider,'strata');assert.equal(saved.config.baseUrl,fields.baseUrl);assert.equal(saved.config.apiKeyEnv,'FIXTURE_KEY');assert.equal(saved.config.reasoningEffort,'none');assert.equal(saved.config.maxTokens,256);
+  assert.ok(!calls.slice(before).some(c=>c.path.endsWith('/metadata')||c.path.endsWith('/chat')));
+ });
+
 });

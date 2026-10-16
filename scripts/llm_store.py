@@ -40,12 +40,12 @@ class LlmStore:
         if type(options['maxSeconds']) is not int or not 60 <= options['maxSeconds'] <= 7200:
             raise ValueError('maxSeconds must be an integer between 60 and 7200')
         data = splits(options['profile'])
-        provider = self.service.ollama.state()
+        provider = self.service.ollama.frozen()
         if type(options['providerRevision']) is not int or options['providerRevision'] != provider['revision']:
             raise RuntimeError('Provider settings changed; refresh first')
         if not provider['config']['model']:
-            raise ValueError('Select and save an Ollama model in Integrations first')
-        endpoint = self.service.ollama.endpoint(provider['config'])
+            raise ValueError('Select and save a model in Integrations first')
+        endpoint = provider['endpoint']
         budget = 2 * (len(data['train']) + len(data['validation']) + len(data['heldout'])) + 1
         return {'schemaVersion': 1, 'engine': ENGINE, 'profile': options['profile'],
                 'baseline': self.snapshot()['active'], 'provider': {**provider, 'endpoint': endpoint},

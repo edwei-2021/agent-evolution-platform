@@ -36,9 +36,9 @@ def run(root, task_id, skill_body, label, repetition, image, calls, seconds, exp
         raise ValueError('Skill body must be nonempty and <=8 KB')
     image = image_id(image)
     bridge = OllamaBridge(root)
-    provider = bridge.state()
+    provider = bridge.frozen()
     if not provider['config']['model']:
-        raise ValueError('Save an Ollama model in the existing GUI first')
+        raise ValueError('Save a model in the existing GUI first')
     sdk = sdk_status(root)
     if not sdk['available']:
         raise RuntimeError('Install the pinned nanobot SDK first')
@@ -47,7 +47,8 @@ def run(root, task_id, skill_body, label, repetition, image, calls, seconds, exp
         'runtime_hash': artifacts.put({'adapter':NanobotAdapter.version,'sdk':sdk['version'],'code':provenance(),
                                       'm_source_hash':source_snapshot(root)[0]}),
         'model_policy_hash':artifacts.put({'model':provider['config']['model'],'temperature':0,
-            'max_tokens':provider['config']['maxTokens'],'provider_revision':provider['revision']}),
+            'max_tokens':provider['config']['maxTokens'],'provider_revision':provider['revision'],
+            'provider_kind':provider['kind'],'provider_config':provider['config'],'endpoint':provider['endpoint']}),
         'tool_policy_hash':artifacts.put({'tools':list(TOOLS),'scope':'solution.py'}),
         'evaluator_hash':artifacts.put({'image':image,'source_hash':source_hash(root)}),
         'dataset_hash':dataset_hash,'memory_snapshot_hash':artifacts.put({'memory':'empty'}),
@@ -132,7 +133,7 @@ if __name__ == '__main__':
     try:
         fcntl.flock(stream,fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        parser.error('Stop the legacy GUI before real M task execution; shared Ollama calls must not overlap')
+        parser.error('Stop the legacy GUI before real M task execution; shared model calls must not overlap')
     body = args.skill_body.read_text() if args.skill_body else SKILL['body']
     try:
         result = run(ROOT,args.task,body,args.label,args.repetition,args.image,args.calls,args.seconds,args.experiment)

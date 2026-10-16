@@ -71,6 +71,10 @@ npm run serve -- --port 8766
 
 Open `http://localhost:8766` when using that port.
 
+## Ollama / Strata selection (模型服務選擇)
+
+Integrations now offers separate saved Ollama and Strata profiles. In the same WSL shell where the Strata diagnostic passes, restart the GUI, choose **Strata**, check the suggested ASK environment values, and save. Strata uses OpenAI chat/tools/SSE, explicit reasoning effort and environment-only credentials; native loading uses its own API. Existing Ollama port 11435 is retained. See [provider setup and validation boundaries](docs/model-providers.md).
+
 ## Windows Ollama on port 11435 (Windows Ollama 連線)
 
 The user has already verified Windows 10 Ollama metadata access from WSL2. This version incorporates that approach without repeating Windows setup or connection attempts: NAT gateway discovery, configurable port 11435, proxy bypass, metadata/inference socket timeouts 10/600 seconds and 256 output tokens. The supplied `--api-only` result proves metadata connectivity, not model generation.

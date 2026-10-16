@@ -13,6 +13,7 @@ from llm_transport import stream_chat
 from debug_log import DebugLog
 from repair_runtime import SDK_VERSION
 from step_trace import traced,context,Step
+from model_provider import payload as provider_payload
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='nanobot-python-repair-v1'
@@ -22,7 +23,7 @@ TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':
 def provenance():
     return {'engine':ENGINE,'taskId':TASK_ID,'fixtureHash':digest({'baseline':BASELINE,'visible':VISIBLE,'hidden':HIDDEN,'prompt':PROMPT}),
             'skillHash':digest(SKILL),'sdkVersion':SDK_VERSION,'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest()
-            for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','step_trace.py')}}
+            for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','model_provider.py','step_trace.py')}}
 
 def progress(directory,**changes):
     path=directory/'repair-progress.json'
@@ -84,6 +85,7 @@ class RepairRunner:
         if sorted(t['function']['name'] for t in tools)!=sorted(grants):raise ValueError('SDK requested an unexpected tool grant')
         settings={**cfg['provider']['config'],'inferenceTimeout':min(cfg['callTimeoutSeconds'],cfg['provider']['config']['inferenceTimeout'],max(1,int(cfg['deadlineEpoch']-time.time())))}
         payload={'model':settings['model'],'messages':messages,'tools':tools,'stream':True,'temperature':0,'max_tokens':settings['maxTokens']}
+        payload=provider_payload(settings,payload)
         if len(json.dumps(payload))>200000:raise ValueError('Repair request exceeds size limit')
         record={'id':len(self.calls)+1,'kind':'gepa-skill-reflection' if cfg.get('reflectionOnly') else 'nanobot-tool-turn','status':'running','startedAt':time.time(),
             'timeoutSeconds':settings['inferenceTimeout'],'deadlineEpoch':time.time()+settings['inferenceTimeout'],'request':payload,'chunks':0,'outputChars':0,'reasoningChars':0}
@@ -136,6 +138,8 @@ def verify(directory,expected_config=None):
     calls=json.loads((directory/'repair-calls.json').read_text());tools=json.loads((directory/'repair-tools.json').read_text())
     if not 1<=len(calls)<=cfg['callBudget'] or len(tools)>24:raise ValueError('Invalid repair call/tool accounting')
     for i,c in enumerate(calls):
+        if c['request'] != provider_payload(cfg['provider']['config'], c['request']):
+            raise ValueError('Repair provider reasoning settings changed')
         if c['id']!=i+1 or c['status']!='completed' or c['request']['model']!=cfg['provider']['config']['model'] or c['request']['temperature']!=0 or c['request']['max_tokens']!=cfg['provider']['config']['maxTokens'] or sorted(t['function']['name'] for t in c['request']['tools'])!=sorted(TOOLS):raise ValueError('Repair request drift or failed call')
         if 'streamEvents' in c:
             acc=ToolAccumulator()

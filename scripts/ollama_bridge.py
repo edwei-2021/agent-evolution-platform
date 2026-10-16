@@ -20,6 +20,7 @@ import uuid
 from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
+from model_provider import STRATA_DEFAULTS, kind as provider_kind, validate_strata, freeze, headers, payload as provider_payload, environment_defaults
 
 DEFAULTS = {'host': '', 'port': 11435, 'model': '', 'metadataTimeout': 10,
             'inferenceTimeout': 600, 'maxTokens': 256}
@@ -37,6 +38,10 @@ def gateway():
 
 
 def validate_config(value):
+    if isinstance(value, dict) and value.get('provider') == 'strata':
+        return validate_strata(value)
+    if isinstance(value, dict) and value.get('provider') == 'ollama':
+        value = {k: v for k, v in value.items() if k != 'provider'}
     if not isinstance(value, dict) or set(value) != set(DEFAULTS):
         raise ValueError('Invalid Ollama settings fields')
     host = value['host']
@@ -91,8 +96,16 @@ class OllamaBridge:
         return {'revision': 0, 'config': dict(DEFAULTS)}
 
     def endpoint(self, config):
+        if provider_kind(config) == 'strata':
+            return config['baseUrl'][:-3]
         host = config['host'] or gateway()
         return f'http://{host}:{config["port"]}'
+
+    def frozen(self):
+        with self.lock:
+            state = self.state()
+            return {'revision': state['revision'], 'kind': provider_kind(state['config']),
+                    'config': freeze(state['config']), 'endpoint': self.endpoint(state['config'])}
 
     def snapshot(self):
         with self.lock:
@@ -102,7 +115,12 @@ class OllamaBridge:
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
                 base, error = None, str(exc)
             latest = self.path.parent / 'latest.json'
-            return {'schemaVersion': 1, **state, 'nativeBaseUrl': base,
+            defaults = environment_defaults()
+            return {'schemaVersion': 1, **state, 'kind': provider_kind(state['config']), 'nativeBaseUrl': base,
+                    'profiles': {**{'ollama': dict(DEFAULTS), 'strata': defaults},
+                                 **state.get('profiles', {}), provider_kind(state['config']): state['config']},
+                    'strataDefaultsFromEnvironment': defaults != STRATA_DEFAULTS,
+                    'credentialsReady': provider_kind(state['config']) != 'strata' or bool(os.environ.get(state['config']['apiKeyEnv'])),
                     'openaiBaseUrl': base + '/v1' if base else None,
                     'discoveryError': error, 'proxyBypass': True,
                     'historicalEvidence': json.loads(self.evidence_path.read_text()),
@@ -113,11 +131,15 @@ class OllamaBridge:
     def save(self, config, revision):
         config = validate_config(config)
         with self.lock:
+            if self.operation.locked():
+                raise RuntimeError('A model operation is active; wait or cancel before changing provider settings')
             state = self.state()
             if type(revision) is not int or revision != state['revision']:
                 raise RuntimeError('Ollama settings changed; reload before saving')
-            atomic_write(self.path, json.dumps({'revision': revision + 1, 'config': config}, indent=2) + '\n')
-            self.logs.append('ollama', 'INFO', 'Saved provider settings', details={'revision': revision + 1, 'model': config['model'], 'port': config['port']})
+            profiles = {**state.get('profiles', {}), provider_kind(state['config']): state['config'], provider_kind(config): config}
+            atomic_write(self.path, json.dumps({'revision': revision + 1, 'config': config, 'profiles': profiles}, indent=2) + '\n')
+            self.logs.append('ollama', 'INFO', 'Saved provider settings', details={'revision': revision + 1,
+                'provider': provider_kind(config), 'model': config['model']})
             return self.snapshot()
 
     def warmup_status(self):
@@ -155,6 +177,7 @@ class OllamaBridge:
                     'endpoint': self.endpoint(state['config']), 'keepAliveMinutes': keep_alive_minutes,
                     'timeoutSeconds': state['config']['inferenceTimeout'],
                     'startedAt': datetime.now(timezone.utc).isoformat(), 'status': 'RUNNING'}
+                job['config'] = freeze(job['config'])
                 atomic_write(self.path.parent / 'warmup.json', json.dumps(job))
                 self.warmup_cancel.clear()
                 self.logs.append('ollama', 'INFO', 'Model preload started', job['id'],
@@ -163,7 +186,7 @@ class OllamaBridge:
                 DiagnosticLog(self.root).write('warmup', 'warmup.queued', correlation_id=job['id'],
                     endpoint=job['endpoint'], model=job['config']['model'], revision=revision,
                     timeoutSeconds=job['timeoutSeconds'], keepAliveMinutes=keep_alive_minutes,
-                    preparation='empty-prompt preload; generation not verified')
+                    preparation='Strata native load; generation not verified' if provider_kind(job['config']) == 'strata' else 'empty-prompt preload; generation not verified')
                 self.warmup_thread = threading.Thread(target=self._warmup, args=(job,), daemon=True)
                 self.warmup_thread.start()
                 return self.warmup_status()
@@ -226,7 +249,7 @@ class OllamaBridge:
                 next_progress = time.monotonic()+10
                 while process.poll() is None:
                     if self.warmup_cancel.wait(.1):
-                        stop(); job.update(status='CANCELLED', error='Local preload stopped; Ollama may still be loading the dispatched request'); break
+                        stop(); job.update(status='CANCELLED', error='Local preload stopped; the provider may still be loading the dispatched request'); break
                     if time.monotonic() - started >= job['timeoutSeconds']:
                         stop(); job.update(status='FAIL', error=f'Model preload exceeded its {job["timeoutSeconds"]}s absolute limit; no retry sent'); break
                     if time.monotonic() >= next_progress:
@@ -247,6 +270,7 @@ class OllamaBridge:
         finally:
             try:
                 if reader:reader.join(timeout=1)
+                if process and process.stdout and (not reader or not reader.is_alive()):process.stdout.close()
                 job.update(finishedAt=datetime.now(timezone.utc).isoformat(), elapsedMs=round((time.monotonic() - started) * 1000, 3))
                 diagnostics.write('warmup', 'warmup.finished', correlation_id=job['id'],
                     level='ERROR' if job['status']=='FAIL' else 'WARNING' if job['status']=='CANCELLED' else 'INFO',
@@ -281,6 +305,8 @@ class OllamaBridge:
         values = {'OLLAMA_HOST': base, 'OLLAMA_BASE_URL': base,
                   'OPENAI_BASE_URL': base + '/v1', 'OPENAI_API_KEY': 'ollama',
                   'OLLAMA_MODEL': state['config']['model']}
+        if provider_kind(state['config']) == 'strata':
+            values = {'OPENAI_BASE_URL': base+'/v1', 'STRATA_MODEL': state['config']['model']}
         for key in ('NO_PROXY', 'no_proxy'):
             existing = [x.strip() for x in os.environ.get(key, '').split(',') if x.strip()]
             values[key] = ','.join(dict.fromkeys(existing + ['localhost', '127.0.0.1', host]))
@@ -290,10 +316,13 @@ class OllamaBridge:
     def request(self, base, path, config, payload=None, *, trace=None):
         from diagnostic_log import TransportTrace, safe_url
         trace = trace or TransportTrace(self.root, category='ollama')
-        opener = trace.opener()
+        from model_provider import protect_opener
+        opener = protect_opener(trace.opener(), config)
+        if payload is not None and path.endswith('/chat/completions'):
+            payload = provider_payload(config, payload)
         req = urllib.request.Request(base + path,
             data=json.dumps(payload).encode() if payload is not None else None,
-            headers={'Content-Type': 'application/json'})
+            headers={'Content-Type': 'application/json', **headers(config)})
         timeout = config['inferenceTimeout'] if payload is not None else config['metadataTimeout']
         trace.event('request.started', endpoint=safe_url(base+path), timeoutSeconds=timeout,
                     method='POST' if payload is not None else 'GET', model=config.get('model'), proxyBypassed=True)
@@ -308,6 +337,8 @@ class OllamaBridge:
                 data = json.loads(raw)
         except urllib.error.HTTPError as exc:
             trace.failed(exc)
+            if provider_kind(config) == 'strata':
+                raise ValueError(f'Strata HTTP {exc.code}; response body omitted') from exc
             detail = exc.read(2048).decode(errors='replace')
             raise ValueError(f'Ollama HTTP {exc.code}: {detail}') from exc
         except Exception as exc:
@@ -315,7 +346,7 @@ class OllamaBridge:
             raise
         if not isinstance(data, dict) or data.get('error'):
             trace.failed(ValueError('Invalid Ollama response'))
-            raise ValueError('Invalid Ollama response: ' + str(data.get('error') if isinstance(data, dict) else data))
+            raise ValueError('Invalid Strata response; body omitted' if provider_kind(config) == 'strata' else 'Invalid Ollama response: ' + str(data.get('error') if isinstance(data, dict) else data))
         trace.event('request.completed', done=data.get('done'), responseModel=data.get('model'),
                     loadDurationNs=data.get('load_duration'), totalDurationNs=data.get('total_duration'))
         return data
@@ -336,20 +367,25 @@ class OllamaBridge:
             if kind == 'chat' and (not config['model'] or not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 4000):
                 raise ValueError('Select a model and supply a prompt of 1..4000 characters')
             base = self.endpoint(config)
-            record.update(revision=revision, config=config, endpoint=base)
+            record.update(revision=revision, config=config, endpoint=base, provider=provider_kind(config))
             self.logs.append('ollama', 'INFO', kind + ' request started', details={'revision': revision, 'model': config['model']})
             if kind == 'metadata':
-                version = self.request(base, '/api/version', config)
-                tags = self.request(base, '/api/tags', config)
+                strata = provider_kind(config) == 'strata'
+                version = self.request(base, '/v1/status' if strata else '/api/version', config)
+                if strata and (version.get('service') != 'strata' or type(version.get('loaded')) is not bool):
+                    raise ValueError('Malformed Strata status')
+                tags = {'models': []} if strata else self.request(base, '/api/tags', config)
                 models = self.request(base, '/v1/models', config)
-                if not isinstance(version.get('version'), str) or not isinstance(tags.get('models'), list) or not isinstance(models.get('data'), list):
+                if (not strata and not isinstance(version.get('version'), str)) or not isinstance(tags.get('models'), list) or not isinstance(models.get('data'), list):
                     raise ValueError('Malformed Ollama version/model listing')
                 if any(not isinstance(m, dict) or not isinstance(m.get('id'), str) for m in models['data']):
                     raise ValueError('Malformed OpenAI model IDs')
                 if any(not isinstance(m, dict) or not isinstance(m.get('name', m.get('model')), str) for m in tags['models']):
                     raise ValueError('Malformed native model IDs')
-                record.update(status='METADATA_ONLY_PASS', serverVersion=version['version'],
+                record.update(status='METADATA_ONLY_PASS', serverVersion=version.get('engine') if strata else version['version'],
                               modelIds=[m['id'] for m in models['data']], inferenceTested=False)
+                if strata:
+                    record['loaded'] = version.get('loaded')
             else:
                 reply = self.request(base, '/v1/chat/completions', config, {
                     'model': config['model'], 'messages': [{'role': 'user', 'content': prompt}],

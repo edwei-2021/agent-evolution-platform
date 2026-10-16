@@ -1,6 +1,6 @@
 # Strata Compatibility Diagnostic (Strata 相容性診斷)
 
-This is the first step toward a selectable Ollama / Strata provider. It adds a standalone diagnostic only. The GUI's provider settings, warmup and workflow dispatch remain unchanged until the target Windows / WSL evidence is reviewed.
+The standalone diagnostic qualifies the Windows / WSL API boundary before GUI use. A selectable Ollama / Strata provider is now implemented; see [provider setup](model-providers.md). Diagnostic compatibility and complete real-model workflow acceptance remain separate results.
 
 ## Reviewed implementation (已核對的實作)
 
@@ -105,9 +105,9 @@ Strata may respond to `stream=true` with ordinary JSON. The current production t
 
 Exit codes: `0` requested checks passed, `1` failed check, `2` invalid arguments, `3` report storage failure, `130` operator interruption. `CHAT_PASS` qualifies ordinary text; `TOOL_ROUNDTRIP_PASS` qualifies the synthetic tool exchange; `COMPATIBILITY_PASS` qualifies all selected API checks. None establishes benchmark quality or complete nanobot/GEPA workflow acceptance.
 
-## Conditional integration (通過後的整合範圍)
+## Provider integration (通過後的整合範圍)
 
-After real WSL evidence passes, add an explicit Ollama / Strata choice and separate saved endpoint/model/effort settings. Freeze provider identity into each run. Use OpenAI model listing for Strata, not Ollama `/api/version` or `/api/tags`. Strata lifecycle/loaded status must use its own verified capability; never send Ollama's empty `/api/generate` preload to Strata. Preserve one-provider ownership, per-call/global budgets, cancellation, historical run identity and independent reviewer/approval gates. Qualify the resulting adapter with one focused real workflow before broader use.
+After the supplied WSL compatibility checks passed, an explicit Ollama / Strata choice and separate saved endpoint/model/effort settings were added. Provider identity is frozen into each run. Use OpenAI model listing for Strata, not Ollama `/api/version` or `/api/tags`. Strata lifecycle/loaded status must use its own verified capability; never send Ollama's empty `/api/generate` preload to Strata. Preserve one-provider ownership, per-call/global budgets, cancellation, historical run identity and independent reviewer/approval gates. Qualify the resulting adapter with one focused real workflow before broader use.
 
 Local verification uses a loopback HTTP fixture, never the user's Windows service. Run the focused tests with:
 

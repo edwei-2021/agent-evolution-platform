@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from ollama_bridge import OllamaBridge, atomic_write
 from diagnostic_log import TransportTrace
+from model_provider import kind
 
 def main():
     config_path, result_path = map(Path, sys.argv[1:])
@@ -11,11 +12,16 @@ def main():
     bridge = OllamaBridge(config_path.parents[2])
     trace = TransportTrace(config_path.parents[2], category='warmup', correlation_id=job['id'])
     try:
-        reply = bridge.request(job['endpoint'], '/api/generate', job['config'],
+        if kind(job['config']) == 'strata':
+            reply = bridge.request(job['endpoint'], '/v1/load', job['config'], {}, trace=trace)
+            if reply.get('loaded') is not True or reply.get('service') != 'strata' or not reply.get('model'):
+                raise ValueError('Strata did not confirm model loading')
+        else:
+            reply = bridge.request(job['endpoint'], '/api/generate', job['config'],
             {'model': job['config']['model'], 'prompt': '', 'stream': False,
              'keep_alive': f'{job["keepAliveMinutes"]}m'}, trace=trace)
-        if reply.get('done') is not True or not isinstance(reply.get('model'), str) or not reply['model']:
-            raise ValueError('Malformed model preload completion')
+            if reply.get('done') is not True or not isinstance(reply.get('model'), str) or not reply['model']:
+                raise ValueError('Malformed model preload completion')
         result = {'responseModel': reply['model'], 'transport': trace.result()}
         for key, output in [('load_duration', 'loadDurationMs'), ('total_duration', 'totalDurationMs')]:
             if key in reply:

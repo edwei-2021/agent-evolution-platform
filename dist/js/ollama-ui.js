@@ -3,18 +3,18 @@ import {warmupView} from './warmup-view.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function ollamaView(state){
  const {data,error,busy,prompt,draft}=state;
- if(!data)return `<section class="card spaced"><div class="card-heading"><h2>Windows Ollama · 11435</h2></div><p class="body-copy">${esc(error||'讀取本機設定中…')}。請使用 WSL 的 localhost GUI。</p><div class="card-actions"><button class="button secondary" data-ollama="reload" ${busy?'disabled':''}>讀取設定</button></div></section>`;
- const c=draft||data.config,e=data.historicalEvidence,r=data.latest;
+ if(!data)return `<section class="card spaced"><div class="card-heading"><h2>Windows 模型服務</h2></div><p class="body-copy">${esc(error||'讀取本機設定中…')}。請使用 WSL 的 localhost GUI。</p><div class="card-actions"><button class="button secondary" data-ollama="reload" ${busy?'disabled':''}>讀取設定</button></div></section>`;
+ const c=draft||data.config,e=data.historicalEvidence,r=data.latest,strata=c.provider==='strata';
  const current=r?.revision===data.revision&&r.endpoint===data.nativeBaseUrl;
- const ids=current&&r.modelIds?r.modelIds:e.modelIds;
+ const ids=current&&(c.provider||'ollama')===(data.config.provider||'ollama')&&r.modelIds?r.modelIds:strata?[]:e.modelIds;
  const disabled=busy||data.busy?'disabled':'';
  const field=(name,label,type='text',extra='')=>`<label>${label}<input name="${name}" type="${type}" value="${esc(c[name])}" ${extra} ${disabled}></label>`;
- return `<section class="card spaced"><div class="card-heading"><div><h2>Windows Ollama 連線設定</h2><p>設定存於 WSL 專案；讀取設定與啟動 GUI 不會呼叫 Windows API。</p></div><span class="soft-tag">OPENAI COMPATIBLE</span></div>
- <div class="small-notice"><strong>已提供的實機證據：API 連通成功，推論尚未測試。</strong><br>${esc(e.observedAt)} · Ollama ${esc(e.serverVersion)} · ${e.modelIds.length} 個模型 · ${esc(e.openaiBaseUrl)}。這是歷史紀錄，尚未代表目前模型可推論。</div>
+ return `<section class="card spaced"><div class="card-heading"><div><h2>Windows 模型服務連線設定</h2><p>設定存於 WSL 專案；讀取設定與啟動 GUI 不會呼叫 Windows API。</p></div><span class="soft-tag">OPENAI COMPATIBLE</span></div>
+ ${!strata?`<div class="small-notice"><strong>已提供的實機證據：API 連通成功，推論尚未測試。</strong><br>${esc(e.observedAt)} · Ollama ${esc(e.serverVersion)} · ${e.modelIds.length} 個模型 · ${esc(e.openaiBaseUrl)}。這是歷史紀錄，尚未代表目前模型可推論。</div>`:'<div class="small-notice">Strata 使用獨立的 OpenAI API 設定。金鑰只讀取啟動 GUI 時的環境變數；表單與報告不儲存金鑰。切換後請儲存才會生效。</div>'}
  ${error?`<div class="error-banner" role="alert">${esc(error)}</div>`:''}
  <form id="ollama-settings-form" class="ollama-form"><div class="two-col">
- ${field('host','Windows IPv4（留空：自動偵測 WSL NAT gateway）')}
- ${field('port','Windows Ollama port','number','min="1" max="65535" required')}
+ <label>模型服務<select name="provider" data-model-provider ${disabled}><option value="ollama" ${!strata?'selected':''}>Ollama</option><option value="strata" ${strata?'selected':''}>Strata</option></select></label>
+ ${strata?`${field('baseUrl','Strata OpenAI base URL（使用 ASK 已驗證位址）','url','required')}${field('apiKeyEnv','金鑰環境變數名稱（請勿輸入金鑰）','text','required')}<label>Reasoning effort<select name="reasoningEffort" ${disabled}>${['none','low','medium','high'].map(v=>`<option value="${v}" ${c.reasoningEffort===v?'selected':''}>${v}</option>`).join('')}</select></label>`:`${field('host','Windows IPv4（留空：自動偵測 WSL NAT gateway）')}${field('port','Windows Ollama port','number','min="1" max="65535" required')}`}
  ${field('model','模型完整 ID（歷史清單可供參考）','text','list="ollama-model-ids" maxlength="200"')}
  ${field('metadataTimeout','Metadata timeout（秒）','number','min="1" max="120" required')}
  ${field('inferenceTimeout','Inference timeout（秒）','number','min="1" max="3600" required')}
@@ -22,7 +22,7 @@ export function ollamaView(state){
  </div><datalist id="ollama-model-ids">${ids.map(id=>`<option value="${esc(id)}"></option>`).join('')}</datalist>
  <p class="body-copy">目前解析的 API：<code>${esc(data.openaiBaseUrl||data.discoveryError)}</code><br>Proxy：所有橋接請求皆略過。GUI port 預設 8765，與 Ollama port 分開設定。</p>
  <div class="actions card-actions"><button type="submit" class="button primary" ${disabled}>儲存設定</button><button type="button" class="button secondary" data-ollama="reload" ${disabled}>重新讀取設定</button><button type="button" class="button secondary" data-ollama="metadata" ${disabled}>手動更新模型清單</button></div></form>
- <div class="small-notice">已儲存模型：<code>${esc(data.config.model||'尚未設定')}</code> · 設定版本 ${data.revision}。<br>更新模型清單與試跑使用已儲存設定。名稱含 cloud 的模型可能使用遠端服務；請自行選擇已安裝模型。「LLM 技能實驗」會使用此模型；本機規則技能保持獨立。</div>
+ <div class="small-notice">已儲存服務：${data.config.provider==='strata'?'Strata':'Ollama'} · 已儲存模型：<code>${esc(data.config.model||'尚未設定')}</code> · 設定版本 ${data.revision}。${data.credentialsReady===false?' · 金鑰環境變數尚未設定，請在 ASK 可成功執行的終端機重啟 GUI。':''}<br>更新模型清單與試跑使用已儲存設定。名稱含 cloud 的模型可能使用遠端服務；請自行選擇已安裝模型。「LLM 技能實驗」會使用此模型；本機規則技能保持獨立。</div>
  <form id="ollama-chat-form" class="ollama-form"><label>單次模型試跑（按下才送出）<textarea name="prompt" required maxlength="4000" rows="3" ${disabled}>${esc(prompt)}</textarea></label><div class="actions card-actions"><button type="submit" class="button secondary" ${busy||data.busy||!data.config.model?'disabled':''}>送出一次推論</button><span>${busy?'操作處理中；請勿重複送出':'不會自動測試或重試'}</span></div></form>
  ${warmupView(data,{disabled:busy})}
  ${r?`<div class="small-notice">最近請求：${esc(r.status)} · ${esc(r.finishedAt)} · ${r.elapsedMs} ms · ${current?'目前已儲存設定':'先前設定，請勿視為目前連線狀態'}<br><code>${esc(r.reportPath)}</code></div><pre class="ollama-output">${esc(r.error||r.content||JSON.stringify(r.modelIds,null,2))}</pre>`:''}</section>`;
@@ -33,7 +33,13 @@ export class OllamaUI{
   this.fetcher=fetcher;this.token=token;this.onUpdate=onUpdate;this.data=null;this.draft=null;this.error=null;this.busy=false;this.prompt='Reply with the word OK.';
  }
  snapshot(){return {data:this.data,draft:this.draft,error:this.error,busy:this.busy,prompt:this.prompt};}
- edit(name,value){if(this.data&&Object.hasOwn(this.data.config,name))this.draft={...(this.draft||this.data.config),[name]:value};}
+ edit(name,value){if(this.data&&Object.hasOwn(this.draft||this.data.config,name))this.draft={...(this.draft||this.data.config),[name]:value};}
+ selectProvider(provider){
+  if(!this.data||this.busy||this.data.busy||!['ollama','strata'].includes(provider))return;
+  const current=this.draft||this.data.config;this.profileDrafts={...this.profileDrafts,[current.provider||'ollama']:current};
+  this.draft={...(this.profileDrafts[provider]||this.data.profiles?.[provider]||(provider==='ollama'?{host:'',port:11435,model:'',metadataTimeout:10,inferenceTimeout:600,maxTokens:256}:{provider:'strata',baseUrl:'http://127.0.0.1:8081/v1',apiKeyEnv:'OPENAI_API_KEY',reasoningEffort:'none',model:'',metadataTimeout:10,inferenceTimeout:600,maxTokens:256}))};
+  this.onUpdate();
+ }
  view(){return ollamaView(this.snapshot());}
  async request(path,body,timeout=15000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
@@ -46,18 +52,18 @@ export class OllamaUI{
   }finally{clearTimeout(timer);}
  }
  async operate(action,config){
-  if(this.busy)throw Error('Ollama 操作正在處理');
+  if(this.busy)throw Error('模型服務操作正在處理');
   if(action==='save')this.draft={...config};
   this.busy=true;this.error=null;this.onUpdate();
   try{
-   if(action==='save'){this.data=await this.request('/api/v1/llm/ollama/settings',{config,expectedRevision:this.data.revision});this.draft=null;}
-   else if(action==='reload'){this.data=await this.request('/api/v1/llm/ollama');this.draft=null;}
+   if(action==='save'){this.data=await this.request('/api/v1/llm/ollama/settings',{config,expectedRevision:this.data.revision});this.draft=null;this.profileDrafts={};}
+   else if(action==='reload'){this.data=await this.request('/api/v1/llm/ollama');this.draft=null;this.profileDrafts={};}
    else{
-    if(!['metadata','chat'].includes(action)||!this.data)throw Error('請先讀取 Ollama 設定');
+    if(!['metadata','chat'].includes(action)||!this.data)throw Error('請先讀取模型服務設定');
     const timeout=action==='chat'?(this.data.config.inferenceTimeout+15)*1000:(this.data.config.metadataTimeout*3+15)*1000;
     const result=await this.request(`/api/v1/llm/ollama/${action}`,{expectedRevision:this.data.revision,...(action==='chat'?{prompt:this.prompt}:{})},timeout);
     this.data=await this.request('/api/v1/llm/ollama');
-    if(result.status==='FAIL')throw Error(result.error||'Ollama 請求失敗');
+    if(result.status==='FAIL')throw Error(result.error||'模型服務請求失敗');
    }
   }catch(error){this.error=error.name==='AbortError'?'等待逾時；後端請求可能仍在執行，請重新讀取設定查看紀錄。系統不會自動重試。':error.message;throw error;}
   finally{this.busy=false;this.onUpdate();}

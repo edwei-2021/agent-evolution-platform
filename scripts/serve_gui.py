@@ -320,7 +320,7 @@ def main(argv=None):
             server.server_close()
             print(f'Cannot start local runtime: {exc}', file=sys.stderr)
             return 1
-    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nOllama bridge: explicit requests only; default Windows port 11435.\nPress Ctrl+C to stop. Model requests require explicit submission; SDK discovery is separate from model inference.', flush=True)
+    print(f'nanobot GEPA MVP — GUI + local runtime\nWorkspace: {Path.cwd()}\nTemp: {tempfile.gettempdir()}\nOpen http://localhost:{args.port}\nRuntime: {"native tool agents" if runtime else "disabled"}\nModel providers: Ollama (default Windows port 11435) / Strata; explicit requests only.\nPress Ctrl+C to stop. Model requests require explicit submission; SDK discovery is separate from model inference.', flush=True)
     diagnostics.write('startup','service.ready',port=args.port,serviceId=runtime.service_id if runtime else None)
     print('Diagnostic logs: '+str(diagnostics.directory),flush=True)
     with server:

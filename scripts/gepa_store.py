@@ -35,12 +35,12 @@ class GepaStore:
             if type(options[key]) is not int or not low<=options[key]<=high:raise ValueError(f'{key} must be an integer in {low}..{high}')
         self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
         if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
-        with self.service.ollama.lock:provider=self.service.ollama.state()
+        with self.service.ollama.lock:provider=self.service.ollama.frozen()
         if type(options['providerRevision']) is not int or options['providerRevision']!=provider['revision']:raise RuntimeError('Provider settings changed; refresh first')
-        if not provider['config']['model']:raise ValueError('Select and save an Ollama model first')
+        if not provider['config']['model']:raise ValueError('Select and save a model first')
         budget=(options['metricBudget']+2*(len(data['validation'])+len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
         return {'schemaVersion':1,'engine':ENGINE,**options,'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
-          'provider':{**provider,'endpoint':self.service.ollama.endpoint(provider['config'])},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
+          'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
           'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile']),'logRoot':str(self.service.root)}
     def approve(self,identifier,expected):

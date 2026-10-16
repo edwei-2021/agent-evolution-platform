@@ -45,3 +45,15 @@ test('backend failure remains visible and only one explicit inference request is
  await ui.operate('reload');await assert.rejects(ui.operate('chat'),/model failed/);
  assert.equal(posts,1);assert.equal(ui.error,'model failed');assert.equal(ui.busy,false);
 });
+test('provider selection preserves separate editable drafts and activates only after saving',async()=>{
+ const calls=[];let saved=data();saved.profiles={strata:{provider:'strata',baseUrl:'http://127.0.0.1:8081/v1',model:'fixture-strata',apiKeyEnv:'OPENAI_API_KEY',reasoningEffort:'none',metadataTimeout:10,inferenceTimeout:600,maxTokens:256}};
+ const ui=new OllamaUI({fetcher:async(path,options)=>{
+  calls.push(path);if(path.endsWith('/settings'))saved={...saved,revision:2,config:JSON.parse(options.body).config};return response(saved);
+ }});
+ await ui.operate('reload');ui.selectProvider('strata');ui.edit('baseUrl','http://fixture.invalid:8081/v1');ui.edit('apiKeyEnv','FIXTURE_KEY');ui.edit('reasoningEffort','low');
+ assert.equal(ui.data.config.model,'test:local');assert.equal(ui.draft.baseUrl,'http://fixture.invalid:8081/v1');assert.match(ui.view(),/name="reasoningEffort"/);
+ ui.selectProvider('ollama');assert.equal(ui.draft.port,11435);ui.selectProvider('strata');assert.equal(ui.draft.apiKeyEnv,'FIXTURE_KEY');assert.equal(ui.draft.reasoningEffort,'low');
+ assert.deepEqual(calls,['/api/v1/llm/ollama']);await ui.operate('save',ui.draft);assert.equal(ui.data.config.provider,'strata');assert.equal(ui.draft,null);
+ assert.match(ui.view(),/Strata 載入 API/);assert.doesNotMatch(ui.view(),/要求保留 15 分鐘/);
+ ui.data.busy=true;ui.selectProvider('ollama');assert.equal(ui.draft,null);
+});

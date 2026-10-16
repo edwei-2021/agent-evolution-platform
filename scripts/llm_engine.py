@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 from skill_engine import NAME, DESCRIPTION, dataset, digest, distance, write
 from ollama_bridge import OllamaBridge
+from model_provider import payload as provider_payload
 from llm_transport import stream_chat, StreamAccumulator
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +46,7 @@ def provenance(profile):
             'datasetHash': digest(data), 'splitSizes': {k: len(v) for k, v in data.items()},
             'splitHashes': {k: digest(v) for k, v in data.items()},
             'codeHashes': {name: hashlib.sha256((ROOT / 'scripts' / name).read_bytes()).hexdigest()
-                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'ollama_bridge.py', 'runtime_service.py','step_trace.py')}}
+                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'model_provider.py', 'ollama_bridge.py', 'runtime_service.py','step_trace.py')}}
 
 
 def messages(value, text):
@@ -124,6 +125,7 @@ class Runner:
         settings = {**provider['config'], 'inferenceTimeout': min(provider['config']['inferenceTimeout'], self.config.get('callTimeoutSeconds', 120), remaining)}
         payload = {'model': settings['model'], 'messages': request_messages, 'stream': self.config.get('transport') == 'openai-sse-v1',
                    'temperature': 0, 'max_tokens': settings['maxTokens'], 'response_format': {'type': 'json_object'}}
+        payload = provider_payload(settings, payload)
         record = {'id': len(self.calls) + 1, 'kind': kind, **context, 'request': payload,
                   'startedAt': time.time(), 'status': 'running', 'timeoutSeconds': settings['inferenceTimeout'],
                   'deadlineEpoch': time.time() + settings['inferenceTimeout'], 'chunks': 0,
@@ -253,6 +255,7 @@ def verify(directory):
             raise ValueError('Unexpected call kind')
         request = {'model': config['provider']['config']['model'], 'messages': wanted, 'stream': config.get('transport') == 'openai-sse-v1',
                    'temperature': 0, 'max_tokens': config['provider']['config']['maxTokens'], 'response_format': {'type': 'json_object'}}
+        request = provider_payload(config['provider']['config'], request)
         if call['request'] != request:
             raise ValueError('Recorded model request diverges from frozen input/Skill')
         if 'streamEvents' in call:

@@ -1,4 +1,5 @@
 """Trusted GEPA evidence contracts; imports no optimizer in the GUI process."""
+from model_provider import payload as provider_payload
 from step_trace import traced
 import hashlib
 import json
@@ -102,6 +103,8 @@ def verify(directory, progress_callback=None):
     expected=[{**c,'id':i+1,'localId':c['id']} for i,c in enumerate(reconstructed)]
     if expected!=actual or len(actual)>cfg['callBudget']:raise ValueError('Global model call accounting drift')
     for call in actual:
+        if call['request'] != provider_payload(cfg['provider']['config'], call['request']):
+            raise ValueError('GEPA provider reasoning settings changed')
         if call['status']!='completed' or call['request']['model']!=cfg['provider']['config']['model'] or call['request']['temperature']!=0 or call['request']['max_tokens']!=cfg['provider']['config']['maxTokens']:raise ValueError('Model settings changed or request failed')
         if 'streamEvents' in call:
             acc=ToolAccumulator()

@@ -79,7 +79,7 @@ def build_bundle(root=ROOT):
                 total += len(raw)
         bundle.writestr('status.json',json.dumps(status_snapshot(root),ensure_ascii=False,indent=2))
         source = {}
-        for name in ('serve_gui.py','diagnostic_log.py','ollama_bridge.py','warmup_worker.py',
+        for name in ('serve_gui.py','diagnostic_log.py','ollama_bridge.py','model_provider.py','warmup_worker.py',
                      'sdk_runtime_probe.py','repair_fixture.py','llm_transport.py'):
             path = root/'scripts'/name
             if path.is_file() and not path.is_symlink():source[name]=hashlib.sha256(path.read_bytes()).hexdigest()
