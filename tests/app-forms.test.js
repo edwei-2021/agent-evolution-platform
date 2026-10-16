@@ -17,7 +17,7 @@ test('app form events preserve settings through click, submit, navigation and LL
  globalThis.document={activeElement:null,addEventListener:(type,handler)=>add(listeners,type,handler),querySelector:selector=>{
   if(selector==='dialog[open]')return null;
   if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);
- },querySelectorAll:()=>[]};
+ },querySelectorAll:()=>[],createElement:()=>({innerHTML:'',querySelector(){return {outerHTML:this.innerHTML};}})};
  globalThis.window={localStorage:{getItem:()=>null,setItem(){}},addEventListener:(type,handler)=>add(windowListeners,type,handler)};
  globalThis.location={hash:'#integrations'};globalThis.history={replaceState(){}};
  globalThis.FormData=class extends Map{constructor(form){super(Object.entries(form.fields));}};
@@ -122,6 +122,23 @@ test('app form events preserve settings through click, submit, navigation and LL
   await click(button(null,{page:'gepa'}));await click(button(null,{liveRefresh:''}));assert.match(html,/GEPA 技能最佳化/);
   await click(button(null,{gepaStart:''}));const starts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(starts.length,1);
   const body=JSON.parse(starts[0].options.body);assert.equal(body.profile,'smoke');assert.equal(body.taskCallBudget,8);assert.equal(body.metricBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.expectedRevision,1);
+ });
+ await t.test('GEPA completion refreshes the actual result while focused settings remain connected',async()=>{
+  const baseline=runtime.gepa.active.skill,stamp='2026-01-01T00:00:00Z';
+  runtime.gepa.latestRun={id:'RUN-focused-result',task:'gepa-evolution',mode:'native-tools',status:'running',createdAt:stamp,updatedAt:stamp,events:[],artifacts:[],agents:['coordinator','worker','evaluator','reflector','reviewer'].map(id=>({id,name:id,status:'completed',updatedAt:stamp,pid:null,processAlive:false,logTail:''})),
+   gepaConfig:{engine:'gepa-nanobot-repair-v1',sdk:{version:'0.3.5'},optimizer:{version:'0.1.4'},baseline:{id:'GSV-baseline',skill:baseline},profile:'smoke',callBudget:162,metricBudget:8,proposalBudget:2,counts:{train:4,validation:2,heldout:4},provider:{config:{model:'fixture-model'}}}};
+  await click(button(null,{page:'gepa'}));await click(button(null,{liveRefresh:''}));assert.match(html,/待完成評估與審查/);
+  const focused=form('focused-gepa-settings',{taskCalls:'9'}),before=renders,posts=calls.filter(c=>c.options?.method==='POST').length;
+  globalThis.document.activeElement={matches:()=>true};
+  runtime.gepa.latestRun.status='completed';
+  runtime.gepa.latestRun.gepaResult={engine:'gepa-nanobot-repair-v1',checksPassed:true,eligible:false,baselineSkill:baseline,selectedSkill:baseline,evidenceHash:'c'.repeat(64),proposals:0,validationScores:[1],calls:40,rollouts:17,metricEvaluations:5,
+   final:{baseline:{validation:{passed:2,total:2},heldout:{passed:4,total:4}},selected:{validation:{passed:2,total:2},heldout:{passed:4,total:4}}}};
+  await click(button(null,{liveRefresh:''}));
+  assert.equal(renders,before);assert.equal(focused.isConnected,true);
+  assert.match(nodes.get('[data-gepa-results]').outerHTML,/未產生新 Skill・沿用基準/);
+  assert.match(nodes.get('[data-gepa-results]').outerHTML,/0 題 · 0 個百分點/);
+  assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
+  globalThis.document.activeElement=null;
  });
  await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
   runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';

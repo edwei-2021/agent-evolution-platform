@@ -1,6 +1,7 @@
 import {StepsClient} from './steps-client.js';
 import {stepsView,stepResultsView} from './steps-view.js';
 import {gepaView} from './gepa-view.js';
+import {gepaResultsView} from './gepa-results-view.js';
 import {repairView} from './repair-view.js';
 import {llmView} from './llm-view.js';
 import {runProgressView} from './progress-view.js';
@@ -88,7 +89,7 @@ function refreshProgressOnly(){
  const state=live.snapshot();
  const run=page==='gepa'?(state.selectedGepaRun||state.data?.gepa?.latestRun):page==='repair'?(state.selectedRepairRun||state.data?.repair?.latestRun):page==='llm'?(state.selectedLlmRun||state.data?.llm?.latestRun):page==='skills'?(state.selectedSkillRun||state.data?.skills?.latestRun):state.data?.latestRun;
  target.outerHTML=runProgressView(state,run);
- if(page==='gepa'){const panel=document.querySelector('[data-gepa-search-progress]');if(panel){const holder=document.createElement('div');holder.innerHTML=gepaView(state);panel.outerHTML=holder.querySelector('[data-gepa-search-progress]').outerHTML;}}
+ if(page==='gepa'){const results=document.querySelector('[data-gepa-results]');if(results)results.outerHTML=gepaResultsView(state);const panel=document.querySelector('[data-gepa-search-progress]');if(panel){const holder=document.createElement('div');holder.innerHTML=gepaView(state);panel.outerHTML=holder.querySelector('[data-gepa-search-progress]').outerHTML;}}
 }
 function navigate(next){page=next;history.replaceState(null,'',`#${next}`);render();if(next==='steps'){if(!steps.runId&&live.data?.latestRun?.id)steps.select(live.data.latestRun.id);else steps.refresh();}if(next==='logs')logs.refresh();if(next==='integrations')ollama.operate('reload').catch(()=>{});}
 document.addEventListener('click',async event=>{

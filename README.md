@@ -195,7 +195,7 @@ The hosted URL can be accessed from a remote browser, subject to the owner's pri
 
 ## GEPA Skill optimization (技能最佳化)
 
-Version **0.7.0** adds actual **GEPA 0.1.4 + nanobot 0.3.5** execution at `http://localhost:8765/#gepa`. Stop the GUI, pull the update, rerun `bash scripts/install-nanobot.sh`, restart and refresh. Begin with Smoke (4/2/4 grouped synthetic tasks), explicitly preload the saved model, then start search. Full uses 20/10/20 tasks with an 80-evaluation search cap. Only the Skill body changes; trusted tool/test evidence drives selection and final gates. Review the diff, approve a verified improvement, or roll back an immutable GEPA version. Existing rule/LLM versions remain separate. See [GEPA guide](docs/gepa-evolution.md) and [verification](docs/verification/gepa-validation.md).
+Version **0.7.0** adds actual **GEPA 0.1.4 + nanobot 0.3.5** execution at `http://localhost:8765/#gepa`. Stop the GUI, pull the update, rerun `bash scripts/install-nanobot.sh`, restart and refresh. Begin with Smoke (4/2/4 grouped synthetic tasks), explicitly preload the saved model, then start search. Full uses 20/10/20 tasks with an 80-evaluation search cap. Only the Skill body changes; trusted tool/test evidence drives selection and final gates. Review the diff, approve a verified improvement, or roll back an immutable GEPA version. Existing rule/LLM versions remain separate. See [GEPA guide](docs/gepa-evolution.md), [how to read actual evolution results](docs/gepa-results.md) and [verification](docs/verification/gepa-validation.md).
 
 ## Accelerated workflow (加速流程)
 
