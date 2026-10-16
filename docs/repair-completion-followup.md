@@ -49,3 +49,13 @@ All 43 selected cases passed without skips. Ruff on changed Python files, the so
 ## Operator next step (操作方式)
 
 Stop the GUI, pull the change and restart it in the same prepared Strata shell. Keep the tested endpoint/model, output budget, reasoning effort and call/time limits. Submit one new Python repair run. Existing failed results are preserved. No broad M7 rerun or repeated compatibility diagnostic is needed for this repair. If the next run fails, export the existing diagnostic ZIP before requesting another experiment.
+
+## Follow-up: GUI task budgets (GUI 每題額度)
+
+A later target run completed the single repair workflow and three GEPA rollouts with the summary phase. The next rollout needed read, baseline test, first write/test, corrective write/test and summary: seven requests when operating one tool per response. Its first repair passed two of three visible tests; the correction passed all three on request six. The six-request task cap correctly blocked request seven, while global calls and workflow time remained available. Final hidden evaluation did not run for that failed rollout.
+
+The missing operational check was the GUI's independent six-request default. New GUI experiments now default to eight requests per task, including summary, with an explanatory label. Existing explicit choices, frozen runs, SDK caps, whole-run/per-call deadlines and acceptance-test fixture budgets retain their meaning. Default Smoke global capacity becomes 162 requests under the existing server formula (8 search + 12 final rollouts, times 8 calls, plus 2 proposals); this is a ceiling, not a promised workload or success guarantee.
+
+Maintenance rule: when adding mandatory post-tool model work, audit form defaults and the actual submission payload as well as the runner. Count a baseline measurement and a corrective attempt, not only a scripted first-attempt success. Keep configuration defaults distinct from hard-limit enforcement and historical evidence. This follow-up changes GUI defaults and guidance only; no backend or M7 budget is silently expanded.
+
+Follow-up verification: 26 focused frontend cases passed, including actual app submission, default eight, explicit six, and immutable uncertain-dispatch replay. A no-model configuration freeze confirmed task/global caps 8/162 with unchanged 1800/120-second workflow/call limits. Source scan and diff checks passed; no full GEPA or M7 rerun was needed for this GUI-only change.

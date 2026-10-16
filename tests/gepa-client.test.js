@@ -19,6 +19,9 @@ test('GEPA validates separate versions, score denominators, budgets and truthful
 test('GEPA availability, stale polling and shared model activity gate start while evidence is escaped',()=>{
  const runtime={data:snapshot(),capabilities:caps,enabled:true,error:null};const button=html=>html.match(/<button[^>]*data-gepa-start[^>]*>/)[0];
  assert.ok(!button(gepaView(runtime)).includes('disabled'));
+ assert.match(gepaView(runtime),/data-gepa-task-calls[^>]*value="8"/);
+ runtime.gepaTaskCalls=6;assert.match(gepaView(runtime),/data-gepa-task-calls[^>]*value="6"/);
+ assert.match(gepaView(runtime),/每題額度包含結尾摘要/);
  for(const modify of [r=>r.data.gepa.optimizer.available=false,r=>r.enabled=false,r=>r.error='stale',r=>r.data.provider={busy:true},r=>r.data.latestRun={status:'running'}]){const r=structuredClone(runtime);modify(r);assert.match(button(gepaView(r)),/disabled/);}
  runtime.data.gepa.latestRun=run();runtime.data.gepa.latestRun.gepaResult.selectedSkill.body='<script>alert(1)</script>';
  const html=gepaView(runtime);assert.ok(!html.includes('<script>'));assert.match(html,/&lt;script&gt;/);assert.match(html,/data-execution-progress/);assert.match(html,/data-gepa-search-progress/);assert.match(html,/2 \/ 2/);assert.ok(!html.match(/data-gepa-approve[^>]*disabled/));
@@ -31,7 +34,7 @@ test('GEPA submits a frozen body on saved revisions and uncertain dispatch never
   if(options.method==='POST'){posts.push(JSON.parse(options.body));if(fail)throw Error('lost response');return response({});}
   return response(snapshot());
  }});
- await client.refresh();await assert.rejects(client.startGepa(initialRegistry()));assert.equal(posts.length,1);assert.equal(posts[0].providerRevision,7);assert.equal(posts[0].expectedRevision,1);
+ await client.refresh();await assert.rejects(client.startGepa(initialRegistry()));assert.equal(posts.length,1);assert.equal(posts[0].taskCallBudget,8);assert.equal(posts[0].maxSeconds,1800);assert.equal(posts[0].callTimeoutSeconds,120);assert.equal(posts[0].providerRevision,7);assert.equal(posts[0].expectedRevision,1);
  client.gepaMetrics=80;fail=false;await client.startGepa(initialRegistry());assert.deepEqual(posts[1],posts[0]);assert.equal(client.pendingGepaSubmission,null);
 });
 test('GEPA version actions use their own revisions and definitive rejection permits corrected submission',async()=>{
@@ -41,7 +44,8 @@ test('GEPA version actions use their own revisions and definitive rejection perm
   if(path==='/api/v1/gepa/runs'&&reject)return {ok:false,status:400,json:async()=>({error:'bad budget'})};return response(snapshot());
  }});
  await client.refresh();await assert.rejects(client.startGepa(initialRegistry()),/bad budget/);assert.equal(client.pendingGepaSubmission,null);
- reject=false;client.gepaMetrics=6;await client.startGepa(initialRegistry());await client.approveGepa('RUN-gepa');await client.activateGepa('GSV-baseline');
+ reject=false;client.gepaMetrics=6;client.gepaTaskCalls=6;await client.startGepa(initialRegistry());
+ assert.equal(JSON.parse(calls.filter(c=>c.path==='/api/v1/gepa/runs').at(-1).options.body).taskCallBudget,6);await client.approveGepa('RUN-gepa');await client.activateGepa('GSV-baseline');
  assert.deepEqual(JSON.parse(calls.find(c=>c.path.endsWith('/approve')).options.body),{expectedRevision:1});assert.ok(calls.some(c=>c.path==='/api/v1/gepa/versions/GSV-baseline/activate'));
 });
 

@@ -121,7 +121,7 @@ test('app form events preserve settings through click, submit, navigation and LL
   runtime.provider.busy=false;
   await click(button(null,{page:'gepa'}));await click(button(null,{liveRefresh:''}));assert.match(html,/GEPA 技能最佳化/);
   await click(button(null,{gepaStart:''}));const starts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(starts.length,1);
-  const body=JSON.parse(starts[0].options.body);assert.equal(body.profile,'smoke');assert.equal(body.metricBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.expectedRevision,1);
+  const body=JSON.parse(starts[0].options.body);assert.equal(body.profile,'smoke');assert.equal(body.taskCallBudget,8);assert.equal(body.metricBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.expectedRevision,1);
  });
  await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
   runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';
