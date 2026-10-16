@@ -20,7 +20,7 @@ from gepa_dataset import dataset, GROUPS, skill
 from adaptive_validation import current as validation_calibration
 from gepa_validation_budget import smoke_budget
 from validation_wait import first_request, startup_budget
-from gepa_engine import verify
+from gepa_engine import verify, REFLECTION_SYSTEM
 from repair_engine import trusted_test, trusted_test_batch
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
@@ -95,7 +95,7 @@ class Model(BaseHTTPRequestHandler):
             except (BrokenPipeError,ConnectionResetError):pass
             return
         messages=body['messages'];message={'role':'assistant','content':'No changes needed; tests passed.'}
-        if not body['tools']:
+        if body['messages'][0].get('content')==REFLECTION_SYSTEM:
             value={'skill_body':IMPROVED} if self.mode!='bad-proposal' else {'name':'mutated','skill_body':IMPROVED}
             message['content']=json.dumps(value)
         elif self.should_repair(messages):
@@ -244,7 +244,7 @@ class GepaWorkflowTests(unittest.TestCase):
         final_ids={t['id'] for t in dataset('smoke')['heldout']}
         self.assertFalse(any(r['taskId'] in final_ids and r['stage']=='search' for r in ledger))
         self.assertTrue(all(r['startedAt']>=selection['frozenAt'] for r in ledger if r['stage']!='search'))
-        reflection=[c for c in Model.calls if not c['tools']];self.assertEqual(len(reflection),result['proposals'])
+        reflection=[c for c in Model.calls if c['messages'][0].get('content')==REFLECTION_SYSTEM];self.assertEqual(len(reflection),result['proposals'])
         for c in reflection:
             raw=json.dumps(c)
             for t in dataset('smoke')['validation']+dataset('smoke')['heldout']:self.assertNotIn(t['id'],raw)

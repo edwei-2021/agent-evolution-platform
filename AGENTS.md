@@ -29,3 +29,5 @@ Before changing stage M acceptance, runtime discovery, workflow deadlines, or te
 - Before changing accepted Python syntax or tool validation, also read `docs/repair-raise-followup.md` for the shared-policy and semantic-variation contract.
 
 - Before changing diagnostic logging, read `docs/runtime-diagnostics.md`. Logs must preserve request phase and original failure evidence, remain bounded/failure-isolated, omit raw model bodies from support archives, and never add probes, retries or deadline extensions.
+
+- Before changing repair completion, read `docs/repair-completion-followup.md`. Prove the visible-pass-to-summary transition with a repeating-tool model, source mutation and a noncompliant server. Freeze provider-specific finalization policy, count the summary within existing caps, and never convert `max_iterations` or a visible-only pass into independent success. Verify exported diagnostics through the actual ZIP/redaction consumer.

@@ -50,6 +50,7 @@ class StrataWorkflows(unittest.TestCase):
         directory=f.service.local/'runs'/run['id'];self.assertEqual(repair_test.verify(directory),done['repairResult'])
         config=json.loads((directory/'repair-config.json').read_text());self.assertEqual(config['provider']['kind'],'strata')
         calls=json.loads((directory/'repair-calls.json').read_text());self.assertTrue(calls[1]['streamEvents'])
+        self.assertEqual(calls[-1]['request']['tools'],[]);self.assertEqual(calls[-1]['request']['tool_choice'],'none')
         self.assert_provider(f,repair_test.Model.calls,observed)
         calls[0]['request']['reasoning_effort']='high';(directory/'repair-calls.json').write_text(json.dumps(calls))
         with self.assertRaises(ValueError):repair_test.verify(directory)

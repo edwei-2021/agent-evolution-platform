@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -18,10 +19,54 @@ from diagnostic_log import CATEGORIES, MAX_BYTES, bodyless
 
 MAX_EXPORT = 32 * 1024 * 1024
 
+def repair_summary(directory):
+    """Read bounded projections only; never export source, prompts or replies."""
+    summary={}
+    for name in ('repair-tools.json','repair-calls.json','repair-sdk-result.json'):
+        path=directory/name
+        if not path.is_file() or path.is_symlink():continue
+        if path.stat().st_size>2_000_000:
+            summary[name]={'omitted':'size_limit'};continue
+        try:
+            with path.open('rb') as stream:raw=stream.read(2_000_001)
+            if len(raw)>2_000_000:
+                summary[name]={'omitted':'size_limit'};continue
+            value=json.loads(raw)
+            if name=='repair-sdk-result.json':
+                reason=value.get('stopReason')
+                summary['sdkStopReason']=reason if reason in ('completed','max_iterations','error','cancelled') else 'other'
+            elif name=='repair-tools.json':
+                rows=[]
+                for tool in value[:24]:
+                    row={'id':tool.get('id') if type(tool.get('id')) is int else None,
+                         'name':tool.get('name') if tool.get('name') in ('read_solution','write_solution','run_tests') else 'other',
+                         'status':tool.get('status') if tool.get('status') in ('running','completed','failed') else 'other'}
+                    source=tool.get('sourceHash')
+                    if isinstance(source,str) and re.fullmatch('[a-f0-9]{64}',source):row['sourceHash']=source
+                    if tool.get('name')=='run_tests' and tool.get('status')=='completed':
+                        result=json.loads(tool['result'])
+                        if all(type(result.get(k)) is int and 0<=result[k]<=50 for k in ('passed','total')):
+                            row.update(visiblePassed=result['passed'],visibleTotal=result['total'])
+                    rows.append(row)
+                summary['tools']=rows
+            else:
+                rows=[]
+                for c in value[:12]:
+                    reason=((c.get('response') or {}).get('choices') or [{}])[0].get('finish_reason')
+                    rows.append({'id':c.get('id') if type(c.get('id')) is int else None,
+                        'status':c.get('status') if c.get('status') in ('running','completed','failed') else 'other',
+                        'finalSummary':c.get('finalSummary') if type(c.get('finalSummary')) is bool else None,
+                        'finishReason':reason if reason in ('stop','tool_calls','length','content_filter') else 'other'})
+                summary['calls']=rows
+        except (OSError,ValueError,TypeError,KeyError,AttributeError):
+            summary[name]={'omitted':'unreadable_or_incomplete'}
+    return summary
+
 
 def status_snapshot(root):
     root = Path(root)
     status = {'observedAt': datetime.now(timezone.utc).isoformat(), 'runs': []}
+    repair_traces={}
     database = root/'.local/runtime.sqlite3'
     if database.is_file() and not database.is_symlink():
         try:
@@ -33,6 +78,12 @@ def status_snapshot(root):
                     config=run.get('repairConfig') or run.get('gepaConfig') or run.get('llmConfig') or {}
                     summary['frozenCodeHashes']=config.get('provenance',{}).get('codeHashes',{})
                     summary['limits']={k:config.get(k) for k in ('callBudget','maxSeconds','callTimeoutSeconds')}
+                    output_limit=config.get('provider',{}).get('config',{}).get('maxTokens')
+                    if type(output_limit) is int and 1<=output_limit<=8192:summary['limits']['outputLimit']=output_limit
+                    summary['completionPolicy']=config.get('provenance',{}).get('completionPolicy')
+                    if run.get('task')=='nanobot-repair' and re.fullmatch(r'RUN-[A-Za-z0-9-]+',run['id']):
+                        directory=root/'.local/runs'/run['id']
+                        if not directory.is_symlink():repair_traces[run['id']]=repair_summary(directory)
                     status['runs'].append(summary)
         except (OSError,sqlite3.Error,ValueError) as exc:
             status['runtimeReadError'] = str(exc)
@@ -47,7 +98,13 @@ def status_snapshot(root):
                     if name=='warmup.json' else value)
             except (OSError,ValueError) as exc:
                 status[name] = {'readError':str(exc)}
-    return bodyless(safe_details(status))
+    cleaned=bodyless(safe_details(status))
+    for run in cleaned['runs']:
+        if run.get('id') in repair_traces:
+            # Sanitize this bounded projection independently so the outer
+            # status nesting does not erase all tool fields at the depth cap.
+            run['repairTrace']=bodyless(safe_details(repair_traces[run['id']]))
+    return cleaned
 
 
 def build_bundle(root=ROOT):
@@ -80,7 +137,7 @@ def build_bundle(root=ROOT):
         bundle.writestr('status.json',json.dumps(status_snapshot(root),ensure_ascii=False,indent=2))
         source = {}
         for name in ('serve_gui.py','diagnostic_log.py','ollama_bridge.py','model_provider.py','warmup_worker.py',
-                     'sdk_runtime_probe.py','repair_fixture.py','llm_transport.py'):
+                     'sdk_runtime_probe.py','repair_fixture.py','repair_engine.py','repair_sdk.py','llm_transport.py'):
             path = root/'scripts'/name
             if path.is_file() and not path.is_symlink():source[name]=hashlib.sha256(path.read_bytes()).hexdigest()
         try:

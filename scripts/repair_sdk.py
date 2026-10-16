@@ -3,7 +3,6 @@ from step_trace import traced
 import asyncio
 import importlib.metadata
 import json
-from pathlib import Path
 from nanobot import Nanobot
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.tools.base import Tool
@@ -11,7 +10,7 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.bus.queue import MessageBus
 from nanobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest, GenerationSettings, LLMUsage
 from nanobot.session.manager import SessionManager
-from repair_fixture import SKILL, PROMPT, TOOLS
+from repair_fixture import PROMPT, TOOLS
 from repair_engine import RepairRunner, progress
 from repair_runtime import SDK_VERSION
 from skill_engine import write
@@ -75,6 +74,10 @@ async def run_sdk(directory,config,runner=None):
         'toolsUsed':result.tools_used,'usage':result.usage.to_dict() if result.usage is not None else None,'messages':result.messages,'sessionKey':'repair:'+directory.name,
         'grantedTools':list(TOOLS)}
     write(directory/'repair-sdk-result.json',report)
+    runner.logs.append('nanobot','INFO' if result.stop_reason=='completed' and not result.error else 'ERROR',
+        'SDK turn result',config.get('correlationRunId',directory.name),
+        {'stopReason':result.stop_reason,'calls':len(runner.calls),'toolCalls':len(runner.tools),
+         'finalSummary':bool(runner.calls and runner.calls[-1].get('finalSummary'))})
     if result.error or result.stop_reason!='completed':raise RuntimeError(result.error or 'SDK stopped: '+str(result.stop_reason))
     candidate=runner.path('solution.py').read_bytes().decode('utf-8');(directory/'repair-candidate.py').write_text(candidate)
     progress(directory,sdkStopReason=result.stop_reason,candidateFrozen=True)

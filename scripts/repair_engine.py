@@ -17,11 +17,13 @@ from model_provider import payload as provider_payload
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='nanobot-python-repair-v1'
+COMPLETION_POLICY='visible-pass-summary-v1'
+SUMMARY_MESSAGE={'role':'user','content':'The trusted local visible tests passed for the current solution. The tool phase is finished. Reply with a short final summary only; do not request any tools or additional tests. Hidden tests and independent review will run after your turn. Do not claim their results.'}
 TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':'Run bounded nanobot SDK tool loop',
        'reflector':'Summarize recorded tools without model calls','evaluator':'Run trusted visible and hidden tests','reviewer':'Replay evidence and verify independent results'}
 
 def provenance():
-    return {'engine':ENGINE,'taskId':TASK_ID,'fixtureHash':digest({'baseline':BASELINE,'visible':VISIBLE,'hidden':HIDDEN,'prompt':PROMPT}),
+    return {'engine':ENGINE,'completionPolicy':COMPLETION_POLICY,'taskId':TASK_ID,'fixtureHash':digest({'baseline':BASELINE,'visible':VISIBLE,'hidden':HIDDEN,'prompt':PROMPT}),
             'skillHash':digest(SKILL),'sdkVersion':SDK_VERSION,'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest()
             for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','model_provider.py','step_trace.py')}}
 
@@ -32,6 +34,18 @@ def progress(directory,**changes):
 
 def trusted_test(source,split,fixture=None):
     return trusted_test_batch([{'source':source,'split':split,**({'fixture':fixture} if fixture is not None else {})}])[0]
+
+def source_hash(source):
+    return hashlib.sha256(source.encode('utf-8')).hexdigest()
+
+def summary_ready(tools,source):
+    for tool in reversed(tools):
+        if tool['name']=='run_tests':
+            if tool['status']!='completed' or tool.get('sourceHash')!=source_hash(source):return False
+            result=json.loads(tool['result'])
+            return (result.get('split')=='visible' and type(result.get('total')) is int and result['total']>0
+                    and type(result.get('passed')) is int and result['passed']==result['total'])
+    return False
 
 def trusted_test_batch(jobs):
     if not isinstance(jobs,list) or not 1<=len(jobs)<=32:raise ValueError('Use 1..32 trusted evaluation jobs')
@@ -69,13 +83,19 @@ class RepairRunner:
             if name=='read_solution':result=self.path(arguments['path']).read_bytes().decode('utf-8')
             elif name=='write_solution':
                 validate_source(arguments['source']);self.path(arguments['path']).write_text(arguments['source']);result='Updated solution.py; independent tests still required.'
-            else:result=json.dumps(trusted_test(self.path('solution.py').read_bytes().decode('utf-8'),'visible',self.config.get('fixture')))
-            record.update(status='completed',result=result);return result
+            else:
+                tested_source=self.path('solution.py').read_bytes().decode('utf-8')
+                result=json.dumps(trusted_test(tested_source,'visible',self.config.get('fixture')))
+            record.update(status='completed',result=result,sourceHash=source_hash(tested_source if name=='run_tests' else self.path('solution.py').read_bytes().decode('utf-8')))
+            if name=='run_tests':
+                scores=json.loads(result);record.update(visiblePassed=scores['passed'],visibleTotal=scores['total'])
+            return result
         except Exception as exc:record.update(status='failed',error=str(exc));raise
         finally:
             record['finishedAt']=time.time();write(self.directory/'repair-tools.json',self.tools)
             self.publish(toolCalls=len(self.tools),lastTool={'name':name,'status':record['status']})
-            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO','Tool '+name+' '+record['status'],self.config.get('correlationRunId',self.directory.name))
+            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO','Tool '+name+' '+record['status'],self.config.get('correlationRunId',self.directory.name),
+                {k:record[k] for k in ('id','sourceHash','visiblePassed','visibleTotal') if k in record})
 
     @traced('nanobot','model.call')
     def call(self,messages,tools):
@@ -83,15 +103,20 @@ class RepairRunner:
         if len(self.calls)>=cfg['callBudget'] or time.time()>=cfg['deadlineEpoch']:raise RuntimeError('Repair model call/time budget exhausted')
         grants=() if cfg.get('reflectionOnly') else TOOLS
         if sorted(t['function']['name'] for t in tools)!=sorted(grants):raise ValueError('SDK requested an unexpected tool grant')
+        final_summary=not cfg.get('reflectionOnly') and summary_ready(self.tools,self.path('solution.py').read_bytes().decode('utf-8'))
         settings={**cfg['provider']['config'],'inferenceTimeout':min(cfg['callTimeoutSeconds'],cfg['provider']['config']['inferenceTimeout'],max(1,int(cfg['deadlineEpoch']-time.time())))}
         payload={'model':settings['model'],'messages':messages,'tools':tools,'stream':True,'temperature':0,'max_tokens':settings['maxTokens']}
         payload=provider_payload(settings,payload)
+        if final_summary:
+            payload.update(messages=[*messages,dict(SUMMARY_MESSAGE)],tools=[])
+            if settings.get('provider')=='strata':payload['tool_choice']='none'
+            grants=()
         if len(json.dumps(payload))>200000:raise ValueError('Repair request exceeds size limit')
-        record={'id':len(self.calls)+1,'kind':'gepa-skill-reflection' if cfg.get('reflectionOnly') else 'nanobot-tool-turn','status':'running','startedAt':time.time(),
+        record={'id':len(self.calls)+1,'kind':'gepa-skill-reflection' if cfg.get('reflectionOnly') else 'nanobot-tool-turn','finalSummary':bool(final_summary),'status':'running','startedAt':time.time(),
             'timeoutSeconds':settings['inferenceTimeout'],'deadlineEpoch':time.time()+settings['inferenceTimeout'],'request':payload,'chunks':0,'outputChars':0,'reasoningChars':0}
         self.calls.append(record);write(self.directory/'repair-calls.json',self.calls)
         def publish():self.publish(calls=len(self.calls),completedCalls=sum(c['status']=='completed' for c in self.calls),failedCalls=sum(c['status']=='failed' for c in self.calls),lastCall={k:v for k,v in record.items() if k not in ('request','response','streamEvents')})
-        publish();self.logs.append('nanobot','INFO',f'Model call #{record["id"]} started',self.config.get('correlationRunId',self.directory.name),{'model':settings['model'],'timeoutSeconds':record['timeoutSeconds']})
+        publish();self.logs.append('nanobot','INFO',f'Model call #{record["id"]} started',self.config.get('correlationRunId',self.directory.name),{'model':settings['model'],'timeoutSeconds':record['timeoutSeconds'],'finalSummary':bool(final_summary),'outputLimit':settings['maxTokens']})
         last_update=time.monotonic()
         def update(changes):
             nonlocal last_update
@@ -109,6 +134,8 @@ class RepairRunner:
                 record['transport']=trace.result()
             if events is not None:record['streamEvents']=events
             message=record['response']['choices'][0]['message'];calls=message.get('tool_calls',[])
+            if final_summary and (calls or record['response']['choices'][0].get('finish_reason')!='stop'):
+                raise ValueError('Final summary must end with stop and no tool calls')
             if not isinstance(calls,list) or len(calls)>8:raise ValueError('Malformed tool call list')
             ids=set()
             for call in calls:
@@ -123,7 +150,8 @@ class RepairRunner:
         finally:
             record.update(finishedAt=time.time(),elapsedMs=round((time.time()-record['startedAt'])*1000,3))
             write(self.directory/'repair-calls.json',self.calls);publish()
-            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO',f'Model call #{record["id"]} {record["status"]}'+(': '+record['error'] if record.get('error') else ''),self.config.get('correlationRunId',self.directory.name),{'elapsedMs':record['elapsedMs'],'chunks':record['chunks']})
+            choice=record['response']['choices'][0] if record['status']=='completed' else {}
+            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO',f'Model call #{record["id"]} {record["status"]}'+(': '+record['error'] if record.get('error') else ''),self.config.get('correlationRunId',self.directory.name),{'elapsedMs':record['elapsedMs'],'chunks':record['chunks'],'finalSummary':bool(final_summary),'finishReason':choice.get('finish_reason'),'requestedTools':[t.get('function',{}).get('name') for t in choice.get('message',{}).get('tool_calls',[])]})
 
 def evidence(directory):
     names=('repair-config.json','repair-calls.json','repair-tools.json','repair-sdk-result.json','repair-baseline.py','repair-candidate.py','repair-reflection.json')
@@ -138,9 +166,25 @@ def verify(directory,expected_config=None):
     calls=json.loads((directory/'repair-calls.json').read_text());tools=json.loads((directory/'repair-tools.json').read_text())
     if not 1<=len(calls)<=cfg['callBudget'] or len(tools)>24:raise ValueError('Invalid repair call/tool accounting')
     for i,c in enumerate(calls):
+        prior=[t for t in tools if t.get('finishedAt',float('inf'))<=c['startedAt']]
+        before=baseline_source
+        for t in prior:
+            if t['name']=='write_solution' and t['status']=='completed':before=t['arguments']['source']
+        final_summary=summary_ready(prior,before)
+        if c.get('finalSummary') is not final_summary:raise ValueError('Final summary phase drift')
+        if final_summary:
+            choice_policy={'tool_choice':'none'} if cfg['provider']['config'].get('provider')=='strata' else {}
+            actual_policy={k:c['request'][k] for k in ('tool_choice',) if k in c['request']}
+            if c['request']['tools'] or actual_policy!=choice_policy or c['request']['messages'][-1]!=SUMMARY_MESSAGE:
+                raise ValueError('Final summary request policy changed')
+            choice=c['response']['choices'][0]
+            if choice.get('finish_reason')!='stop' or choice['message'].get('tool_calls'):
+                raise ValueError('Final summary did not finish without tools')
+        elif 'tool_choice' in c['request']:
+            raise ValueError('Tool phase must not force finalization')
         if c['request'] != provider_payload(cfg['provider']['config'], c['request']):
             raise ValueError('Repair provider reasoning settings changed')
-        if c['id']!=i+1 or c['status']!='completed' or c['request']['model']!=cfg['provider']['config']['model'] or c['request']['temperature']!=0 or c['request']['max_tokens']!=cfg['provider']['config']['maxTokens'] or sorted(t['function']['name'] for t in c['request']['tools'])!=sorted(TOOLS):raise ValueError('Repair request drift or failed call')
+        if c['id']!=i+1 or c['status']!='completed' or c['request']['model']!=cfg['provider']['config']['model'] or c['request']['temperature']!=0 or c['request']['max_tokens']!=cfg['provider']['config']['maxTokens'] or sorted(t['function']['name'] for t in c['request']['tools'])!=sorted(() if final_summary else TOOLS):raise ValueError('Repair request drift or failed call')
         if 'streamEvents' in c:
             acc=ToolAccumulator()
             for event in c['streamEvents']:acc.add(event)
@@ -168,6 +212,9 @@ def verify(directory,expected_config=None):
             elif t['name']=='run_tests':
                 if t['arguments']:raise ValueError('Visible test arguments drift')
                 tool_tests.append((replay,json.loads(t['result'])))
+                if (t.get('visiblePassed'),t.get('visibleTotal'))!=(tool_tests[-1][1]['passed'],tool_tests[-1][1]['total']):
+                    raise ValueError('Visible test diagnostic counts changed')
+            if t.get('sourceHash')!=source_hash(replay):raise ValueError('Tool source identity drift')
     if replay!=candidate:raise ValueError('Candidate differs from recorded writes')
     sdk=json.loads((directory/'repair-sdk-result.json').read_text())
     if sdk['sdkVersion']!=SDK_VERSION or sdk.get('error') or sdk['stopReason']!='completed' or sdk['grantedTools']!=list(TOOLS):raise ValueError('SDK did not complete successfully')
