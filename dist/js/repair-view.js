@@ -1,3 +1,4 @@
+import {changesView} from './changes-view.js';
 import {escapeHtml as esc} from './agent-view.js';
 import {LIVE_STATUSES} from './runtime-client.js';
 import {runProgressView} from './progress-view.js';
@@ -15,6 +16,7 @@ export function repairView(runtime){
  <section class="card spaced execution-progress"><h2>SDK 與執行設定</h2><p class="body-copy">SDK：${sdk?.available?`已可用 · ${esc(sdk.version)}`:discovering?'偵測中，請稍候':'尚未可用'}${sdk?.error&&!discovering?` · ${esc(sdk.error)}`:''}<br>若偵測完成後仍不可用，請停止 GUI，在 WSL 專案執行 <code>bash scripts/install-nanobot.sh</code>，再啟動 GUI。SDK 安裝在獨立的 .venv-nanobot，不更改原有模型設定。</p><div class="actions card-actions"><label>模型呼叫上限<input data-repair-budget type="number" min="2" max="12" value="${runtime.repairBudget??8}" ${active?'disabled':''}></label><label>整輪上限（秒）<input data-repair-seconds type="number" min="60" max="7200" value="${runtime.repairSeconds??900}" ${active?'disabled':''}></label><label>單次模型上限（秒）<input data-repair-call-seconds type="number" min="10" max="3600" value="${runtime.repairCallSeconds??120}" ${active?'disabled':''}></label><button class="button secondary" data-live-toggle>${runtime.enabled?'暫停 polling':'繼續 polling'}</button></div><p class="body-copy">工具最多 24 次。每輪使用全新工作目錄／session；模型、Skill、工具與預算在提交時凍結。請先暖機，並在框架整合設定足夠的輸出 tokens。</p></section>
  ${warmupView(runtime.data?.provider,{disabled:!!active||runtime.actionBusy,stale:stale||runtime.enabled===false})}
  ${runProgressView(runtime,run)}
+ ${changesView(runtime,run)}
  <div class="metrics spaced"><article class="metric"><div>修復前 · 公開測試</div><strong>${metric(result?.baseline.visible)}</strong></article><article class="metric"><div>修復後 · 公開測試</div><strong>${metric(result?.candidate.visible)}</strong></article><article class="metric"><div>修復後 · 最終測試</div><strong>${metric(result?.candidate.hidden)}</strong></article><article class="metric"><div>可信結果</div><strong class="runtime-metric">${result?(result.repairPassed?'修復通過':'修復未通過'):run?LIVE_STATUSES[run.status]:'尚未開始'}</strong><small>12 個固定 cases；不代表其他 Python 任務</small></article></div>
  <section class="card spaced"><div class="card-heading"><div><h2>修復與工具證據</h2><p>最終測試在 SDK 工作完成、修復檔凍結後執行；模型的文字聲明不計分。</p></div><button class="button secondary" data-repair-evidence="${esc(run?.id||'')}" ${!run?.repairResult||runtime.actionBusy?'disabled':''}>讀取修復與 trace</button><button class="button secondary" data-repair-patch ${!evidence?'disabled':''}>下載 patch</button></div>
  ${runtime.repairEvidenceError?`<div class="error-banner">${esc(runtime.repairEvidenceError)}</div>`:''}

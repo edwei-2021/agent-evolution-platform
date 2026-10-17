@@ -1,4 +1,6 @@
 // Live telemetry is ephemeral and separate from browser-local demo/configuration data.
+import {validateChanges} from './changes-client.js';
+import {GEPA_PRESETS} from './gepa-plan.js';
 export const LIVE_STATUSES={queued:'等待執行',running:'執行中',completed:'已完成',failed:'失敗',cancelled:'已取消',skipped:'未執行',interrupted:'執行中斷'};
 const validTime=v=>typeof v==='string'&&Number.isFinite(Date.parse(v));
 const validSkill=v=>v&&v.name==='normalize-support-title'&&typeof v.description==='string'&&v.description.length<500&&typeof v.body==='string'&&v.body.length<3000&&/^[a-f0-9]{64}$/.test(v.hash)&&v.policy&&Object.keys(v.policy).length===4&&['unicode_nfkc','casefold','trim','collapse_whitespace'].every(k=>typeof v.policy[k]==='boolean');
@@ -116,7 +118,7 @@ export function telemetryLabel(runtime,id){
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
   constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;this.gepaProfile='smoke';this.gepaMetrics=8;this.gepaProposals=2;this.gepaTaskCalls=8;this.gepaSeconds=1800;this.gepaCallSeconds=120;this.selectedGepaRun=null;this.pendingGepaSubmission=null;}
-  snapshot(){return {data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError,gepaProfile:this.gepaProfile,gepaMetrics:this.gepaMetrics,gepaProposals:this.gepaProposals,gepaTaskCalls:this.gepaTaskCalls,gepaSeconds:this.gepaSeconds,gepaCallSeconds:this.gepaCallSeconds,selectedGepaRun:this.selectedGepaRun};}
+  snapshot(){return {changes:this.changes,changeBusy:this.changeBusy,changeError:this.changeError,changeRevision:this.changeRevision,data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError,gepaProfile:this.gepaProfile,gepaMetrics:this.gepaMetrics,gepaProposals:this.gepaProposals,gepaTaskCalls:this.gepaTaskCalls,gepaSeconds:this.gepaSeconds,gepaCallSeconds:this.gepaCallSeconds,selectedGepaRun:this.selectedGepaRun};}
   async request(path,{method='GET',body,timeoutMs=8000}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
@@ -137,7 +139,7 @@ export class RuntimeClient{
       }
       const data=validateRuntime(await this.request('/api/v1/runtime'));
       if(data.serviceId!==this.capabilities.serviceId){this.capabilities=null;throw Error('服務已重新啟動；下次 polling 會重新取得連線資訊');}
-      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;this.selectedRepairRun=null;this.selectedGepaRun=null;this.repairEvidence=null;}
+      if(this.data?.serviceId&&this.data.serviceId!==data.serviceId){this.selectedSkillRun=null;this.selectedLlmRun=null;this.selectedRepairRun=null;this.selectedGepaRun=null;this.repairEvidence=null;this.changes=null;this.changeError=null;this.changeGeneration=(this.changeGeneration??0)+1;this.changeBusy=false;this.changeRevision=(this.changeRevision??0)+1;}
       if(this.selectedSkillRun){
         if(this.selectedSkillRun.id===data.skills?.latestRun?.id)this.selectedSkillRun=data.skills.latestRun;
         else if(['queued','running'].includes(this.selectedSkillRun.status))this.selectedSkillRun=null;
@@ -247,6 +249,24 @@ export class RuntimeClient{
       catch(error){if(error.status>=400&&error.status<500)this.pendingGepaSubmission=null;throw error;}
       this.pendingGepaSubmission=null;this.selectedGepaRun=null;
     },'gepa');
+  }
+  setGepaProfile(profile){
+    if(!Object.hasOwn(GEPA_PRESETS,profile))throw Error('GEPA 規模不正確');
+    this.gepaProfile=profile;const p=GEPA_PRESETS[profile];
+    this.gepaMetrics=p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;
+  }
+  async readChanges(id,rollout='',offset=0){
+    if(!/^RUN-[A-Za-z0-9-]+$/.test(id)||rollout&&!/^R\d{4}$/.test(rollout)||!Number.isInteger(offset)||offset<0||offset>200)throw Error('修改歷程選擇不正確');
+    const generation=(this.changeGeneration??0)+1,service=this.data?.serviceId;
+    this.changeGeneration=generation;this.changeBusy=true;this.changeError=null;this.changeRevision=(this.changeRevision??0)+1;this.onUpdate();
+    try{
+      const query=new URLSearchParams({rollout,offset:String(offset)});
+      const data=validateChanges(await this.request(`/api/v1/debug/changes/${encodeURIComponent(id)}?${query}`,{timeoutMs:30000}));
+      if(data.runId!==id||rollout&&data.selectedRollout!==rollout||data.offset!==offset)throw Error('歷程與選取的 Run／rollout 不一致');
+      if(generation!==this.changeGeneration||service!==this.data?.serviceId)return false;
+      this.changes=data;return true;
+    }catch(error){if(generation===this.changeGeneration)this.changeError=error.message;return false;}
+    finally{if(generation===this.changeGeneration){this.changeBusy=false;this.changeRevision=(this.changeRevision??0)+1;this.onUpdate();}}
   }
   async approveGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/runs/${encodeURIComponent(id)}/approve`,{method:'POST',body:{expectedRevision:this.data.gepa.revision},timeoutMs:120000}),'gepa');}
   async activateGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/versions/${encodeURIComponent(id)}/activate`,{method:'POST',body:{expectedRevision:this.data.gepa.revision}}),'gepa');}

@@ -7,7 +7,7 @@ test('app form events preserve settings through click, submit, navigation and LL
  const names=['document','window','location','history','FormData','fetch','setTimeout','clearTimeout','setInterval','clearInterval'];
  const originals=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
  t.after(()=>{for(const [name,descriptor] of originals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}});
- const listeners=new Map(),windowListeners=new Map(),forms=new Set(),calls=[];
+ const listeners=new Map(),windowListeners=new Map(),forms=new Set(),calls=[];let openChanges=false;
  const node=()=>({textContent:'',dataset:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},addEventListener(){}});
  const main=node();let html='',renders=0;
  Object.defineProperty(main,'innerHTML',{get:()=>html,set:value=>{html=value;renders++;for(const form of forms)form.isConnected=false;}});
@@ -16,6 +16,7 @@ test('app form events preserve settings through click, submit, navigation and LL
  const dispatch=async(type,event)=>{for(const handler of listeners.get(type)||[])await handler(event);};
  globalThis.document={activeElement:null,addEventListener:(type,handler)=>add(listeners,type,handler),querySelector:selector=>{
   if(selector==='dialog[open]')return null;
+  if(selector==='.change-history details[open]')return openChanges?{}:null;
   if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);
  },querySelectorAll:()=>[],createElement:()=>({innerHTML:'',querySelector(){return {outerHTML:this.innerHTML};}})};
  globalThis.window={localStorage:{getItem:()=>null,setItem(){}},addEventListener:(type,handler)=>add(windowListeners,type,handler)};
@@ -33,6 +34,10 @@ test('app form events preserve settings through click, submit, navigation and LL
   if(path.endsWith('/capabilities'))value={schemaVersion:1,mode:'native-tools',serviceId:runtime.serviceId,csrfToken:'a-valid-local-session-token'};
   else if(path==='/api/v1/runtime')value=runtime;
   else if(path==='/api/v1/llm/ollama')value=saved;
+  else if(path.startsWith('/api/v1/debug/changes/')){
+   const url=new URL(path,'http://localhost'),id=url.pathname.split('/').at(-1),offset=Number(url.searchParams.get('offset')||0);
+   value={schemaVersion:1,runId:id,runStatus:'completed',task:'gepa-evolution',verified:true,historyOnly:true,rollouts:[],totalRollouts:0,offset,limit:20,selectedRollout:url.searchParams.get('rollout')||'',trace:null,warnings:[],skillHistory:[{id:'baseline',kind:'baseline',before:'Recorded Skill',after:'Recorded Skill',changed:false,note:'Frozen baseline Skill'}]};
+  }
   else if(path.startsWith('/api/v1/debug/logs?'))value={schemaVersion:1,records:[],retained:0,matched:0,retentionLimit:10000,nextBefore:null,modules:['api','gui','llm'],levels:['DEBUG','INFO','WARNING','ERROR']};
   else if(path==='/api/v1/llm/ollama/warmup'){
    const body=JSON.parse(options.body);assert.equal(body.expectedRevision,saved.revision);
@@ -139,6 +144,25 @@ test('app form events preserve settings through click, submit, navigation and LL
   assert.match(nodes.get('[data-gepa-results]').outerHTML,/0 題 · 0 個百分點/);
   assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
   globalThis.document.activeElement=null;
+ });
+ await t.test('profile selection and explicit time changes reach actual submission with final workload shown',async()=>{
+  const target=(selector,value)=>({value,dataset:{},matches:s=>s===selector,hasAttribute:()=>false});
+  await dispatch('change',{target:target('[data-gepa-profile]','full')});
+  assert.match(html,/data-gepa-metrics[^>]*value="26"/);assert.match(html,/data-gepa-seconds[^>]*value="7200"/);
+  assert.match(html,/最後評測 60 次 = 86 次 rollout/);
+  await dispatch('change',{target:target('[data-gepa-seconds]','3600')});
+  await click(button(null,{gepaStart:''}));const posts=calls.filter(c=>c.path==='/api/v1/gepa/runs');
+  const body=JSON.parse(posts.at(-1).options.body);
+  assert.equal(body.profile,'full');assert.equal(body.metricBudget,26);assert.equal(body.proposalBudget,1);assert.equal(body.maxSeconds,3600);
+ });
+ await t.test('actual history button reads only GET and open source details survive status polling',async()=>{
+  const posts=calls.filter(c=>c.options?.method==='POST').length;
+  await click(button(null,{changeLoad:'RUN-focused-result'}));assert.match(html,/Recorded Skill/);
+  assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
+  const panel=nodes.get('[data-change-panel]')||node();nodes.set('[data-change-panel]',panel);
+  panel.dataset.changeRevision=html.match(/data-change-revision="(\d+)"/)[1];panel.outerHTML='preserved open details';
+  openChanges=true;const before=renders;await click(button(null,{liveRefresh:''}));
+  assert.equal(renders,before);assert.equal(panel.outerHTML,'preserved open details');openChanges=false;
  });
  await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
   runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';

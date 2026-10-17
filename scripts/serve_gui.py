@@ -141,6 +141,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
             elif match := re.fullmatch(r'/api/v1/debug/steps/(RUN-[A-Za-z0-9-]+)',path):
                 from step_trace import snapshot
                 self.json_response(200,snapshot(runtime,match[1]))
+            elif match := re.fullmatch(r'/api/v1/debug/changes/(RUN-[A-Za-z0-9-]+)',path):
+                from change_trace import snapshot
+                values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(values) - {'rollout', 'offset', 'limit'} or any(len(v) != 1 for v in values.values()):
+                    raise ValueError('Invalid change history query')
+                self.json_response(200, snapshot(runtime, match[1], values.get('rollout', [''])[0],
+                                                int(values.get('offset', ['0'])[0]), int(values.get('limit', ['20'])[0])))
             elif match := re.fullmatch(r'/api/v1/debug/runs/(RUN-[A-Za-z0-9-]+)/(coordinator|worker|reflector|evaluator|reviewer)', path):
                 runtime.get_run(match[1])
                 target = (runtime.local / 'runs' / match[1] / (match[2] + '.log')).resolve()
