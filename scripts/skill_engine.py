@@ -88,6 +88,7 @@ def provenance():
             'evaluatorHash': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             'runnerHash': hashlib.sha256((ROOT / 'scripts/skill_agents.py').read_bytes()).hexdigest(),
             'runtimeHash': hashlib.sha256((ROOT / 'scripts/runtime_service.py').read_bytes()).hexdigest(),
+            'auditHash': hashlib.sha256((ROOT / 'scripts/skill_audit.py').read_bytes()).hexdigest(),
             'pythonVersion': platform.python_version(), 'unicodeVersion': unicodedata.unidata_version,
             'model': None, 'frameworkConnected': False}
 

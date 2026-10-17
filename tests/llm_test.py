@@ -21,6 +21,7 @@ from validation_wait import first_request, startup_budget
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
 from llm_engine import messages, output, skill, splits, verify
+from skill_archive import snapshot as skill_snapshot
 from serve_gui import GuiHandler, DIST
 
 
@@ -151,6 +152,13 @@ class LlmWorkflowTests(unittest.TestCase):
         count = len(MockModel.calls)
         path = self.service.local / 'runs' / done['id']
         self.assertEqual(verify(path), done['llmResult'])
+        archive=skill_snapshot(self.service.root,done['id'])
+        self.assertEqual(len(archive['records']),1)
+        entry=archive['records'][0]
+        self.assertEqual(entry['status'],'generated');self.assertEqual(entry['origin'],'recorded')
+        self.assertEqual(entry['conditions']['component'],'llm-reflector')
+        self.assertTrue(entry['instruction']['text'])
+        self.assertTrue(all(r['taskId'].startswith('TR-') for r in entry['trainingRefs']))
         state = self.service.llm.approve(done['id'], 1)
         self.assertEqual(state['active']['label'], 'L1'); self.assertEqual(state['revision'], 2)
         self.assertEqual(len(MockModel.calls), count)  # Approval/reviewer do not re-infer.
@@ -183,6 +191,10 @@ class LlmWorkflowTests(unittest.TestCase):
         done = finish(self.service, self.start()['id'])
         self.assertEqual(done['status'], 'failed'); self.assertEqual(len(MockModel.calls), 6)
         self.assertEqual(next(a for a in done['agents'] if a['role'] == 'evaluator')['status'], 'skipped')
+        archive=skill_snapshot(self.service.root,done['id'])
+        self.assertEqual(archive['records'][0]['status'],'failed')
+        self.assertEqual(archive['records'][0]['errorType'],'ValueError')
+
 
     def test_evidence_tampering_blocks_human_release(self):
         done = finish(self.service, self.start()['id'])

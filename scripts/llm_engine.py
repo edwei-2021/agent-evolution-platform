@@ -46,7 +46,7 @@ def provenance(profile):
             'datasetHash': digest(data), 'splitSizes': {k: len(v) for k, v in data.items()},
             'splitHashes': {k: digest(v) for k, v in data.items()},
             'codeHashes': {name: hashlib.sha256((ROOT / 'scripts' / name).read_bytes()).hexdigest()
-                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'model_provider.py', 'ollama_bridge.py', 'runtime_service.py','step_trace.py')}}
+                for name in ('llm_engine.py', 'llm_agents.py', 'llm_transport.py', 'model_provider.py', 'ollama_bridge.py', 'runtime_service.py','step_trace.py','skill_audit.py')}}
 
 
 def messages(value, text):

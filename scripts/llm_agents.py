@@ -3,8 +3,9 @@ from step_trace import traced
 import argparse
 import json
 from pathlib import Path
-from llm_engine import TASKS, Runner, content, messages, progress, provenance, reflection_messages, score, skill, splits, verify
+from llm_engine import TASKS, Runner, content, progress, provenance, reflection_messages, score, skill, splits, verify
 from skill_engine import write
+from skill_audit import Generation
 
 
 def load(directory, filename):
@@ -33,13 +34,17 @@ def run_role(role, directory):
     elif role == 'reflector':
         # Validation/held-out outputs never cross this reflection boundary.
         training = load(directory, 'llm-baseline-evaluation.json')['train']
-        reply = runner.call('reflection', reflection_messages(base, training))
-        value = json.loads(content(reply['response']))
-        if not isinstance(value, dict) or set(value) != {'body'}:
-            raise ValueError('Reflection must return exactly one body field')
-        candidate = skill(value['body'])
-        write(directory / 'llm-search.json', {'candidate': candidate, 'parentHash': base['hash']})
-        (directory / 'llm-candidate.md').write_text(candidate['body'])
+        with Generation(directory,'C1',config,base,[r for r in training if not r['passed']],'llm-reflector',trigger='training-failures-only',
+                        reflectionInstruction=reflection_messages(base,[])[0]['content']) as audit:
+            reply = runner.call('reflection', reflection_messages(base, training))
+            value = json.loads(content(reply['response']))
+            audit.capture(value.get('body') if isinstance(value,dict) else None)
+            if not isinstance(value, dict) or set(value) != {'body'}:
+                raise ValueError('Reflection must return exactly one body field')
+            candidate = skill(value['body'])
+            audit.generated(candidate)
+            write(directory / 'llm-search.json', {'candidate': candidate, 'parentHash': base['hash']})
+            (directory / 'llm-candidate.md').write_text(candidate['body'])
         state = progress(directory)
         progress(directory, candidates=state['candidates'] + [{'id': 'C1', 'skill': candidate, 'training': None, 'validation': None}])
         print('Candidate generated from training failures only; metadata frozen.', flush=True)

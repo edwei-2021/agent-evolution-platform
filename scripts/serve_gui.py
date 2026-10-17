@@ -121,7 +121,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, ollama_bridge(runtime).snapshot())
             elif path == '/api/v1/debug/support':
                 from export_diagnostics import build_bundle
-                payload = build_bundle(runtime.root)
+                query = parse_qs(urlsplit(self.path).query,keep_blank_values=True)
+                if set(query)-{'runId'} or any(len(v)!=1 for v in query.values()):
+                    raise ValueError('Invalid diagnostic query')
+                selected = query.get('runId',[None])[0]
+                if selected is not None and not re.fullmatch(r'RUN-[A-Za-z0-9-]+',selected):
+                    raise ValueError('Invalid diagnostic Run')
+                payload = build_bundle(runtime.root,run_id=selected)
                 try:
                     self.send_response(200)
                     self.send_header('Content-Type','application/zip')
@@ -131,6 +137,15 @@ class GuiHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(payload)
                 except (BrokenPipeError,ConnectionResetError):
                     self.close_connection = True
+            elif path == '/api/v1/debug/skills':
+                from skill_archive import index
+                values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(values)-{'offset','task'} or any(len(v)!=1 for v in values.values()):
+                    raise ValueError('Invalid Skill history query')
+                self.json_response(200,index(runtime.root,int(values.get('offset',['0'])[0]),values.get('task',[''])[0]))
+            elif match := re.fullmatch(r'/api/v1/debug/skills/(RUN-[A-Za-z0-9-]+)',path):
+                from skill_archive import snapshot
+                self.json_response(200,snapshot(runtime.root,match[1]))
             elif path == '/api/v1/debug/logs':
                 values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                 if set(values) - {'module','level','runId','q','before','limit'} or any(len(v) != 1 for v in values.values()):
@@ -191,6 +206,15 @@ class GuiHandler(SimpleHTTPRequestHandler):
             self._api_step=Step(runtime.logs,'api','http.mutation',match[0] if match else None,route=path[:180])
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
+            elif path == '/api/v1/debug/skills':
+                from skill_archive import index
+                values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(values)-{'offset','task'} or any(len(v)!=1 for v in values.values()):
+                    raise ValueError('Invalid Skill history query')
+                self.json_response(200,index(runtime.root,int(values.get('offset',['0'])[0]),values.get('task',[''])[0]))
+            elif match := re.fullmatch(r'/api/v1/debug/skills/(RUN-[A-Za-z0-9-]+)',path):
+                from skill_archive import snapshot
+                self.json_response(200,snapshot(runtime.root,match[1]))
             elif path == '/api/v1/debug/logs':
                 from debug_log import LEVELS
                 if set(body) != {'level','message','page'} or body.get('level') not in LEVELS or not isinstance(body.get('message'), str) or not 1 <= len(body['message']) <= 2048 or not isinstance(body.get('page'), str) or len(body['page']) > 80:

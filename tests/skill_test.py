@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from skill_engine import baseline, dataset, evaluate, execute, markdown, propose, RULES, skill, validate_skill
 from runtime_service import RuntimeService, ROLES
+from skill_archive import snapshot as skill_snapshot
 from serve_gui import GuiHandler, DIST
 
 
@@ -93,6 +94,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('candidate-4.md', done['artifacts'])
         traces = json.loads((self.service.local / 'runs' / done['id'] / 'training-probes.json').read_text())
         self.assertTrue(all(row['taskId'].startswith('TR-') for probe in traces for trial in probe['trials'] for row in trial['training']['records']))
+        archive=skill_snapshot(self.service.root,done['id'])
+        self.assertEqual(len(archive['records']),sum(len(probe['trials']) for probe in traces))
+        self.assertTrue(all(r['origin']=='recorded' for r in archive['records']))
+        self.assertTrue(any(r['matchesSelection'] for r in archive['records']))
+
 
     def test_approval_activation_rollback_and_restart_preserve_immutable_versions(self):
         done = finish(self.service, self.start())

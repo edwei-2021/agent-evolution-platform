@@ -18,7 +18,7 @@ REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the s
 
 def provenance(profile,frozen=None):
     return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),
-      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py')}}
+      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py','skill_audit.py')}}
 
 def progress(directory,**changes):
     p=directory/'gepa-progress.json';data=json.loads(p.read_text()) if p.exists() else {'engine':ENGINE,'phase':'queued','calls':0,'completedCalls':0,'failedCalls':0,'metricEvaluations':0,'proposals':0,'rollouts':0,'lastCall':None}

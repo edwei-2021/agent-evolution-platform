@@ -44,6 +44,8 @@ test('app form events preserve settings through click, submit, navigation and LL
    const body=JSON.parse(options.body),id=path.split('/')[4];assert.equal(body.expectedRevision,challengeData.revision);
    challengeData={...challengeData,revision:challengeData.revision+1,questions:path.endsWith('/delete')?challengeData.questions.filter(q=>q.id!==id):challengeData.questions.map(q=>q.id===id?{...body.challenge,id}:q)};value=challengeData;
   }
+  else if(path.startsWith('/api/v1/debug/skills?'))value={schemaVersion:1,historyOnly:true,offset:Number(new URL(path,'http://localhost').searchParams.get('offset')),limit:20,total:0,runs:[]};
+  else if(path.startsWith('/api/v1/debug/skills/'))value={schemaVersion:1,historyOnly:true,runId:path.split('/').at(-1),task:'gepa-evolution',runStatus:'completed',baseline:{text:'Saved Skill'},conditions:{model:'fixture'},records:[],warnings:[],approvedVersions:[],searchAudit:null};
   else if(path.startsWith('/api/v1/debug/changes/')){
    const url=new URL(path,'http://localhost'),id=url.pathname.split('/').at(-1),offset=Number(url.searchParams.get('offset')||0);
    value={schemaVersion:1,runId:id,runStatus:'completed',task:'gepa-evolution',verified:true,historyOnly:true,rollouts:[],totalRollouts:0,offset,limit:20,selectedRollout:url.searchParams.get('rollout')||'',trace:null,warnings:[],skillHistory:[{id:'baseline',kind:'baseline',before:'Recorded Skill',after:'Recorded Skill',changed:false,note:'Frozen baseline Skill'}]};
@@ -259,6 +261,18 @@ test('app form events preserve settings through click, submit, navigation and LL
   assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,challengeData.revision);
   assert.equal(submitted.metricBudget,10);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,3600);
   assert.equal(calls.filter(c=>c.path==='/api/v1/repair/runs').length,1,'bank Start must not repeat the single repair');
+ });
+
+ await t.test('Skill archive navigation and exact Run queries read local records without mutations',async()=>{
+  const posts=calls.filter(c=>c.options?.method==='POST').length;
+  await click(button(null,{page:'skill-history'}));for(let i=0;i<30;i++)await Promise.resolve();
+  assert.match(html,/Skill 產生紀錄/);
+  await submit(form('skill-archive-form',{runId:'RUN-archived-fixture',task:'gepa-evolution'}));
+  assert.ok(calls.some(c=>c.path==='/api/v1/debug/skills/RUN-archived-fixture'));
+  assert.match(nodes.get('[data-skill-archive-results]').outerHTML,/Saved Skill/);
+  await click(button(null,{skillArchiveRun:'RUN-other-archived'}));
+  assert.ok(calls.some(c=>c.path==='/api/v1/debug/skills/RUN-other-archived'));
+  assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
  });
 
 });

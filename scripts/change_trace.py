@@ -17,10 +17,11 @@ def patch(before, after):
 
 
 class Reader:
-    def __init__(self, root):
+    def __init__(self, root, maximum=8 * 1024 * 1024):
         self.root = Path(root)
         self.warnings = []
         self.bytes_read = 0
+        self.maximum = maximum
         if self.root.is_symlink() or not self.root.is_dir():
             raise ValueError('Run directory is unavailable or is a symlink')
 
@@ -42,7 +43,7 @@ class Reader:
         with os.fdopen(descriptor, 'rb') as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ValueError('Change history requires regular files')
-            remaining = 8 * 1024 * 1024 - self.bytes_read
+            remaining = self.maximum - self.bytes_read
             raw = stream.read(min(maximum + 1, max(0, remaining)))
         self.bytes_read += len(raw)
         if remaining <= maximum and len(raw) == remaining:

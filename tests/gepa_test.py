@@ -17,6 +17,7 @@ import unittest
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_dataset import dataset, GROUPS, skill
+from skill_archive import snapshot as skill_snapshot
 from adaptive_validation import current as validation_calibration
 from gepa_validation_budget import smoke_budget
 from validation_wait import first_request, startup_budget
@@ -264,6 +265,12 @@ class GepaWorkflowTests(unittest.TestCase):
         self.assert_workload(done)
         self.assertFalse(done['gepaResult']['eligible']);self.assertEqual(done['gepaResult']['proposals'],0)
         self.assertLessEqual(done['gepaResult']['metricEvaluations'],8)
+        archive=skill_snapshot(self.service.root,done['id'])
+        self.assertEqual(archive['records'],[])
+        self.assertTrue(archive['searchAudit']['skipped'])
+        self.assertTrue(all(e['reason']=='all_scores_perfect' for e in archive['searchAudit']['skipped']))
+        self.assertIn('iteration-reservation',archive['searchAudit']['stop']['reasons'])
+
         with self.assertRaises(RuntimeError):self.service.gepa.approve(done['id'],1)
     def test_http_failure_is_one_request_and_releases_shared_provider_slot(self):
         Model.mode='http-error';done=self.finish(self.start()['id']);self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),1)

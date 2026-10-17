@@ -107,7 +107,7 @@ def status_snapshot(root):
     return cleaned
 
 
-def build_bundle(root=ROOT):
+def build_bundle(root=ROOT, run_id=None):
     root = Path(root).resolve()
     data = io.BytesIO()
     total = 0
@@ -121,7 +121,7 @@ def build_bundle(root=ROOT):
                 # A collector may race append/rotation. Read once and redact again.
                 try:
                     size=path.stat().st_size
-                    if size>MAX_BYTES or total+size>MAX_EXPORT:
+                    if size>MAX_BYTES or total+size>MAX_EXPORT-8*1024*1024:
                         omissions.append({'file':path.name,'reason':'export_size_limit'})
                         continue
                     with path.open('rb') as stream:raw=stream.read(MAX_BYTES)
@@ -135,9 +135,45 @@ def build_bundle(root=ROOT):
                 bundle.writestr('logs/'+path.name,'\n'.join(lines)+'\n')
                 total += len(raw)
         bundle.writestr('status.json',json.dumps(status_snapshot(root),ensure_ascii=False,indent=2))
+        # Explicit Skill artifacts are exported separately from body-free logs.
+        # Never pass instructions through the log truncation/redaction projector.
+        from skill_archive import index as skill_index, snapshot as skill_snapshot
+        skill_count = 0
+        skill_input = 0
+        skill_output = 0
+        try:
+            if run_id is not None:
+                identities = [run_id]
+                skill_total = 1
+            else:
+                page = skill_index(root,limit=1000)
+                identities = [row['id'] for row in page['runs']]
+                skill_total = page['total']
+            for identifier in identities:
+                if total+skill_input >= MAX_EXPORT or skill_output >= 8*1024*1024:
+                    omissions.append({'file':'skills/'+identifier+'.json','reason':'skill_export_limit'})
+                    continue
+                try:
+                    view = skill_snapshot(root,identifier,input_budget=MAX_EXPORT-total-skill_input)
+                    skill_input += view.pop('inputBytes')
+                    encoded = json.dumps(view,ensure_ascii=False).encode()
+                    if skill_output+len(encoded)>8*1024*1024:
+                        omissions.append({'file':'skills/'+identifier+'.json','reason':'skill_output_limit'})
+                        continue
+                    bundle.writestr('skills/'+identifier+'.json',encoded)
+                    skill_output += len(encoded)
+                    skill_count += 1
+                except (OSError,ValueError,KeyError,TypeError,sqlite3.Error) as exc:
+                    omissions.append({'file':'skills/'+identifier+'.json','reason':type(exc).__name__})
+            if skill_total>len(identities):
+                omissions.append({'file':'skills','reason':'run_count_limit','omittedRuns':skill_total-len(identities)})
+        except (OSError,ValueError,sqlite3.Error):
+            skill_total = None
+            omissions.append({'file':'skills','reason':'history_index_unavailable'})
+
         source = {}
         for name in ('serve_gui.py','diagnostic_log.py','ollama_bridge.py','model_provider.py','warmup_worker.py',
-                     'sdk_runtime_probe.py','repair_fixture.py','repair_engine.py','repair_sdk.py','llm_transport.py'):
+                     'sdk_runtime_probe.py','skill_audit.py','skill_archive.py','gepa_sdk.py','repair_fixture.py','repair_engine.py','repair_sdk.py','llm_transport.py'):
             path = root/'scripts'/name
             if path.is_file() and not path.is_symlink():source[name]=hashlib.sha256(path.read_bytes()).hexdigest()
         try:
@@ -145,8 +181,10 @@ def build_bundle(root=ROOT):
         except (OSError,subprocess.TimeoutExpired):commit=None
         bundle.writestr('source.json',json.dumps({'revisionOnDisk':commit,'hashesOnDisk':source},indent=2))
         bundle.writestr('manifest.json',json.dumps({'schemaVersion':1,'inputBytes':total,'omitted':omissions,
-            'contains':'bounded categorized metadata logs and status; no raw prompts, model responses or task source',
-            'networkRequests':0},indent=2))
+            'contains':'bounded logs/status and redacted Skill artifacts; no raw task prompts, model responses or task source',
+            'networkRequests':0,'skillRuns':{'total':skill_total,'included':skill_count},
+            'skillInputBytes':skill_input,'skillOutputBytes':skill_output,
+            'skillArtifacts':'redacted Skill instructions, diffs and generation conditions; raw task/model bodies excluded'},indent=2))
     return data.getvalue()
 
 
@@ -154,10 +192,13 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',type=Path,default=ROOT)
     parser.add_argument('--output',type=Path)
+    parser.add_argument('--run-id')
     args=parser.parse_args(argv)
     destination=args.output or args.root/'.local/diagnostics'/('diagnostics-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')+'.zip')
     destination.parent.mkdir(parents=True,exist_ok=True)
-    destination.write_bytes(build_bundle(args.root))
+    if args.run_id is not None and not re.fullmatch(r'RUN-[A-Za-z0-9-]+',args.run_id):
+        parser.error('Invalid Run identity')
+    destination.write_bytes(build_bundle(args.root,run_id=args.run_id))
     print('DIAGNOSTIC_SUPPORT '+str(destination.resolve()))
     return 0
 

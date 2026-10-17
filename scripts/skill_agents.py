@@ -1,5 +1,6 @@
 """Five fixed native roles for measured declarative skill evolution."""
 from step_trace import traced
+from skill_audit import Generation
 import argparse
 import json
 from pathlib import Path
@@ -84,8 +85,14 @@ def run_role(role, directory):
         progress(directory, phase=role, candidates=candidates, evaluations=counts, trainingFailures=[r for r in initial['records'] if not r['passed']][:8])
         for index in range(config['maxCandidates']):
             selected, trials = propose(current, feedback)
+            for number, trial in enumerate(trials,1):
+                with Generation(directory,f'T{index+1:02d}{number:02d}',config,current,feedback['records'],'rule-worker',
+                                mutation=trial['rule'],round=index+1,
+                                chosenForNext=selected is not None and selected[1]==trial['rule']) as audit:
+                    audit.generated(trial['skill'])
             counts['training'] += sum(trial['training']['total'] for trial in trials)
             probes.append({'round': index + 1, 'trials': trials})
+            write(directory / 'training-probes.json', probes)
             if selected is None:
                 progress(directory, candidates=candidates, evaluations=counts)
                 print('No training-loss-reducing rule mutation remains; stop search.', flush=True)

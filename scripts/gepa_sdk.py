@@ -14,6 +14,7 @@ from gepa_dataset import data_for, skill
 from gepa_runtime import GEPA_VERSION
 from skill_engine import write
 from debug_log import DebugLog
+from skill_audit import Generation, save, stamp
 
 class GlobalRunner(RepairRunner):
     def __init__(self,directory,config,session,tags):
@@ -106,27 +107,47 @@ class Adapter:
         identifier=f'P{len(session.proposals)+1:03d}';child=session.directory/'reflections'/identifier;child.mkdir(parents=True)
         cfg={**session.cfg,'callBudget':1,'reflectionOnly':True};runner=GlobalRunner(child,cfg,session,{'proposalId':identifier,'stage':'reflection'})
         content=json.dumps({'candidate':candidate,'training':training},ensure_ascii=False)
-        reply=runner.call([{'role':'system','content':REFLECTION_SYSTEM},{'role':'user','content':content}],[])
-        value=json.loads(reply['choices'][0]['message']['content'])
-        if not isinstance(value,dict) or set(value)!={'skill_body'}:raise ValueError('Reflection must return only skill_body JSON')
-        body=skill(value['skill_body'])['body']
-        session.proposals.append({'id':identifier,'parentBody':candidate['skill_body'],'candidate':dict(candidate),'training':training,
-          'components':components_to_update,'system':REFLECTION_SYSTEM,'input':content,'body':body,'createdAt':time.time()})
-        write(session.directory/'gepa-proposals.json',session.proposals);progress(session.directory,proposals=len(session.proposals))
-        return {'skill_body':body}
+        with Generation(session.directory,identifier,session.cfg,skill(candidate['skill_body']),training,
+                        'gepa-worker',seed=0,skipPerfectScore=True,cacheEvaluation=False,useMerge=False,reflectionInstruction=REFLECTION_SYSTEM,metricEvaluations=sum(r['stage']=='search' for r in session.ledger),
+                        callsUsed=len(session.calls)) as audit:
+            reply=runner.call([{'role':'system','content':REFLECTION_SYSTEM},{'role':'user','content':content}],[])
+            value=json.loads(reply['choices'][0]['message']['content'])
+            audit.capture(value.get('skill_body') if isinstance(value,dict) else None)
+            if not isinstance(value,dict) or set(value)!={'skill_body'}:raise ValueError('Reflection must return only skill_body JSON')
+            body=skill(value['skill_body'])['body']
+            audit.generated(skill(body))
+            session.proposals.append({'id':identifier,'parentBody':candidate['skill_body'],'candidate':dict(candidate),'training':training,
+              'components':components_to_update,'system':REFLECTION_SYSTEM,'input':content,'body':body,'createdAt':time.time()})
+            write(session.directory/'gepa-proposals.json',session.proposals);progress(session.directory,proposals=len(session.proposals))
+            return {'skill_body':body}
 
 @traced('gepa','search')
 def search(directory,cfg):
     if importlib.metadata.version('gepa')!=GEPA_VERSION:raise RuntimeError('Unexpected GEPA SDK version')
     logs=DebugLog(cfg['logRoot']);logs.append('gepa','INFO','Real GEPA search started',directory.name,{'metricBudget':cfg['metricBudget'],'profile':cfg['profile']})
     session=Session(directory,cfg);adapter=Adapter(session);data=data_for(cfg);minibatch=cfg['reflectionBatch']
+    search_audit={'schemaVersion':1,'seed':0,'skipped':[],'stop':None}
+    class Observer:
+        def on_evaluation_skipped(self,event):
+            if len(search_audit['skipped'])<80:
+                search_audit['skipped'].append({k:event.get(k) for k in ('iteration','candidate_idx','reason','scores')})
+                save(directory/'gepa-search-audit.json',search_audit)
     def stop(state):
         # GEPA stops between iterations; reserve a complete serial iteration
         # (parent + child minibatch + full validation) before it can start.
         used=sum(r['stage']=='search' for r in session.ledger)
-        return session.fatal is not None or used+2*minibatch+len(data['validation'])>cfg['metricBudget'] or len(session.proposals)>=cfg['proposalBudget'] or time.time()>=cfg['deadlineEpoch']
+        reasons=[]
+        if session.fatal is not None:reasons.append('proposal-failed')
+        if used+2*minibatch+len(data['validation'])>cfg['metricBudget']:reasons.append('iteration-reservation')
+        if len(session.proposals)>=cfg['proposalBudget']:reasons.append('proposal-budget')
+        if time.time()>=cfg['deadlineEpoch']:reasons.append('deadline')
+        if reasons:
+            search_audit['stop']={'at':stamp(),'reasons':reasons,'used':used,'metricBudget':cfg['metricBudget'],
+                'requiredNext':2*minibatch+len(data['validation']),'proposals':len(session.proposals)}
+            save(directory/'gepa-search-audit.json',search_audit)
+        return bool(reasons)
     result=optimize(seed_candidate={'skill_body':cfg['baseline']['skill']['body']},trainset=data['train'],valset=data['validation'],
-      adapter=adapter,max_metric_calls=cfg['metricBudget'],stop_callbacks=stop,reflection_minibatch_size=minibatch,
+      adapter=adapter,callbacks=[Observer()],max_metric_calls=cfg['metricBudget'],stop_callbacks=stop,reflection_minibatch_size=minibatch,
       skip_perfect_score=True,use_merge=False,cache_evaluation=False,seed=0,raise_on_exception=True,display_progress_bar=False)
     if session.fatal is not None:raise RuntimeError('GEPA proposal failed; no retry or final evaluation: '+session.fatal)
     report={'gepaVersion':GEPA_VERSION,'candidates':result.candidates,'validationScores':result.val_aggregate_scores,

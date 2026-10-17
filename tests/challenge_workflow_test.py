@@ -14,6 +14,10 @@ import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from challenge_bank import validate_snapshot
 from change_trace import snapshot as change_snapshot
+from skill_archive import snapshot as skill_snapshot
+from export_diagnostics import build_bundle
+import io
+import zipfile
 from gepa_engine import REFLECTION_SYSTEM,verify
 from ollama_bridge import DEFAULTS
 from runtime_service import RuntimeService,ROLES,ROOT
@@ -127,6 +131,23 @@ if(!html.includes('逐題修復與 Skill 對照紀錄')||!html.includes('未執�
 """
         parsed=subprocess.run(['node','--input-type=module','-e',table_parser],cwd=ROOT,input=json.dumps(pages),text=True,capture_output=True,timeout=10)
         self.assertEqual(parsed.returncode,0,parsed.stdout+parsed.stderr)
+        archive=skill_snapshot(self.service.root,run['id'])
+        self.assertEqual(len(archive['records']),1)
+        entry=archive['records'][0]
+        self.assertEqual(entry['status'],'generated');self.assertEqual(entry['origin'],'recorded')
+        self.assertEqual(entry['instruction']['text'],IMPROVED)
+        self.assertEqual(entry['conditions']['seed'],0)
+        self.assertTrue(all(row['taskId'] in train_ids for row in entry['trainingRefs']))
+        archive_parser="""import fs from 'node:fs';import {validateSkillArchive,skillArchiveView} from './dist/js/skill-archive.js';
+const data=validateSkillArchive(JSON.parse(fs.readFileSync(0,'utf8')));
+if(!skillArchiveView({data,offset:0}).includes('產生條件'))process.exit(1);
+"""
+        parsed=subprocess.run(['node','--input-type=module','-e',archive_parser],cwd=ROOT,input=json.dumps(archive),text=True,capture_output=True,timeout=10)
+        self.assertEqual(parsed.returncode,0,parsed.stdout+parsed.stderr)
+        with zipfile.ZipFile(io.BytesIO(build_bundle(self.service.root,run_id=run['id']))) as bundle:
+            exported=json.loads(bundle.read('skills/'+run['id']+'.json'))
+            self.assertEqual(exported['records'][0]['instruction']['text'],IMPROVED)
+        self.assertEqual(len(Model.calls),calls_before)
         approved=self.service.gepa.approve(run['id'],1);self.assertNotEqual(approved['activeVersionId'],'GSV-baseline')
         cfg_path=directory/'gepa-config.json';cfg=json.loads(cfg_path.read_text());cfg['datasetSnapshot']['data']['heldout'][0]['fixture']['hidden'][0]['expected']='tampered';cfg_path.write_text(json.dumps(cfg))
         with self.assertRaises(ValueError):verify(directory)
