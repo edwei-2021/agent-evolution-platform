@@ -22,13 +22,23 @@ BY_ID={q['id']:q for q in SEEDS}
 IMPROVED='CHALLENGE_IMPROVED: Follow the task-specific function contract. Inspect failure categories, repair boundary conditions without mutating inputs, test again, then summarize.'
 
 class Model(BaseHTTPRequestHandler):
-    calls=[]
+    calls=[];mode='normal'
     def log_message(self,*args):pass
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));type(self).calls.append(body)
         messages=body['messages'];message={'role':'assistant','content':'No repair attempted with this baseline.'}
+        matched=re.search(r'Task ID: (CH-[A-Za-z0-9-]+)',str(messages));identifier=matched[1] if matched else None
+        improved=IMPROVED in str(messages)
         if messages[0]['content']==REFLECTION_SYSTEM:
             message['content']=json.dumps({'skill_body':IMPROVED})
+        elif type(self).mode=='http-failure' and identifier=='CH-signed-decimal':
+            self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
+        elif type(self).mode=='last-write' or type(self).mode=='bounded-caps' and (identifier in ('CH-signed-decimal','CH-binary-search-first') or identifier=='CH-stable-record-sort' and improved):
+            used=sum(m.get('role')=='tool' for m in messages)
+            rejected=['def solve(data):\n    return data.isdigit()\n','def solve(data):\n    return 1000001\n','import math\ndef solve(data):\n    return data\n','def solve(data):\n    return 10 ** 2\n']
+            source=BY_ID[identifier]['reference'] if type(self).mode=='last-write' else rejected[max(0,used-2)%len(rejected)]
+            name,args=('read_solution',{'path':'solution.py'}) if used==0 else ('write_solution',{'path':'solution.py','source':source}) if type(self).mode=='last-write' or used>=2 else ('run_tests',{})
+            message={'role':'assistant','content':None,'tool_calls':[{'id':'cap-'+str(used),'type':'function','function':{'name':name,'arguments':json.dumps(args)}}]}
         elif IMPROVED in str(messages):
             identifier=re.search(r'Task ID: (CH-[A-Za-z0-9-]+)',str(messages))[1]
             used=sum(m.get('role')=='tool' for m in messages)
@@ -45,7 +55,7 @@ class ChallengeWorkflowTests(unittest.TestCase):
         self.assertEqual(importlib.metadata.version('nanobot-ai'),'0.3.5')
         self.assertEqual(importlib.metadata.version('gepa'),'0.1.4')
         self.temp=tempfile.TemporaryDirectory();self.service=RuntimeService(self.temp.name)
-        Model.calls=[];self.server=ThreadingHTTPServer(('127.0.0.1',0),Model)
+        Model.calls=[];Model.mode='normal';self.server=ThreadingHTTPServer(('127.0.0.1',0),Model)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
         self.service.ollama.save({**DEFAULTS,'host':'127.0.0.1','port':self.server.server_port,'model':'fixture-local','maxTokens':1024,'inferenceTimeout':10},0)
     def tearDown(self):

@@ -4,7 +4,7 @@ from step_trace import traced
 import hashlib
 import json
 from pathlib import Path
-from repair_engine import provenance as repair_provenance, verify as verify_repair, ROOT
+from repair_engine import provenance as repair_provenance, verify as verify_repair, ROOT, TASK_FAILURE_POLICY
 from repair_fixture import digest
 from repair_transport import ToolAccumulator
 from gepa_dataset import data_for, dataset_hash, skill, DATASET_VERSION
@@ -28,7 +28,8 @@ def child_config(cfg,task,body):
     return {'engine':'nanobot-python-repair-v1','taskId':task['id'],'skill':skill(body),'fixture':task['fixture'],
       'sdk':cfg['sdk'],'provider':cfg['provider'],'maxSeconds':cfg['maxSeconds'],'deadlineEpoch':cfg['deadlineEpoch'],
       'callBudget':cfg['taskCallBudget'],'callTimeoutSeconds':cfg['callTimeoutSeconds'],'toolBudget':24,
-      'provenance':cfg['provenance']['repair'],'logRoot':cfg['logRoot'],'correlationRunId':cfg['runId']}
+      'provenance':cfg['provenance']['repair'],'logRoot':cfg['logRoot'],'correlationRunId':cfg['runId'],
+      **({'taskFailurePolicy':cfg['taskFailurePolicy']} if cfg['profile']=='bank' else {})}
 
 def score(result):
     return int(result['repairPassed'])
@@ -37,6 +38,7 @@ def score(result):
 def verify(directory, progress_callback=None):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
     if cfg['provenance']!=provenance(cfg['profile'],cfg.get('datasetSnapshot')):raise ValueError('GEPA code or dataset provenance changed')
+    if cfg['profile']=='bank' and cfg.get('taskFailurePolicy')!=TASK_FAILURE_POLICY:raise ValueError('Bank task failure policy changed')
     data=data_for(cfg);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
     ledger=json.loads((directory/'gepa-rollouts.json').read_text());proposals=json.loads((directory/'gepa-proposals.json').read_text())
     search=json.loads((directory/'gepa-search.json').read_text());selection=json.loads((directory/'gepa-selection.json').read_text())
@@ -64,6 +66,7 @@ def verify(directory, progress_callback=None):
             if row['stage'] not in totals or split not in totals[row['stage']] or row['body']!=(seed if row['stage']=='baseline' else selected)['body'] or row['startedAt']<selection['frozenAt']:raise ValueError('Final task evaluated before selection or Skill drift')
         child=directory/'rollouts'/row['id'];result=verify_repair(child,child_config(cfg,task,row['body']))
         if result!=json.loads((child/'repair-evaluation.json').read_text()) or row['score']!=score(result) or row['evidenceHash']!=result['evidenceHash']:raise ValueError('Rollout score differs from trusted tests')
+        if cfg['profile']=='bank' and any(row.get(k)!=result[k] for k in ('taskOutcome','sdkStopReason')):raise ValueError('Task outcome differs from verified SDK evidence')
         if row['stage']!='search':totals[row['stage']][split].append(row)
         calls=json.loads((child/'repair-calls.json').read_text())
         reconstructed.extend([{**c,'rolloutId':row['id'],'taskId':row['taskId'],'stage':row['stage']} for c in calls])
@@ -115,7 +118,7 @@ def verify(directory, progress_callback=None):
     return {'engine':ENGINE,'checksPassed':True,'eligible':eligible,'selectedSkill':selected,'baselineSkill':seed,'final':final,
       'metricEvaluations':len(search_rows),'rollouts':len(ledger),'proposals':len(proposals),'calls':len(actual),'validationScores':scores,
       'gepaVersion':GEPA_VERSION,'sdkVersion':cfg['sdk']['version'],'datasetVersion':cfg['provenance']['datasetVersion'],'evidenceHash':digest(hashes),
-      **({'breakdown':breakdown(ledger,tasks)} if cfg['profile']=='bank' else {})}
+      **({'breakdown':breakdown(ledger,tasks),'taskFailures':[{'rolloutId':r['id'],'taskId':r['taskId'],'stage':r['stage'],'reason':r['sdkStopReason']} for r in ledger if r.get('taskOutcome')=='call-limit']} if cfg['profile']=='bank' else {})}
 
 def breakdown(ledger,tasks):
     result={}
@@ -134,4 +137,5 @@ def training_trace(child,row,task):
     tools=json.loads((child/'repair-tools.json').read_text())
     return {'rolloutId':row['id'],'taskId':task['id'],'task':task['fixture']['prompt'],'score':row['score'],
       'source':(child/'repair-candidate.py').read_bytes().decode('utf-8'),
-      'feedback':result['candidate'],'tools':[{'name':t['name'],'status':t['status'],'result':t.get('result'),'error':t.get('error')} for t in tools]}
+      'feedback':result['candidate'],'tools':[{'name':t['name'],'status':t['status'],'result':t.get('result'),'error':t.get('error')} for t in tools],
+      **({'taskOutcome':result['taskOutcome'],'sdkStopReason':result['sdkStopReason']} if 'taskOutcome' in result else {})}

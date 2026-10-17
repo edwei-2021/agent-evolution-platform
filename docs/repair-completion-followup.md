@@ -1,5 +1,7 @@
 # Bounded repair completion contract (修復流程結束契約)
 
+Follow-up: [bank-only failed-task scoring](gepa-task-failure-followup.md) preserves `max_iterations` as a native failure and never promotes it to successful repair. A new frozen policy lets GEPA measure such a task as zero and continue remaining bank evaluations; standalone repair and legacy profiles retain the strict failure behavior described here.
+
 The real Strata API and preload succeeded. In the supplied repair trace, the worker read the baseline, measured failing visible tests, wrote a valid repair, and reached a full visible pass on request four. The exact tool result was present in the next request. It then read the unchanged solution and repeatedly reran already passing tests. A later response announced a summary while also requesting another test. Eight requests completed successfully, but no tool-free terminal answer arrived before the frozen cap. The native SDK reported `max_iterations`; its attempted extra finalization request was blocked before HTTP dispatch.
 
 An offline independent evaluation of the supplied candidate passed both visible and hidden splits. That establishes candidate correctness for this fixture only. The historical run remains failed: its evaluator and reviewer never ran. Private identifiers, provider configuration, uploaded payloads and attachment hashes are excluded from this document.

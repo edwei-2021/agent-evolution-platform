@@ -17,7 +17,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from challenge_bank import ChallengeBank, fixture, validate_question, validate_snapshot
-from challenge_policy import validate_source
+from challenge_policy import validate_source, model_contract, BUILTINS, METHODS
 from debug_log import DebugLog
 from repair_engine import ROOT, trusted_test_batch
 from gepa_store import GepaStore
@@ -38,6 +38,16 @@ class ChallengeBankTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.service=Service(self.temp.name);self.bank=self.service.challenges
+
+    def test_model_contract_matches_allowlists_and_feedback_names_rejected_construct_without_source(self):
+        contract=model_contract()
+        for name in {*BUILTINS,*METHODS}:self.assertIn(name,contract)
+        self.assertIn(contract,fixture(SEEDS[0])['prompt'])
+        with self.assertRaisesRegex(ValueError,'Unavailable call: isdigit at line 2') as caught:
+            validate_source('def solve(data):\n return data.isdigit("PRIVATE_SOURCE_LITERAL")')
+        self.assertNotIn('PRIVATE_SOURCE_LITERAL',str(caught.exception))
+        with self.assertRaisesRegex(ValueError,'finite numeric literals'):
+            validate_source('def solve(data):\n return 1000001')
 
     def test_twelve_distinct_oracles_pass_with_real_defects_and_three_difficulties(self):
         self.assertGreaterEqual(len(SEEDS),12)

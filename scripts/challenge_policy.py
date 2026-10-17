@@ -12,6 +12,15 @@ METHODS = {'append', 'extend', 'copy', 'update', 'setdefault', 'pop', 'get', 'it
            'startswith', 'endswith', 'replace', 'count', 'index', 'add', 'discard', 'sort', 'reverse'}
 
 
+def model_contract():
+    return ('Allowed builtins: ' + ', '.join(sorted(BUILTINS)) + '. Allowed data methods: ' +
+            ', '.join(sorted(METHODS)) + '. No other calls or methods are available. '
+            'Use explicit loops instead of comprehensions or helper functions. Only reverse= is an allowed call keyword. '
+            'Numeric literals must be finite with magnitude <=1000000; power (**) is unavailable. '
+            'Raise only ValueError or ValueError(...), without chaining. Source <=8 KB and 1000 AST nodes. '
+            'Use character membership in a literal string for restricted character checks. Do not repeat a rejected construct; rewrite using this allowlist.')
+
+
 def validate_source(source):
     if not isinstance(source, str) or not source.strip() or len(source.encode()) > 8000:
         raise ValueError('Define solve(data) in at most 8 KB')
@@ -46,18 +55,19 @@ def validate_source(source):
             if isinstance(node.ctx, ast.Store) and node.id in {*BUILTINS, 'solve'}:
                 raise ValueError('Cannot replace trusted builtins or the entrypoint')
         if isinstance(node, ast.Attribute) and (node.attr not in METHODS or not isinstance(node.ctx, ast.Load)):
-            raise ValueError('Only approved data methods are available; arbitrary attributes are forbidden')
+            raise ValueError(f'Unavailable data method/attribute: {node.attr[:40]} at line {node.lineno}. ' + model_contract())
         if isinstance(node, ast.Call):
             if not (isinstance(node.func, ast.Name) and node.func.id in BUILTINS or
                     isinstance(node.func, ast.Attribute) and node.func.attr in METHODS):
-                raise ValueError('Call only approved builtins and data methods; recursion is unavailable')
+                name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr if isinstance(node.func, ast.Attribute) else type(node.func).__name__
+                raise ValueError(f'Unavailable call: {name[:40]} at line {node.lineno}. ' + model_contract())
             if any(k.arg is None or k.arg not in ('reverse',) for k in node.keywords):
                 raise ValueError('Only the reverse keyword is available')
         if isinstance(node, ast.Constant):
             value = node.value
             if not (value is None or type(value) is bool or type(value) in (int, float) and
                     abs(value) <= 1000000 and math.isfinite(value) or type(value) is str and len(value) <= 2000):
-                raise ValueError('Unsupported or oversized constant')
+                raise ValueError(f'Unsupported or oversized constant at line {node.lineno}; use finite numeric literals with magnitude <=1000000 and strings <=2000 characters')
         if isinstance(node, ast.Raise):
             target = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
             if node.cause is not None or not isinstance(target, ast.Name) or target.id != 'ValueError':

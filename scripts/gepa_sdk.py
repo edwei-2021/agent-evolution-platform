@@ -4,9 +4,10 @@ import asyncio
 import importlib.metadata
 import json
 import time
+import threading
 from gepa import optimize
 from gepa.core.adapter import EvaluationBatch
-from repair_engine import RepairRunner, verify as verify_repair
+from repair_engine import RepairRunner, verify as verify_repair, TaskCallLimitReached
 from repair_sdk import run_sdk
 from gepa_engine import progress, child_config, score, training_trace, REFLECTION_SYSTEM
 from gepa_dataset import data_for, skill
@@ -22,17 +23,21 @@ class GlobalRunner(RepairRunner):
         return super().call(messages,tools)
     def publish(self,**changes):
         data=super().publish(**changes)
-        tail=[{**c,**self.tags,'id':self.offset+i+1,'localId':c['id']} for i,c in enumerate(self.calls)]
-        self.session.calls[self.offset:]=tail
-        write(self.session.directory/'gepa-calls.json',self.session.calls)
-        summary={k:v for k,v in tail[-1].items() if k not in ('request','response','streamEvents')} if tail else None
-        progress(self.session.directory,calls=len(self.session.calls),completedCalls=sum(c['status']=='completed' for c in self.session.calls),
-          failedCalls=sum(c['status']=='failed' for c in self.session.calls),lastCall=summary)
+        with self.session.publish_lock:
+            # A late callback from a preceding rollout cannot erase a later
+            # runner's call suffix or replace its active-call projection.
+            if self.offset+len(self.calls)<len(self.session.calls):return data
+            tail=[{**c,**self.tags,'id':self.offset+i+1,'localId':c['id']} for i,c in enumerate(self.calls)]
+            self.session.calls[self.offset:]=tail
+            write(self.session.directory/'gepa-calls.json',self.session.calls)
+            summary={k:v for k,v in tail[-1].items() if k not in ('request','response','streamEvents')} if tail else None
+            progress(self.session.directory,calls=len(self.session.calls),completedCalls=sum(c['status']=='completed' for c in self.session.calls),
+              failedCalls=sum(c['status']=='failed' for c in self.session.calls),lastCall=summary)
         return data
 
 class Session:
     def __init__(self,directory,cfg):
-        self.directory=directory;self.cfg=cfg
+        self.directory=directory;self.cfg=cfg;self.publish_lock=threading.RLock()
         self.ledger=json.loads((directory/'gepa-rollouts.json').read_text())
         self.calls=json.loads((directory/'gepa-calls.json').read_text())
         self.proposals=json.loads((directory/'gepa-proposals.json').read_text());self.fatal=None
@@ -47,13 +52,21 @@ class Session:
         write(child/'repair-tools.json',[]);write(child/'repair-calls.json',[])
         write(child/'repair-reflection.json',{'kind':'gepa-evaluation','fixedSkillHash':skill(body)['hash']})
         row={'id':identifier,'stage':stage,'taskId':task['id'],'body':body,'startedAt':time.time()}
-        progress(self.directory,activeRollout=identifier,activeTask=task['id'],phase=stage)
+        with self.publish_lock:
+            progress(self.directory,activeRollout=identifier,activeTask=task['id'],phase=stage)
         runner=GlobalRunner(child,cfg,self,{'rolloutId':identifier,'taskId':task['id'],'stage':stage})
-        asyncio.run(run_sdk(child,cfg,runner))
+        try:
+            asyncio.run(run_sdk(child,cfg,runner))
+        except TaskCallLimitReached:
+            # Only a frozen bank task's verifiable local call cap can continue.
+            # Transport, global deadlines and corrupt evidence still propagate.
+            pass
         result=verify_repair(child,cfg);write(child/'repair-evaluation.json',result)
+        if 'taskOutcome' in result:row.update({k:result[k] for k in ('taskOutcome','sdkStopReason')})
         row.update(score=score(result),evidenceHash=result['evidenceHash'],finishedAt=time.time());self.ledger.append(row)
         write(self.directory/'gepa-rollouts.json',self.ledger)
-        progress(self.directory,rollouts=len(self.ledger),metricEvaluations=sum(r['stage']=='search' for r in self.ledger))
+        with self.publish_lock:
+            progress(self.directory,rollouts=len(self.ledger),metricEvaluations=sum(r['stage']=='search' for r in self.ledger))
         print(f'{identifier} {stage} {task["id"]}: trusted task success {row["score"]}',flush=True)
         return row,training_trace(child,row,task)
 

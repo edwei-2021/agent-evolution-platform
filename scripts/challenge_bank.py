@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 import uuid
-from challenge_policy import POLICY, check_json, validate_source
+from challenge_policy import POLICY, check_json, validate_source, model_contract
 from repair_fixture import digest
 
 VERSION = 'python-challenges-v1'
@@ -20,7 +20,7 @@ def fixture(question):
              'network, shell, classes, recursion, comprehensions or private attributes. '
              'Use read_solution, write_solution and run_tests; summarize after visible tests pass.')
     return {'policy': POLICY, 'baseline': question['baseline'],
-            'prompt': f'Task ID: {question["id"]}\n{question["prompt"]}' + rules,
+            'prompt': f'Task ID: {question["id"]}\n{question["prompt"]}' + rules + '\n' + model_contract(),
             'visible': copy.deepcopy(question['visible']), 'hidden': copy.deepcopy(question['hidden'])}
 
 

@@ -18,6 +18,24 @@ from model_provider import payload as provider_payload
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='nanobot-python-repair-v1'
 COMPLETION_POLICY='visible-pass-summary-v1'
+TASK_FAILURE_POLICY='bounded-task-cap-zero-v1'
+
+
+class TaskCallLimitReached(RuntimeError):
+    """A verified bank task exhausted its calls; never a successful SDK turn."""
+
+
+def task_call_limit(config,calls,sdk,tools):
+    return (config.get('taskFailurePolicy')==TASK_FAILURE_POLICY and
+            config.get('fixture',{}).get('policy')=='python-challenge-v1' and
+            sdk.get('stopReason')=='max_iterations' and not sdk.get('error') and
+            len(calls)==config['callBudget'] and bool(calls) and
+            not any(t.get('name')=='run_tests' and t.get('status')!='completed' for t in tools) and
+            all(c.get('status')=='completed' and c.get('finalSummary') is False and
+                c.get('finishedAt',float('inf'))<=config['deadlineEpoch'] for c in calls) and
+            bool(calls[-1].get('response',{}).get('choices',[{}])[0].get('message',{}).get('tool_calls')))
+
+
 SUMMARY_MESSAGE={'role':'user','content':'The trusted local visible tests passed for the current solution. The tool phase is finished. Reply with a short final summary only; do not request any tools or additional tests. Hidden tests and independent review will run after your turn. Do not claim their results.'}
 TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':'Run bounded nanobot SDK tool loop',
        'reflector':'Summarize recorded tools without model calls','evaluator':'Run trusted visible and hidden tests','reviewer':'Replay evidence and verify independent results'}
@@ -223,7 +241,11 @@ def verify(directory,expected_config=None):
             if t.get('sourceHash')!=source_hash(replay):raise ValueError('Tool source identity drift')
     if replay!=candidate:raise ValueError('Candidate differs from recorded writes')
     sdk=json.loads((directory/'repair-sdk-result.json').read_text())
-    if sdk['sdkVersion']!=SDK_VERSION or sdk.get('error') or sdk['stopReason']!='completed' or sdk['grantedTools']!=list(TOOLS):raise ValueError('SDK did not complete successfully')
+    limited=task_call_limit(cfg,calls,sdk,tools)
+    if sdk['sdkVersion']!=SDK_VERSION or sdk.get('error') or (sdk['stopReason']!='completed' and not limited) or sdk['grantedTools']!=list(TOOLS):raise ValueError('SDK did not complete successfully')
+    if not limited:
+        last=calls[-1]['response']['choices'][0];message=last['message']
+        if message.get('tool_calls') or last.get('finish_reason','stop')!='stop' or not isinstance(message.get('content'),str) or not message['content'].strip():raise ValueError('SDK completion lacks a terminal model response')
     initial='\n'.join(m.get('content','') for m in calls[0]['request']['messages'] if isinstance(m.get('content'),str))
     if prompt not in initial or cfg['skill']['body'] not in initial:raise ValueError('Initial task or fixed Skill drift')
     # One fresh bounded process per verification. Deduplicate only identical
@@ -240,6 +262,7 @@ def verify(directory,expected_config=None):
     patch=''.join(difflib.unified_diff(baseline_source.splitlines(keepends=True),candidate.splitlines(keepends=True),fromfile='a/solution.py',tofile='b/solution.py'))
     if (directory/'repair-change.patch').exists() and (directory/'repair-change.patch').read_bytes().decode('utf-8')!=patch:raise ValueError('Patch artifact differs from verified source')
     return {'engine':ENGINE,'checksPassed':True,'taskId':cfg['taskId'],'baseline':baseline,'candidate':after,
-            'repairPassed':all(m['passed']==m['total'] for m in after.values()),'calls':len(calls),'toolCalls':len(tools),
+            'repairPassed':not limited and all(m['passed']==m['total'] for m in after.values()),'calls':len(calls),'toolCalls':len(tools),
             'candidateHash':hashlib.sha256(candidate.encode()).hexdigest(),'patchHash':hashlib.sha256(patch.encode()).hexdigest(),'evidenceHash':evidence(directory),
-            'sdkVersion':SDK_VERSION,'decision':'verified-task-result-only; no skill activation'}
+            'sdkVersion':SDK_VERSION,'decision':'verified-task-result-only; no skill activation',
+            **({'taskOutcome':'call-limit' if limited else 'completed','sdkStopReason':sdk['stopReason']} if cfg.get('taskFailurePolicy')==TASK_FAILURE_POLICY else {})}

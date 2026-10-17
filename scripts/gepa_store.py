@@ -4,6 +4,7 @@ import time
 import uuid
 from gepa_dataset import skill, dataset
 from repair_fixture import SKILL
+from repair_engine import TASK_FAILURE_POLICY
 from repair_runtime import sdk_status
 from gepa_runtime import gepa_status
 from gepa_engine import ENGINE, provenance, verify
@@ -46,7 +47,7 @@ class GepaStore:
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
           'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile'],frozen),'logRoot':str(self.service.root),
-          **({'datasetSnapshot':frozen} if frozen else {})}
+          **({'datasetSnapshot':frozen,'taskFailurePolicy':TASK_FAILURE_POLICY} if frozen else {})}
     def approve(self,identifier,expected):
         with self.service.lock:
             self.check_revision(expected);run=self.service.get_run(identifier)
