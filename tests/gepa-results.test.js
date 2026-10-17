@@ -22,6 +22,14 @@ function improving(runtime){
 }
 const approval=html=>html.match(/<button[^>]*data-gepa-approve[^>]*>/)[0];
 
+test('difficulty breakdown labels absent samples and retains the frozen bank identity',()=>{
+ const runtime=fixture(),run=runtime.data.gepa.latestRun;
+ run.gepaConfig.profile='bank';run.gepaConfig.bankRevision=7;
+ const zero={passed:0,total:0},two={passed:2,total:2};
+ run.gepaResult.breakdown={difficulty:{easy:{baseline:{validation:zero,heldout:two},selected:{validation:zero,heldout:two}}},topic:{}};
+ const html=gepaResultsView(runtime);assert.match(html,/依難度與題目面向/);assert.match(html,/初階/);assert.match(html,/無題目 ／ 2\/2/);assert.match(html,/多難度題庫 v7/);
+});
+
 test('completed perfect seed visibly reports zero evolution before settings, rather than generic success',()=>{
  const runtime=fixture(),html=gepaView(runtime);
  assert.match(html,/實際演化成果：未產生新 Skill・沿用基準/);

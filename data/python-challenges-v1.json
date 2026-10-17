@@ -1,0 +1,1039 @@
+[
+  {
+    "id": "CH-normalize-whitespace",
+    "title": "空白正規化 / Whitespace normalization",
+    "difficulty": "easy",
+    "topic": "text",
+    "group": "normalize-whitespace",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Return a string with leading/trailing whitespace removed and every internal whitespace run replaced by one ASCII space. Treat Unicode whitespace as whitespace. Do not change non-whitespace characters.",
+    "baseline": "def solve(data):\n    return data.strip().replace(\"  \", \" \")\n",
+    "reference": "def solve(data):\n    return \" \".join(data.split())\n",
+    "visible": [
+      {
+        "input": "  hello   world  ",
+        "expected": "hello world"
+      },
+      {
+        "input": "a\tb\nc",
+        "expected": "a b c"
+      },
+      {
+        "input": "",
+        "expected": ""
+      }
+    ],
+    "hidden": [
+      {
+        "input": " 　a b ",
+        "expected": "a b"
+      },
+      {
+        "input": "a      b",
+        "expected": "a b"
+      },
+      {
+        "input": "  台灣  Python  ",
+        "expected": "台灣 Python"
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-stable-deduplication",
+    "title": "保留順序去重 / Stable deduplication",
+    "difficulty": "easy",
+    "topic": "collections",
+    "group": "stable-deduplication",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Given a list of integers, remove duplicates while preserving each value's first-appearance order. Return a new list and do not mutate the input.",
+    "baseline": "def solve(data):\n    return sorted(set(data))\n",
+    "reference": "def solve(data):\n    seen = set()\n    out = []\n    for item in data:\n        if item not in seen:\n            seen.add(item)\n            out.append(item)\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          3,
+          1,
+          3,
+          2
+        ],
+        "expected": [
+          3,
+          1,
+          2
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      },
+      {
+        "input": [
+          2,
+          2,
+          2
+        ],
+        "expected": [
+          2
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          -1,
+          0,
+          -1,
+          2
+        ],
+        "expected": [
+          -1,
+          0,
+          2
+        ]
+      },
+      {
+        "input": [
+          9,
+          8,
+          7
+        ],
+        "expected": [
+          9,
+          8,
+          7
+        ]
+      },
+      {
+        "input": [
+          0,
+          1,
+          0,
+          -1,
+          1
+        ],
+        "expected": [
+          0,
+          1,
+          -1
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-frequency-table",
+    "title": "重複計數 / Frequency table",
+    "difficulty": "medium",
+    "topic": "hashing",
+    "group": "frequency-table",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Given a list of strings, return a dictionary mapping each exact string to its occurrence count. Case and empty strings are significant. Do not mutate input. Each input string is at most 100 characters.",
+    "baseline": "def solve(data):\n    out = {}\n    for item in data:\n        out[item] = 1\n    return out\n",
+    "reference": "def solve(data):\n    out = {}\n    for item in data:\n        out[item] = out.get(item, 0) + 1\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          "a",
+          "b",
+          "a"
+        ],
+        "expected": {
+          "a": 2,
+          "b": 1
+        }
+      },
+      {
+        "input": [],
+        "expected": {}
+      },
+      {
+        "input": [
+          "A",
+          "a"
+        ],
+        "expected": {
+          "A": 1,
+          "a": 1
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          "",
+          "x",
+          ""
+        ],
+        "expected": {
+          "": 2,
+          "x": 1
+        }
+      },
+      {
+        "input": [
+          "台灣",
+          "台灣"
+        ],
+        "expected": {
+          "台灣": 2
+        }
+      },
+      {
+        "input": [
+          "x",
+          "x",
+          "x",
+          "y"
+        ],
+        "expected": {
+          "x": 3,
+          "y": 1
+        }
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-chunk-sequence",
+    "title": "分段與尾端資料 / Chunk sequence",
+    "difficulty": "medium",
+    "topic": "partitioning",
+    "group": "chunk-sequence",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input has items (a list) and size (an integer). Return consecutive chunks of size elements, preserving a shorter final chunk. Empty items yields []. A nonpositive size raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    items = data[\"items\"]\n    size = data[\"size\"]\n    out = []\n    for i in range(0, len(items) - size + 1, size):\n        out.append(items[i:i+size])\n    return out\n",
+    "reference": "def solve(data):\n    size = data[\"size\"]\n    if size <= 0:\n        raise ValueError(\"size\")\n    out = []\n    for i in range(0, len(data[\"items\"]), size):\n        out.append(data[\"items\"][i:i+size])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "size": 2
+        },
+        "expected": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            5
+          ]
+        ]
+      },
+      {
+        "input": {
+          "items": [],
+          "size": 3
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "items": [
+            1
+          ],
+          "size": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "items": [
+            1,
+            2
+          ],
+          "size": 5
+        },
+        "expected": [
+          [
+            1,
+            2
+          ]
+        ]
+      },
+      {
+        "input": {
+          "items": [],
+          "size": -2
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "items": [
+            "a",
+            "b"
+          ],
+          "size": 1
+        },
+        "expected": [
+          [
+            "a"
+          ],
+          [
+            "b"
+          ]
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-binary-search-first",
+    "title": "重複值二分搜尋 / First-match binary search",
+    "difficulty": "hard",
+    "topic": "search",
+    "group": "binary-search-first",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input has sorted nondecreasing integer items and integer target. Return the index of the first occurrence, or -1 when absent. Empty items is valid. Do not mutate input.",
+    "baseline": "def solve(data):\n    items = data[\"items\"]\n    lo = 0\n    hi = len(items) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if items[mid] == data[\"target\"]:\n            return mid\n        if items[mid] < data[\"target\"]:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n",
+    "reference": "def solve(data):\n    lo = 0\n    hi = len(data[\"items\"]) - 1\n    answer = -1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if data[\"items\"][mid] >= data[\"target\"]:\n            if data[\"items\"][mid] == data[\"target\"]:\n                answer = mid\n            hi = mid - 1\n        else:\n            lo = mid + 1\n    return answer\n",
+    "visible": [
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            2,
+            2,
+            4
+          ],
+          "target": 2
+        },
+        "expected": 1
+      },
+      {
+        "input": {
+          "items": [],
+          "target": 2
+        },
+        "expected": -1
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            3
+          ],
+          "target": 2
+        },
+        "expected": -1
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "items": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "target": 2
+        },
+        "expected": 0
+      },
+      {
+        "input": {
+          "items": [
+            -4,
+            -4,
+            0,
+            3
+          ],
+          "target": -4
+        },
+        "expected": 0
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "target": 4
+        },
+        "expected": 3
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-merge-intervals",
+    "title": "重疊區間合併 / Merge intervals",
+    "difficulty": "hard",
+    "topic": "intervals",
+    "group": "merge-intervals",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Given integer [start,end] pairs in any order, return sorted merged intervals. Overlapping or touching endpoints merge. A reversed interval raises ValueError. Empty input returns []. Do not mutate input.",
+    "baseline": "def solve(data):\n    out = []\n    for pair in sorted(data):\n        if out and pair[0] < out[-1][1]:\n            out[-1][1] = pair[1]\n        else:\n            out.append(pair[:])\n    return out\n",
+    "reference": "def solve(data):\n    for pair in data:\n        if pair[0] > pair[1]:\n            raise ValueError(\"reversed interval\")\n    out = []\n    for pair in sorted(data):\n        if out and pair[0] <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], pair[1])\n        else:\n            out.append(pair[:])\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          [
+            1,
+            4
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "expected": [
+          [
+            1,
+            4
+          ]
+        ]
+      },
+      {
+        "input": [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            5
+          ]
+        ],
+        "expected": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "input": [
+          [
+            3,
+            1
+          ]
+        ],
+        "raises": "ValueError"
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            5,
+            7
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            6,
+            8
+          ]
+        ],
+        "expected": [
+          [
+            1,
+            2
+          ],
+          [
+            5,
+            8
+          ]
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      },
+      {
+        "input": [
+          [
+            -5,
+            -1
+          ],
+          [
+            -3,
+            0
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "expected": [
+          [
+            -5,
+            0
+          ],
+          [
+            4,
+            4
+          ]
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-balanced-brackets",
+    "title": "括號順序驗證 / Balanced brackets",
+    "difficulty": "medium",
+    "topic": "stacks",
+    "group": "balanced-brackets",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Given a string, return whether (), [] and {} are properly nested and matched. Ignore other characters. Empty string is balanced.",
+    "baseline": "def solve(data):\n    return data.count(\"(\") == data.count(\")\") and data.count(\"[\") == data.count(\"]\") and data.count(\"{\") == data.count(\"}\")\n",
+    "reference": "def solve(data):\n    stack = []\n    matches = {\"(\": \")\", \"[\": \"]\", \"{\": \"}\"}\n    for char in data:\n        if char in matches:\n            stack.append(matches[char])\n        elif char in \")]}\":\n            if not stack or stack.pop() != char:\n                return False\n    return not stack\n",
+    "visible": [
+      {
+        "input": "([)]",
+        "expected": false
+      },
+      {
+        "input": "a{b[c](d)}",
+        "expected": true
+      },
+      {
+        "input": "",
+        "expected": true
+      }
+    ],
+    "hidden": [
+      {
+        "input": ")(",
+        "expected": false
+      },
+      {
+        "input": "((x)",
+        "expected": false
+      },
+      {
+        "input": "台灣[]",
+        "expected": true
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-median",
+    "title": "排序與偶數中位數 / Median",
+    "difficulty": "medium",
+    "topic": "statistics",
+    "group": "median",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Return the median of a nonempty list of finite numbers. For even lengths average the two middle sorted values. Empty input raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    if not data:\n        raise ValueError(\"empty\")\n    return data[len(data) // 2]\n",
+    "reference": "def solve(data):\n    if not data:\n        raise ValueError(\"empty\")\n    values = sorted(data)\n    n = len(values)\n    if n % 2:\n        return values[n // 2]\n    return (values[n // 2 - 1] + values[n // 2]) / 2\n",
+    "visible": [
+      {
+        "input": [
+          3,
+          1,
+          2
+        ],
+        "expected": 2
+      },
+      {
+        "input": [
+          4,
+          1,
+          2,
+          3
+        ],
+        "expected": 2.5
+      },
+      {
+        "input": [],
+        "raises": "ValueError"
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          -5,
+          -1
+        ],
+        "expected": -3.0
+      },
+      {
+        "input": [
+          7
+        ],
+        "expected": 7
+      },
+      {
+        "input": [
+          2,
+          2,
+          1,
+          9
+        ],
+        "expected": 2.0
+      },
+      {
+        "input": [
+          -1.5,
+          2.5
+        ],
+        "expected": 0.5
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-signed-decimal",
+    "title": "有號小數解析 / Signed decimal parser",
+    "difficulty": "hard",
+    "topic": "parsing",
+    "group": "signed-decimal",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Parse a decimal string after stripping outer whitespace. Allow an optional leading + or -, at most one decimal point, and at least one ASCII digit. Forms .5 and 3. are valid. Reject exponent notation, underscores, NaN, infinity, internal whitespace and other characters with ValueError. Return a finite number. Magnitude must not exceed 1000000; larger or nonfinite parsed values raise ValueError.",
+    "baseline": "def solve(data):\n    return float(data)\n",
+    "reference": "def solve(data):\n    text = data.strip()\n    if text.startswith(\"+\") or text.startswith(\"-\"):\n        body = text[1:]\n    else:\n        body = text\n    digits = 0\n    if body.count(\".\") > 1:\n        raise ValueError(\"decimal\")\n    for char in body:\n        if char in \"0123456789\":\n            digits += 1\n        elif char != \".\":\n            raise ValueError(\"decimal\")\n    if not digits:\n        raise ValueError(\"decimal\")\n    value = float(text)\n    if not -1000000 <= value <= 1000000:\n        raise ValueError(\"magnitude\")\n    return value\n",
+    "visible": [
+      {
+        "input": " -12.5 ",
+        "expected": -12.5
+      },
+      {
+        "input": "1e2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "NaN",
+        "raises": "ValueError"
+      }
+    ],
+    "hidden": [
+      {
+        "input": "+.5",
+        "expected": 0.5
+      },
+      {
+        "input": "3.",
+        "expected": 3.0
+      },
+      {
+        "input": "1_000",
+        "raises": "ValueError"
+      },
+      {
+        "input": "１２",
+        "raises": "ValueError"
+      },
+      {
+        "input": ".",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1 2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "++2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1000000",
+        "expected": 1000000.0
+      },
+      {
+        "input": "1000001",
+        "raises": "ValueError"
+      },
+      {
+        "input": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-run-length-encode",
+    "title": "連續區段編碼 / Run-length encoding",
+    "difficulty": "easy",
+    "topic": "encoding",
+    "group": "run-length-encode",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Return a list of [character,count] pairs for consecutive identical Unicode code points. Separate nonadjacent runs of the same character. Empty string returns []. Input contains at most 200 code points.",
+    "baseline": "def solve(data):\n    seen = set()\n    out = []\n    for char in data:\n        if char not in seen:\n            out.append([char, data.count(char)])\n            seen.add(char)\n    return out\n",
+    "reference": "def solve(data):\n    out = []\n    for char in data:\n        if out and out[-1][0] == char:\n            out[-1][1] += 1\n        else:\n            out.append([char, 1])\n    return out\n",
+    "visible": [
+      {
+        "input": "aaabba",
+        "expected": [
+          [
+            "a",
+            3
+          ],
+          [
+            "b",
+            2
+          ],
+          [
+            "a",
+            1
+          ]
+        ]
+      },
+      {
+        "input": "",
+        "expected": []
+      },
+      {
+        "input": "x",
+        "expected": [
+          [
+            "x",
+            1
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": "abab",
+        "expected": [
+          [
+            "a",
+            1
+          ],
+          [
+            "b",
+            1
+          ],
+          [
+            "a",
+            1
+          ],
+          [
+            "b",
+            1
+          ]
+        ]
+      },
+      {
+        "input": "台台灣台",
+        "expected": [
+          [
+            "台",
+            2
+          ],
+          [
+            "灣",
+            1
+          ],
+          [
+            "台",
+            1
+          ]
+        ]
+      },
+      {
+        "input": "  !!",
+        "expected": [
+          [
+            " ",
+            2
+          ],
+          [
+            "!",
+            2
+          ]
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-prefix-balances",
+    "title": "累積餘額 / Prefix balances",
+    "difficulty": "medium",
+    "topic": "accumulation",
+    "group": "prefix-balances",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Given integer balance changes, return the running total after each change starting from zero. Preserve order; empty input returns []. Do not mutate input. Inputs guarantee that every running total has magnitude at most 1000000.",
+    "baseline": "def solve(data):\n    return [sum(data)] * len(data)\n",
+    "reference": "def solve(data):\n    balance = 0\n    out = []\n    for amount in data:\n        balance += amount\n        out.append(balance)\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          3,
+          -1,
+          5
+        ],
+        "expected": [
+          3,
+          2,
+          7
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      },
+      {
+        "input": [
+          -2
+        ],
+        "expected": [
+          -2
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          0,
+          0
+        ],
+        "expected": [
+          0,
+          0
+        ]
+      },
+      {
+        "input": [
+          -3,
+          3,
+          -1
+        ],
+        "expected": [
+          -3,
+          0,
+          -1
+        ]
+      },
+      {
+        "input": [
+          5,
+          -10,
+          2
+        ],
+        "expected": [
+          5,
+          -5,
+          -3
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  },
+  {
+    "id": "CH-stable-record-sort",
+    "title": "多欄位穩定排序 / Stable record ordering",
+    "difficulty": "hard",
+    "topic": "ordering",
+    "group": "stable-record-sort",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Given records with name (string) and score (number), return records by score descending, then name ascending. Identical score/name pairs preserve their original relative order, including other fields. Do not mutate input or its records.",
+    "baseline": "def solve(data):\n    return data\n",
+    "reference": "def solve(data):\n    decorated = []\n    for i in range(len(data)):\n        row = data[i]\n        decorated.append([-row[\"score\"], row[\"name\"], i, row])\n    out = []\n    for item in sorted(decorated):\n        out.append(item[3])\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          {
+            "name": "b",
+            "score": 3
+          },
+          {
+            "name": "a",
+            "score": 3
+          }
+        ],
+        "expected": [
+          {
+            "name": "a",
+            "score": 3
+          },
+          {
+            "name": "b",
+            "score": 3
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "name": "a",
+            "score": 1
+          },
+          {
+            "name": "z",
+            "score": 4
+          }
+        ],
+        "expected": [
+          {
+            "name": "z",
+            "score": 4
+          },
+          {
+            "name": "a",
+            "score": 1
+          }
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          {
+            "name": "a",
+            "score": 2,
+            "id": 2
+          },
+          {
+            "name": "a",
+            "score": 2,
+            "id": 1
+          }
+        ],
+        "expected": [
+          {
+            "name": "a",
+            "score": 2,
+            "id": 2
+          },
+          {
+            "name": "a",
+            "score": 2,
+            "id": 1
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "name": "x",
+            "score": -1
+          },
+          {
+            "name": "y",
+            "score": 0
+          }
+        ],
+        "expected": [
+          {
+            "name": "y",
+            "score": 0
+          },
+          {
+            "name": "x",
+            "score": -1
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "name": "b",
+            "score": 2
+          },
+          {
+            "name": "a",
+            "score": 1
+          },
+          {
+            "name": "c",
+            "score": 2
+          }
+        ],
+        "expected": [
+          {
+            "name": "b",
+            "score": 2
+          },
+          {
+            "name": "c",
+            "score": 2
+          },
+          {
+            "name": "a",
+            "score": 1
+          }
+        ]
+      }
+    ],
+    "sources": [
+      "https://arxiv.org/abs/2305.01210",
+      "https://arxiv.org/abs/2406.15877"
+    ],
+    "attribution": "Original project repair task inspired by research evaluation principles; not an official benchmark sample."
+  }
+]

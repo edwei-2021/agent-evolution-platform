@@ -53,3 +53,9 @@ def skill(body):
     value={**SKILL,'body':body};value['hash']=digest({key:value[key] for key in ('name','description','body')});return value
 
 def dataset_hash(profile):return digest({'version':DATASET_VERSION,'groups':GROUPS,'data':dataset(profile)})
+
+def data_for(config):
+    if config.get('profile') == 'bank':
+        from challenge_bank import validate_snapshot
+        return validate_snapshot(config['datasetSnapshot'])
+    return dataset(config['profile'])

@@ -111,6 +111,8 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, runtime.snapshot())
             elif path == '/api/v1/gepa':
                 self.json_response(200, runtime.snapshot()['gepa'])
+            elif path == '/api/v1/challenges':
+                self.json_response(200, runtime.challenges.snapshot())
             elif path == '/api/v1/repair':
                 self.json_response(200, runtime.snapshot()['repair'])
             elif path == '/api/v1/skills':
@@ -212,8 +214,16 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 self.json_response(200, ollama_bridge(runtime).save(body.get('config'), body.get('expectedRevision')))
             elif path == '/api/v1/gepa/runs':
                 fields={'registry','requestId','profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
+                if body.get('profile')=='bank':fields.add('bankRevision')
                 if set(body)!=fields:raise ValueError('Unexpected GEPA submission fields')
                 self.json_response(202, runtime.start(body['registry'],body['requestId'],'gepa-evolution',{k:body[k] for k in fields-{'registry','requestId'}}))
+            elif path == '/api/v1/challenges':
+                if set(body)!={'expectedRevision','challenge'}:raise ValueError('Unexpected challenge fields')
+                self.json_response(201,runtime.challenges.mutate(body['expectedRevision'],body['challenge']))
+            elif match := re.fullmatch(r'/api/v1/challenges/(CH-[A-Za-z0-9-]+)/(save|delete)',path):
+                expected={'expectedRevision'} if match[2]=='delete' else {'expectedRevision','challenge'}
+                if set(body)!=expected:raise ValueError('Unexpected challenge edit fields')
+                self.json_response(200,runtime.challenges.mutate(body['expectedRevision'],body.get('challenge'),match[1],match[2]=='delete'))
             elif match := re.fullmatch(r'/api/v1/gepa/runs/(RUN-[A-Za-z0-9-]+)/approve',path):
                 if set(body)!={'expectedRevision'}:raise ValueError('Unexpected approval fields')
                 self.json_response(200,runtime.gepa.approve(match[1],body['expectedRevision']))

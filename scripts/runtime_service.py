@@ -101,6 +101,8 @@ class RuntimeService:
         self.repair = RepairStore(self)
         from gepa_store import GepaStore
         self.gepa = GepaStore(self)
+        from challenge_bank import ChallengeBank
+        self.challenges = ChallengeBank(self)
         self.logs.append('runtime', 'INFO', 'Local runtime service started', details={'serviceId': self.service_id})
 
     @staticmethod
@@ -288,6 +290,7 @@ class RuntimeService:
         gepa_workspace.update(sdk=sdk, optimizer=optimizer)
         gepa_workspace.update(latestRun=self.decorate(gepa_runs[0]) if gepa_runs else None, runs=[{'id':r['id'],'status':r['status'],'createdAt':r['createdAt']} for r in gepa_runs])
         return {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': self.service_id, 'serverTime': now(), 'latestRun': self.decorate(runs[0]) if runs else None, 'runs': [{'id': r['id'], 'status': r['status'], 'task': r.get('task', 'project-health'), 'createdAt': r['createdAt']} for r in runs], 'skills': workspace, 'llm': llm_workspace, 'repair': repair_workspace, 'gepa': gepa_workspace,
+                'challenges':self.challenges.summary(),
                 'provider': {'revision': self.ollama.state()['revision'], 'config': self.ollama.state()['config'], 'busy': self.ollama.operation.locked(), 'warmup': self.ollama.warmup_status()}}
 
     def _submission(self, request_id, task, submission_hash):
@@ -336,6 +339,7 @@ class RuntimeService:
             config = self.skills.freeze(options) if task == 'skill-evolution' else self.llm.freeze(options) if task == 'llm-evolution' else prepared
             if task == 'gepa-evolution':
                 self.gepa.check_revision(options['expectedRevision'])
+                if config['profile']=='bank':self.challenges.check_revision(config['datasetSnapshot']['revision'])
             from skill_agents import TASKS as SKILL_TASKS
             from llm_engine import TASKS as LLM_TASKS
             from repair_engine import TASKS as REPAIR_TASKS

@@ -14,13 +14,11 @@ Read the [revised development plan](docs/agent-evolution-platform-development-pl
 
 The plan supersedes earlier next-milestone scheduling: begin with canonical contracts and compatibility fixtures, then durable evidence and evaluator isolation, followed by dataset/comparison and complete release hardening. Existing Ollama configuration, preload, experiments, progress, logs and versions remain supported. OpenEvolve and additional runtimes follow these gates.
 
-The existing repository was renamed to `edwei-2021/agent-evolution-platform` on 2026-10-12; repository identity and history are retained. Existing checkouts can keep their directory and update the Git origin URL. Current GitHub visibility is public; the private hosted GUI has separate access controls.
+The existing repository was renamed to `edwei-2021/agent-evolution-platform` on 2026-10-12; repository identity and history are retained. Existing checkouts can keep their directory and update the Git origin URL. Current GitHub visibility is public.
 
 ## Existing implementation and operational guides
 
 GitHub: https://github.com/edwei-2021/agent-evolution-platform
-
-Private GUI: https://skill-evolution-lab-edwei.edwei.chatgpt.site
 
 Version **0.6.0** implements the first **nanobot SDK Python repair runner**（nanobot SDK Python 修復任務）. The new `#repair` page runs one version-pinned `nanobot-ai==0.3.5` worker with three caller-owned tools, a fresh workspace/session, frozen model/Skill/budgets, streaming tool-call evidence and an independent evaluator. The bounded integer-clamp fixture has six visible and six final cases; a model's pass claim never becomes a score. Read the source diff/tool trace and download a verified task patch. No Skill activation or repository patch application occurs automatically. [Runner guide](docs/nanobot-repair.md) · [Validation](docs/verification/nanobot-repair-validation.md).
 
@@ -59,7 +57,7 @@ npm test
 npm run serve
 ```
 
-Open `http://localhost:8765`. Serve files over HTTP; opening index.html directly will not load ES modules reliably. Localhost serving is intended for development. The hosted GUI uses private Sites access.
+Open `http://localhost:8765`. Serve files over HTTP; opening index.html directly will not load ES modules reliably. Localhost serving is intended for development.
 
 To choose another port (for example, 8766):
 
@@ -134,6 +132,8 @@ Open `http://localhost:8765/#skills` after starting the local server. Select up 
 - Validated JSON import/export; import replaces the local workspace and pauses active runs.
 - Responsive layouts, keyboard navigation, modal forms, explicit demo labeling.
 
+The **多難度 Python 題庫** page adds 12 original research-inspired repair challenges across three difficulty levels, with add/edit/delete controls and a separate GEPA bank profile. Frozen dataset revisions and difficulty/aspect results distinguish completed execution from measured Skill improvement. See the [challenge bank guide](docs/python-challenge-bank.md); save at least 512 output tokens (1024 recommended) before using this profile.
+
 Agent records are editable browser-local role configurations. Their latest real native-tool run state appears as a separate telemetry overlay. The five initial records include planned orchestration, reflection, evaluation and review components; they are not five installed LLM runtimes. Framework-connected count remains zero; native tool processes are tracked separately in the execution monitor. GEPA is a version-pinned optimizer adapter over fresh nanobot tasks, not an external agent runtime. Changing these records does not change the fixed evolution simulation. See the [agent workspace guide](docs/agents-workspace.md).
 
 Scores, tasks and events in **演化展示** are synthetic fixtures. **本機技能實驗** executes the bounded rule-search engine and stores actual outputs/evidence in SQLite and run artifacts. **執行監控** reads real process evidence for both workflow types. An Ollama provider and actual model Skill workflow are implemented; the bounded nanobot Python repair adapter is implemented. GEPA Skill-body optimization is implemented in v0.7.0; Hermes, Herdr, OpenClaw and NanoClaw execution adapters remain planned. Local measured Skill activation changes the server's active policy for future runs/trials; demo activation changes browser-only state. Neither operation publishes Git code or installs an external-agent Skill.
@@ -184,14 +184,13 @@ docs/agents-workspace.md Agent workspace usage and data semantics
 docs/architecture.md     Incremental implementation plan
 docs/api-contract.md     Implemented local API and future adapter contracts
 docs/skill-evolution.md  Measured skill workflow, evaluation and boundaries
-.openai/hosting.json     Private Site deployment identity
 ```
 
 The tracked `dist/` folder is the canonical frontend source in this buildless MVP. Edit it directly. Do not add model credentials or GitHub tokens to frontend files, exported JSON or `.openai/hosting.json`.
 
 ## Persistence and remote use
 
-The hosted URL can be accessed from a remote browser, subject to the owner's private sign-in. Sites serves static assets and does not execute this Python supervisor: use the WSL localhost interface for live execution. A hosted browser does not automatically connect to your WSL machine. Registry/demo records remain browser-local; measured skills/runs live in the local server SQLite store. Use JSON export/import to move demo records, and back up server `.local/` with the service stopped for measured evidence. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
+Use the localhost interface for live execution; static hosting does not run the Python supervisor or establish a connection to a local machine. Registry/demo records remain browser-local; measured skills/runs live in the local server SQLite store. Use JSON export/import to move demo records, and back up server `.local/` with the service stopped for measured evidence. If storage is unavailable, the GUI warns and retains changes in the current tab. Export before replacing a workspace. Concurrent browser tabs are independent; avoid editing the same workspace in several tabs.
 
 ## GEPA Skill optimization (技能最佳化)
 

@@ -92,7 +92,11 @@ def evaluate(jobs, image, timeout=10):
             from scripts.repair_fixture import validate_source
             try:
                 for job in jobs:
-                    validate_source(job['source'])
+                    if job.get('fixture',{}).get('policy')=='python-challenge-v1':
+                        from scripts.challenge_policy import validate_source as validate_challenge
+                        validate_challenge(job['source'])
+                    else:
+                        validate_source(job['source'])
             except (ValueError, SyntaxError):
                 status, reason = 'fail', 'policy'
     except subprocess.TimeoutExpired:
@@ -112,4 +116,4 @@ def evaluate(jobs, image, timeout=10):
 def source_hash(root):
     root = Path(root)
     return digest({p.name: __import__('hashlib').sha256(p.read_bytes()).hexdigest()
-                   for p in (root/'scripts/repair_fixture.py', root/'scripts/repair_evaluator.py')})
+                   for p in (root/'scripts/repair_fixture.py', root/'scripts/challenge_policy.py', root/'scripts/repair_evaluator.py')})

@@ -29,20 +29,24 @@ class GepaStore:
         if self.service.closed or self.snapshot()['revision']!=expected:raise RuntimeError('GEPA Skill state changed; refresh first')
     def freeze(self,options):
         fields={'profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
+        if isinstance(options,dict) and options.get('profile')=='bank':fields.add('bankRevision')
         if not isinstance(options,dict) or set(options)!=fields:raise ValueError('Unexpected GEPA options')
-        data=dataset(options['profile']);mini=1 if options['profile']=='smoke' else 3
+        frozen=self.service.challenges.freeze(options['bankRevision']) if options['profile']=='bank' else None
+        data=frozen['data'] if frozen else dataset(options['profile']);mini=2 if frozen else 1 if options['profile']=='smoke' else 3
         for key,low,high in [('maxSeconds',60,7200),('callTimeoutSeconds',10,3600),('taskCallBudget',2,12),('metricBudget',len(data['validation'])+2*mini+len(data['validation']),80),('proposalBudget',1,8)]:
             if type(options[key]) is not int or not low<=options[key]<=high:raise ValueError(f'{key} must be an integer in {low}..{high}')
-        self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
-        if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
         with self.service.ollama.lock:provider=self.service.ollama.frozen()
         if type(options['providerRevision']) is not int or options['providerRevision']!=provider['revision']:raise RuntimeError('Provider settings changed; refresh first')
         if not provider['config']['model']:raise ValueError('Select and save a model first')
+        if frozen and provider['config']['maxTokens']<512:raise ValueError('Challenge bank requires max output tokens >=512; save 1024 in Integrations before starting')
+        self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
+        if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
         budget=(options['metricBudget']+2*(len(data['validation'])+len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
         return {'schemaVersion':1,'engine':ENGINE,**options,'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
-          'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile']),'logRoot':str(self.service.root)}
+          'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile'],frozen),'logRoot':str(self.service.root),
+          **({'datasetSnapshot':frozen} if frozen else {})}
     def approve(self,identifier,expected):
         with self.service.lock:
             self.check_revision(expected);run=self.service.get_run(identifier)

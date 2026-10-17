@@ -9,7 +9,7 @@ from gepa.core.adapter import EvaluationBatch
 from repair_engine import RepairRunner, verify as verify_repair
 from repair_sdk import run_sdk
 from gepa_engine import progress, child_config, score, training_trace, REFLECTION_SYSTEM
-from gepa_dataset import dataset, skill
+from gepa_dataset import data_for, skill
 from gepa_runtime import GEPA_VERSION
 from skill_engine import write
 from debug_log import DebugLog
@@ -58,7 +58,7 @@ class Session:
         return row,training_trace(child,row,task)
 
 class Adapter:
-    def __init__(self,session):self.session=session;self.search_tasks={t['id']:t for split,rows in dataset(session.cfg['profile']).items() if split!='heldout' for t in rows}
+    def __init__(self,session):self.session=session;self.search_tasks={t['id']:t for split,rows in data_for(session.cfg).items() if split!='heldout' for t in rows}
     def evaluate(self,batch,candidate,capture_traces=False):
         if set(candidate)!={'skill_body'}:raise ValueError('Only the Skill body may evolve')
         body=skill(candidate['skill_body'])['body']
@@ -71,7 +71,7 @@ class Adapter:
         return EvaluationBatch(outputs=outputs,scores=scores,trajectories=traces if capture_traces else None,num_metric_calls=len(batch))
     def make_reflective_dataset(self,candidate,eval_batch,components_to_update):
         if components_to_update!=['skill_body']:raise ValueError('Unexpected reflected component')
-        train_ids={t['id'] for t in dataset(self.session.cfg['profile'])['train']}
+        train_ids={t['id'] for t in data_for(self.session.cfg)['train']}
         if not eval_batch.trajectories or any(t['taskId'] not in train_ids for t in eval_batch.trajectories):raise ValueError('Only training traces may be reflected')
         return {'skill_body':eval_batch.trajectories}
     def propose_new_texts(self,candidate,reflective_dataset,components_to_update):
@@ -87,7 +87,7 @@ class Adapter:
         session=self.session
         if components_to_update!=['skill_body'] or set(reflective_dataset)!={'skill_body'}:raise ValueError('Unexpected proposal component')
         if len(session.proposals)>=session.cfg['proposalBudget']:raise RuntimeError('Reflection proposal budget exhausted')
-        train_ids={t['id'] for t in dataset(session.cfg['profile'])['train']}
+        train_ids={t['id'] for t in data_for(session.cfg)['train']}
         training=list(reflective_dataset['skill_body'])
         if any(t['taskId'] not in train_ids for t in training):raise ValueError('Final/validation data cannot enter reflection')
         identifier=f'P{len(session.proposals)+1:03d}';child=session.directory/'reflections'/identifier;child.mkdir(parents=True)
@@ -106,7 +106,7 @@ class Adapter:
 def search(directory,cfg):
     if importlib.metadata.version('gepa')!=GEPA_VERSION:raise RuntimeError('Unexpected GEPA SDK version')
     logs=DebugLog(cfg['logRoot']);logs.append('gepa','INFO','Real GEPA search started',directory.name,{'metricBudget':cfg['metricBudget'],'profile':cfg['profile']})
-    session=Session(directory,cfg);adapter=Adapter(session);data=dataset(cfg['profile']);minibatch=cfg['reflectionBatch']
+    session=Session(directory,cfg);adapter=Adapter(session);data=data_for(cfg);minibatch=cfg['reflectionBatch']
     def stop(state):
         # GEPA stops between iterations; reserve a complete serial iteration
         # (parent + child minibatch + full validation) before it can start.
@@ -125,7 +125,7 @@ def search(directory,cfg):
 
 @traced('gepa','final-evaluation')
 def evaluate_final(directory,cfg):
-    selected=json.loads((directory/'gepa-selection.json').read_text())['skill'];data=dataset(cfg['profile']);session=Session(directory,cfg)
+    selected=json.loads((directory/'gepa-selection.json').read_text())['skill'];data=data_for(cfg);session=Session(directory,cfg)
     for split in ('validation','heldout'):
         for label,s in [('baseline',cfg['baseline']['skill']),('selected',selected)]:
             for task in data[split]:session.rollout(task,s['body'],label)

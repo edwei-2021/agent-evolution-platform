@@ -25,7 +25,13 @@ TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':
 def provenance():
     return {'engine':ENGINE,'completionPolicy':COMPLETION_POLICY,'taskId':TASK_ID,'fixtureHash':digest({'baseline':BASELINE,'visible':VISIBLE,'hidden':HIDDEN,'prompt':PROMPT}),
             'skillHash':digest(SKILL),'sdkVersion':SDK_VERSION,'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest()
-            for n in ('repair_fixture.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','model_provider.py','step_trace.py')}}
+            for n in ('repair_fixture.py','challenge_policy.py','repair_engine.py','repair_evaluator.py','repair_sdk.py','repair_agents.py','repair_transport.py','llm_transport.py','model_provider.py','step_trace.py')}}
+
+def validate_solution(source,config):
+    if config.get('fixture',{}).get('policy')=='python-challenge-v1':
+        from challenge_policy import validate_source as validate_challenge
+        return validate_challenge(source)
+    return validate_source(source)
 
 def progress(directory,**changes):
     path=directory/'repair-progress.json'
@@ -82,7 +88,7 @@ class RepairRunner:
         try:
             if name=='read_solution':result=self.path(arguments['path']).read_bytes().decode('utf-8')
             elif name=='write_solution':
-                validate_source(arguments['source']);self.path(arguments['path']).write_text(arguments['source']);result='Updated solution.py; independent tests still required.'
+                validate_solution(arguments['source'],self.config);self.path(arguments['path']).write_text(arguments['source']);result='Updated solution.py; independent tests still required.'
             else:
                 tested_source=self.path('solution.py').read_bytes().decode('utf-8')
                 result=json.dumps(trusted_test(tested_source,'visible',self.config.get('fixture')))
@@ -189,7 +195,7 @@ def verify(directory,expected_config=None):
             acc=ToolAccumulator()
             for event in c['streamEvents']:acc.add(event)
             if acc.reply()!=c['response']:raise ValueError('Repair stream evidence differs from completion')
-    candidate=(directory/'repair-candidate.py').read_bytes().decode('utf-8');validate_source(candidate)
+    candidate=(directory/'repair-candidate.py').read_bytes().decode('utf-8');validate_solution(candidate,cfg)
     if (directory/'repair-baseline.py').read_bytes().decode('utf-8')!=baseline_source:raise ValueError('Baseline artifact changed')
     if (directory/'task-workspace/solution.py').is_symlink() or candidate!=(directory/'task-workspace/solution.py').read_bytes().decode('utf-8'):raise ValueError('Final solution changed after freezing')
     # Replay successful writes and visible test tools; model assertions never score.
@@ -207,7 +213,7 @@ def verify(directory,expected_config=None):
         if t['status']=='completed':
             if t['name']=='write_solution':
                 if t['arguments']['path']!='solution.py':raise ValueError('Tool path drift')
-                validate_source(t['arguments']['source']);replay=t['arguments']['source']
+                validate_solution(t['arguments']['source'],cfg);replay=t['arguments']['source']
             elif t['name']=='read_solution' and (t['arguments']!={'path':'solution.py'} or t['result']!=replay):raise ValueError('Read evidence drift')
             elif t['name']=='run_tests':
                 if t['arguments']:raise ValueError('Visible test arguments drift')

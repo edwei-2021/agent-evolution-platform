@@ -7,6 +7,9 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 from repair_fixture import VISIBLE, HIDDEN, validate_source
 
 def evaluate(source, split, fixture=None):
+    if fixture is not None and fixture.get('policy') == 'python-challenge-v1':
+        from challenge_policy import evaluate as evaluate_challenge
+        return evaluate_challenge(source, split, fixture)
     tree=validate_source(source)
     namespace={'__builtins__':{'min':min,'max':max,'ValueError':ValueError}}
     exec(compile(tree,'solution.py','exec'),namespace)

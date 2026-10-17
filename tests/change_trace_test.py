@@ -58,6 +58,18 @@ def prepare(directory):
 
 
 class ChangeHistoryTests(unittest.TestCase):
+    def test_large_frozen_bank_config_keeps_skill_history_and_excludes_dataset_contents(self):
+        with tempfile.TemporaryDirectory() as root:
+            service=Service(root,task='gepa-evolution')
+            cfg={'baseline':{'skill':{'body':'Frozen bank Skill','hash':'a'*64}},
+                 'datasetSnapshot':{'privateFixture':'PRIVATE_BANK_CASE'*15000}}
+            save(service.directory,'gepa-config.json',cfg)
+            self.assertGreater((service.directory/'gepa-config.json').stat().st_size,128000)
+            result=snapshot(service,'RUN-history')
+            self.assertEqual(result['skillHistory'][0]['before'],'Frozen bank Skill')
+            self.assertNotIn('PRIVATE_BANK_CASE',json.dumps(result))
+            self.assertEqual(result['warnings'],[])
+
     def test_every_success_failed_write_unchanged_write_and_test_keeps_its_actual_source(self):
         with tempfile.TemporaryDirectory() as root:
             service = Service(root)

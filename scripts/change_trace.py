@@ -109,7 +109,9 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
         raise ValueError('Run storage cannot be a symlink')
     reader = Reader(directory)
     gepa = run['task'] == 'gepa-evolution'
-    cfg = reader.json('gepa-config.json' if gepa else 'repair-config.json', {}, 128000)
+    # A bank run freezes up to 50 bounded fixtures; preserve history for that
+    # configuration without relaxing the existing 8 MiB aggregate read bound.
+    cfg = reader.json('gepa-config.json' if gepa else 'repair-config.json', {}, 4 * 1024 * 1024 if gepa else 128000)
     if not isinstance(cfg, dict):
         raise ValueError('Invalid saved configuration')
     baseline = cfg.get('baseline', {}).get('skill', {}) if gepa else cfg.get('skill', {})

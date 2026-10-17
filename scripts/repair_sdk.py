@@ -26,12 +26,12 @@ class BoundedTool(Tool):
     @property
     def name(self):return self._name
     @property
-    def description(self):return {'read_solution':'Read only solution.py.','write_solution':'Replace only solution.py with a bounded clamp function.','run_tests':'Run fixed visible tests; hidden tests are inaccessible.'}[self.name]
+    def description(self):return {'read_solution':'Read only solution.py.','write_solution':'Replace only solution.py, preserving the function signature required by this task.','run_tests':'Run fixed visible tests; hidden tests are inaccessible.'}[self.name]
     @property
     def parameters(self):
         properties={}
         if self.name in ('read_solution','write_solution'):properties['path']={'type':'string','description':'Use exactly solution.py'}
-        if self.name=='write_solution':properties['source']={'type':'string','maxLength':8000,'description':'Complete Python source preserving clamp(value, lower, upper)'}
+        if self.name=='write_solution':properties['source']={'type':'string','maxLength':8000,'description':'Complete Python source preserving '+('solve(data)' if self.runner.config.get('fixture',{}).get('policy')=='python-challenge-v1' else 'clamp(value, lower, upper)')}
         return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
     async def execute(self,**kwargs):
         try:return await asyncio.to_thread(self.runner.tool,self.name,kwargs)

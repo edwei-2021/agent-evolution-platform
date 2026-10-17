@@ -90,8 +90,9 @@ const validGepaSkill=s=>s?.name==='python-fix-and-verify'&&typeof s.description=
 export function validateGepaRun(run){
  validateRuntime({schemaVersion:1,mode:'native-tools',serviceId:'validation',serverTime:new Date().toISOString(),runs:[],latestRun:run});
  const c=run.gepaConfig,p=run.gepaProgress,r=run.gepaResult;
- if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>1688||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>80||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
- for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
+ if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full','bank'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>1688||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>80||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
+ if(c.profile==='bank'){const n=c.counts;if(!n||['train','validation','heldout'].some(k=>!Number.isInteger(n[k])||n[k]<2||n[k]>(k==='train'?30:20))||n.validation+n.heldout>30||n.train+n.validation+n.heldout>50||c.datasetSnapshot?.revision!==c.bankRevision||c.datasetSnapshot?.version!=='python-challenges-v1')throw Error('題庫凍結資料不正確');}
+ else for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
  if(p){
   if(p.engine!=='gepa-nanobot-repair-v1')throw Error('GEPA 進度不正確');
   for(const [key,max] of [['calls',c.callBudget],['completedCalls',p.calls],['failedCalls',p.calls],['metricEvaluations',c.metricBudget],['proposals',c.proposalBudget],['rollouts',c.metricBudget+2*(c.counts.validation+c.counts.heldout)]])if(!Number.isInteger(p[key])||p[key]<0||p[key]>max)throw Error('GEPA 計數不正確');
@@ -101,6 +102,7 @@ export function validateGepaRun(run){
  if(r){
   if(r.engine!=='gepa-nanobot-repair-v1'||r.checksPassed!==true||typeof r.eligible!=='boolean'||!validGepaSkill(r.selectedSkill)||!validGepaSkill(r.baselineSkill)||!/^[a-f0-9]{64}$/.test(r.evidenceHash))throw Error('GEPA 證據不正確');
   for(const label of ['baseline','selected'])for(const split of ['validation','heldout']){const m=r.final?.[label]?.[split];if(!m||m.total!==c.counts[split]||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('GEPA 評測格式不正確');}
+  if(r.breakdown){for(const dim of ['difficulty','topic']){const table=r.breakdown[dim];if(!table||typeof table!=='object'||Array.isArray(table)||Object.keys(table).length>30)throw Error('GEPA 分項格式不正確');for(const label of ['baseline','selected'])for(const split of ['validation','heldout']){let passed=0,total=0;for(const row of Object.values(table)){const m=row?.[label]?.[split];if(!m||!Number.isInteger(m.total)||m.total<0||m.total>c.counts[split]||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('GEPA 分項計數不正確');passed+=m.passed;total+=m.total;}if(passed!==r.final[label][split].passed||total!==r.final[label][split].total)throw Error('GEPA 分項與總分不一致');}}}
   const eligible=r.selectedSkill.hash!==r.baselineSkill.hash&&r.final.selected.validation.passed>r.final.baseline.validation.passed&&r.final.selected.heldout.passed>=r.final.baseline.heldout.passed;
   if(r.eligible!==eligible)throw Error('GEPA 核准門檻與證據不一致');
  }
@@ -243,7 +245,7 @@ export class RuntimeClient{
   async startGepa(registry){
     return this.skillMutation(async()=>{
       if(!this.data.gepa?.sdk.available||!this.data.gepa?.optimizer.available)throw Error('請安裝 nanobot 與 GEPA');
-      if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision};}
+      if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision,...(this.gepaProfile==='bank'?{bankRevision:this.data.challenges?.revision}: {})};}
       // Two serial pinned probes (nanobot + GEPA), then response/dispatch grace.
       try{await this.request('/api/v1/gepa/runs',{method:'POST',body:this.pendingGepaSubmission,timeoutMs:270000});}
       catch(error){if(error.status>=400&&error.status<500)this.pendingGepaSubmission=null;throw error;}
@@ -252,8 +254,8 @@ export class RuntimeClient{
   }
   setGepaProfile(profile){
     if(!Object.hasOwn(GEPA_PRESETS,profile))throw Error('GEPA 規模不正確');
-    this.gepaProfile=profile;const p=GEPA_PRESETS[profile];
-    this.gepaMetrics=p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;
+    this.gepaProfile=profile;const p=GEPA_PRESETS[profile];this.gepaTaskCalls=profile==='bank'?10:8;
+    this.gepaMetrics=profile==='bank'?Math.max(p.metrics,2*(this.data?.challenges?.counts.validation??3)+4):p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;
   }
   async readChanges(id,rollout='',offset=0){
     if(!/^RUN-[A-Za-z0-9-]+$/.test(id)||rollout&&!/^R\d{4}$/.test(rollout)||!Number.isInteger(offset)||offset<0||offset>200)throw Error('修改歷程選擇不正確');

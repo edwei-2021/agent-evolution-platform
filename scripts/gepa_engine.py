@@ -7,7 +7,7 @@ from pathlib import Path
 from repair_engine import provenance as repair_provenance, verify as verify_repair, ROOT
 from repair_fixture import digest
 from repair_transport import ToolAccumulator
-from gepa_dataset import dataset, dataset_hash, skill, DATASET_VERSION
+from gepa_dataset import data_for, dataset_hash, skill, DATASET_VERSION
 from gepa_runtime import GEPA_VERSION
 from skill_engine import write
 
@@ -16,9 +16,9 @@ TASKS={'coordinator':'Freeze grouped benchmark and search budgets','worker':'Run
        'reflector':'Freeze the validation-selected Skill','evaluator':'Evaluate frozen baseline/selected Skills on final data','reviewer':'Replay trusted evidence and review release gates'}
 REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the supplied training trajectories. Do not output solution code or modify Skill name/description. Return exactly a JSON object with one string field: skill_body. Keep instructions general; do not embed task IDs or test answers.'
 
-def provenance(profile):
-    return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':DATASET_VERSION,'datasetHash':dataset_hash(profile),'repair':repair_provenance(),
-      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py')}}
+def provenance(profile,frozen=None):
+    return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),
+      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py')}}
 
 def progress(directory,**changes):
     p=directory/'gepa-progress.json';data=json.loads(p.read_text()) if p.exists() else {'engine':ENGINE,'phase':'queued','calls':0,'completedCalls':0,'failedCalls':0,'metricEvaluations':0,'proposals':0,'rollouts':0,'lastCall':None}
@@ -36,8 +36,8 @@ def score(result):
 @traced('gepa','evidence.verify')
 def verify(directory, progress_callback=None):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
-    if cfg['provenance']!=provenance(cfg['profile']):raise ValueError('GEPA code or dataset provenance changed')
-    data=dataset(cfg['profile']);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
+    if cfg['provenance']!=provenance(cfg['profile'],cfg.get('datasetSnapshot')):raise ValueError('GEPA code or dataset provenance changed')
+    data=data_for(cfg);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
     ledger=json.loads((directory/'gepa-rollouts.json').read_text());proposals=json.loads((directory/'gepa-proposals.json').read_text())
     search=json.loads((directory/'gepa-search.json').read_text());selection=json.loads((directory/'gepa-selection.json').read_text())
     selected=skill(search['candidates'][search['bestIndex']]['skill_body']);seed=cfg['baseline']['skill']
@@ -114,7 +114,20 @@ def verify(directory, progress_callback=None):
     hashes={p.relative_to(directory).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in directory.rglob('*') if p.is_file() and (p.name.startswith(('gepa-','repair-')) and not p.name.endswith('progress.json')) and p.name not in ('gepa-evaluation.json','gepa-selection.md')}
     return {'engine':ENGINE,'checksPassed':True,'eligible':eligible,'selectedSkill':selected,'baselineSkill':seed,'final':final,
       'metricEvaluations':len(search_rows),'rollouts':len(ledger),'proposals':len(proposals),'calls':len(actual),'validationScores':scores,
-      'gepaVersion':GEPA_VERSION,'sdkVersion':cfg['sdk']['version'],'datasetVersion':DATASET_VERSION,'evidenceHash':digest(hashes)}
+      'gepaVersion':GEPA_VERSION,'sdkVersion':cfg['sdk']['version'],'datasetVersion':cfg['provenance']['datasetVersion'],'evidenceHash':digest(hashes),
+      **({'breakdown':breakdown(ledger,tasks)} if cfg['profile']=='bank' else {})}
+
+def breakdown(ledger,tasks):
+    result={}
+    for dimension in ('difficulty','topic'):
+        table={}
+        for row in ledger:
+            if row['stage']=='search':continue
+            split,task=tasks[row['taskId']];key=task[dimension]
+            counts=table.setdefault(key,{label:{s:{'passed':0,'total':0} for s in ('validation','heldout')} for label in ('baseline','selected')})[row['stage']][split]
+            counts['total']+=1;counts['passed']+=row['score']
+        result[dimension]=table
+    return result
 
 def training_trace(child,row,task):
     result=json.loads((child/'repair-evaluation.json').read_text())

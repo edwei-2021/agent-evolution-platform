@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 // Run the real app event listeners without a browser dependency. Model the
 // connected-form rule: replacing #main detaches its form before default submit.
@@ -29,11 +30,20 @@ test('app form events preserve settings through click, submit, navigation and LL
   llm:{schemaVersion:1,engine:'ollama-prompt-reflection-v1',revision:1,activeVersionId:version.id,active:version,versions:[version],runs:[],latestRun:null}};
  let saved={schemaVersion:1,revision:0,config:{host:'',port:11435,model:'',metadataTimeout:10,inferenceTimeout:600,maxTokens:256},nativeBaseUrl:'http://127.0.0.1:11435',openaiBaseUrl:'http://127.0.0.1:11435/v1',historicalEvidence:{modelIds:['qwen3-coder:30b']},latest:null};
  let failure=false;
+ let challengeData={schemaVersion:1,version:'python-challenges-v1',revision:1,questions:JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v1.json',import.meta.url)))};
  globalThis.fetch=async(path,options)=>{
   calls.push({path,options});let value,ok=true;
   if(path.endsWith('/capabilities'))value={schemaVersion:1,mode:'native-tools',serviceId:runtime.serviceId,csrfToken:'a-valid-local-session-token'};
   else if(path==='/api/v1/runtime')value=runtime;
   else if(path==='/api/v1/llm/ollama')value=saved;
+  else if(path==='/api/v1/challenges'){
+   if(options.method==='POST'){const body=JSON.parse(options.body);assert.equal(body.expectedRevision,challengeData.revision);challengeData={...challengeData,revision:challengeData.revision+1,questions:[...challengeData.questions,{...body.challenge,id:'CH-created-fixture'}]};}
+   value=challengeData;
+  }
+  else if(path.startsWith('/api/v1/challenges/')){
+   const body=JSON.parse(options.body),id=path.split('/')[4];assert.equal(body.expectedRevision,challengeData.revision);
+   challengeData={...challengeData,revision:challengeData.revision+1,questions:path.endsWith('/delete')?challengeData.questions.filter(q=>q.id!==id):challengeData.questions.map(q=>q.id===id?{...body.challenge,id}:q)};value=challengeData;
+  }
   else if(path.startsWith('/api/v1/debug/changes/')){
    const url=new URL(path,'http://localhost'),id=url.pathname.split('/').at(-1),offset=Number(url.searchParams.get('offset')||0);
    value={schemaVersion:1,runId:id,runStatus:'completed',task:'gepa-evolution',verified:true,historyOnly:true,rollouts:[],totalRollouts:0,offset,limit:20,selectedRollout:url.searchParams.get('rollout')||'',trace:null,warnings:[],skillHistory:[{id:'baseline',kind:'baseline',before:'Recorded Skill',after:'Recorded Skill',changed:false,note:'Frozen baseline Skill'}]};
@@ -181,6 +191,18 @@ test('app form events preserve settings through click, submit, navigation and LL
   const fields={provider:'strata',baseUrl:'http://fixture.invalid:8081/v1',apiKeyEnv:'FIXTURE_KEY',reasoningEffort:'none',model:'fixture-strata',metadataTimeout:'10',inferenceTimeout:'600',maxTokens:'256'};
   await submit(form('ollama-settings-form',fields));assert.equal(saved.config.provider,'strata');assert.equal(saved.config.baseUrl,fields.baseUrl);assert.equal(saved.config.apiKeyEnv,'FIXTURE_KEY');assert.equal(saved.config.reasoningEffort,'none');assert.equal(saved.config.maxTokens,256);
   assert.ok(!calls.slice(before).some(c=>c.path.endsWith('/metadata')||c.path.endsWith('/chat')));
+ });
+ await t.test('challenge navigation, editing, saving, creation and deletion use actual app handlers',async()=>{
+  await click(button(null,{page:'challenges'}));for(let i=0;i<20;i++)await Promise.resolve();
+  assert.match(html,/多難度 Python 題庫/);assert.match(html,/空白正規化/);
+  await click(button(null,{bankSelect:challengeData.questions[0].id}));assert.match(html,/id="challenge-form"/);
+  const q=challengeData.questions[0],fields={...q,title:'Edited through real form',visible:JSON.stringify(q.visible),hidden:JSON.stringify(q.hidden),sources:q.sources.join('\n')};delete fields.id;delete fields.enabled;
+  const edited=form('challenge-form',fields),before=renders;await click(button(edited));assert.equal(renders,before);await submit(edited);
+  assert.equal(challengeData.questions[0].title,'Edited through real form');assert.equal(challengeData.questions[0].enabled,false);
+  await click(button(null,{bankNew:''}));assert.match(html,/新增題目/);
+  await submit(form('challenge-form',{...fields,group:'new-fixture-family',enabled:'on'}));assert.equal(challengeData.questions.at(-1).id,'CH-created-fixture');
+  globalThis.window.confirm=()=>true;await click(button(null,{bankDelete:'CH-created-fixture'}));assert.ok(!challengeData.questions.some(q=>q.id==='CH-created-fixture'));
+  assert.equal(calls.filter(c=>c.path==='/api/v1/gepa/runs').length,2,'editing questions must not start GEPA');
  });
 
 });
