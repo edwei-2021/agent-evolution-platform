@@ -10,12 +10,20 @@ Use the same prepared WSL shell in which this command has already passed:
 python3 scripts/test_windows_strata.py --from-env --stage all --reasoning-effort none
 ```
 
-The shell must export `OPENAI_BASE_URL`, `STRATA_MODEL` and `OPENAI_API_KEY`. Stop the previous GUI, update the checkout and start it in that shell:
+The shell must export `OPENAI_BASE_URL`, `STRATA_MODEL` and `OPENAI_API_KEY`. The GUI launcher now automatically sources the existing `~/strata-wsl.env` when present, matching `source ~/strata-wsl.env` used by other applications (啟動時沿用既有環境設定). Keep the private file in your WSL home directory; do not copy its contents into the repository. Stop the previous GUI, update the checkout and start it:
 
 ```bash
 git pull --ff-only
 bash scripts/start-gui.sh
 ```
+
+The file's assignments are exported to the GUI and its child workers. File values take precedence over inherited variables, as with an ordinary `source`; saved GUI provider/model settings still take precedence over environment-derived profile suggestions. Only the file path and loading status are printed. Shell tracing and file output are suppressed during loading; key values are not written to startup output or Git. Startup makes no model-service requests.
+
+For a custom path, run `AEP_STRATA_ENV_FILE="$HOME/path/to/strata-wsl.env" bash scripts/start-gui.sh`. To use only already exported variables, run `AEP_STRATA_ENV_FILE='' bash scripts/start-gui.sh`. An absent default file remains optional for Ollama/inherited-environment use. An explicitly configured missing or unreadable file, or a failed `source`, stops before starting the GUI. This is a trusted Bash environment file, with the same shell semantics as manual sourcing. Invoking `python scripts/serve_gui.py` directly continues to use the caller's exported environment.
+
+The standalone `test_windows_strata.py --from-env` diagnostic still reads exported variables only; source the file manually before running that diagnostic. No file is copied, rewritten, or automatically created by the launcher.
+
+Six focused launcher tests use synthetic files and the actual provider credential-freezing/header functions. They verify exported and plain assignments, paths with spaces, file-over-inherited precedence, explicit opt-out, missing/failed source blocking, argument forwarding, project-local temporary paths, and suppression of credential output even under `bash -x`. They send no HTTP or model requests and do not execute the attached private environment file. A new Windows service connection is separate verification.
 
 Open `http://localhost:8765/#integrations` and select **Strata**. On a first visit, valid ASK environment settings supply suggestions for the base URL and model. Previously saved Strata settings take precedence. Check these fields before saving:
 
@@ -28,7 +36,7 @@ Open `http://localhost:8765/#integrations` and select **Strata**. On a first vis
 | Maximum output tokens | 256 by default; preserve the tested value initially |
 | Metadata / inference timeout | Existing saved bounds apply; no automatic retries or deadline increases |
 
-The GUI inherits exported variables at process start. If credentials are missing, restart it in the prepared shell. Keys are read only from that environment, never returned in settings or written to profiles/reports. Runs store a key digest to reject credential changes between role processes. Changing endpoint, model, effort or provider requires a new run. Provider requests bypass proxies and Strata requests refuse redirects.
+The GUI inherits exported variables at process start, including the launcher's sourced file. After updating that file, restart the GUI to apply it. Keys are read only from the process environment, never returned in settings or written to profiles/reports. Runs store a key digest to reject credential changes between role processes. Changing endpoint, model, effort or provider requires a new run. Provider requests bypass proxies and Strata requests refuse redirects.
 
 ## Focused next operation (下一個實際操作)
 

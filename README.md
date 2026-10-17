@@ -73,7 +73,7 @@ Open `http://localhost:8766` when using that port.
 
 ## Ollama / Strata selection (模型服務選擇)
 
-Integrations now offers separate saved Ollama and Strata profiles. In the same WSL shell where the Strata diagnostic passes, restart the GUI, choose **Strata**, check the suggested ASK environment values, and save. Strata uses OpenAI chat/tools/SSE, explicit reasoning effort and environment-only credentials; native loading uses its own API. Existing Ollama port 11435 is retained. See [provider setup and validation boundaries](docs/model-providers.md).
+Integrations now offers separate saved Ollama and Strata profiles. `bash scripts/start-gui.sh` automatically sources your existing `~/strata-wsl.env` when present, exporting its endpoint/model/key variables to the GUI and workers without printing their values. Choose **Strata**, check the suggested ASK environment values, and save. Strata uses OpenAI chat/tools/SSE, explicit reasoning effort and environment-only credentials; native loading uses its own API. Existing Ollama port 11435 is retained. See [provider setup, custom environment-file paths and validation boundaries](docs/model-providers.md).
 
 ## Windows Ollama on port 11435 (Windows Ollama 連線)
 

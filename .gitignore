@@ -10,6 +10,7 @@ __pycache__/
 *.py[cod]
 ollama-test-logs/
 ollama-wsl.env
+strata-wsl.env
 
 .venv-nanobot/
 .venv-m/
