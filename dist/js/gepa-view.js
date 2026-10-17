@@ -10,11 +10,16 @@ export function gepaView(runtime){
  const w=runtime.data?.gepa,run=runtime.selectedGepaRun||w?.latestRun,r=run?.gepaResult,p=run?.gepaProgress;
  const active=['queued','running'].includes(runtime.data?.latestRun?.status),stale=!!runtime.error||!runtime.capabilities||!w||runtime.enabled===false;
  const bankMode=runtime.gepaProfile==='bank',bank=runtime.data?.challenges;
- const disabled=bankMode&&(!bank?.ready||(runtime.data?.provider?.config?.maxTokens??0)<512)||stale||runtime.actionBusy||active||runtime.data?.provider?.busy||!w?.sdk?.available||!w?.optimizer?.available;
+ const tokenLimit=runtime.data?.provider?.config?.maxTokens,tokenBlocked=bankMode&&(tokenLimit??0)<512;
+ const bankIssues=[];
+ if(bankMode&&!bank?.ready)bankIssues.push(bank?.error||'題庫尚未就緒，請檢查啟用題數與資料分割群組。');
+ if(tokenBlocked)bankIssues.push(`目前已儲存的最大輸出 tokens：${tokenLimit??'尚未載入'}。多難度題庫至少 512，建議改為 1024 並儲存。`);
+ const disabled=bankIssues.length>0||stale||runtime.actionBusy||active||runtime.data?.provider?.busy||!w?.sdk?.available||!w?.optimizer?.available;
  const counts=run?.gepaConfig?.counts||(bankMode?bank?.counts:runtime.gepaProfile==='full'?{train:20,validation:10,heldout:20}:{train:4,validation:2,heldout:4});
  const selected=r?.selectedSkill||p?.selectedSkill,preset=GEPA_PRESETS[bankMode?'bank':runtime.gepaProfile==='full'?'full':'smoke'];
  const approved=w?.versions.some(v=>v.runId===run?.id),eligible=run?.status==='completed'&&r?.checksPassed&&r?.eligible&&!approved&&run?.gepaConfig?.baseline.id===w?.activeVersionId;
- return `<div class="page-heading"><div><p class="eyebrow">REAL GEPA · NANOBOT SDK</p><h1>GEPA 技能最佳化</h1><p>只演化 Python 修復 Skill 本文，以實際工具操作與可信測試評估候選。</p></div><div class="actions"><button class="button secondary" data-live-refresh>↻ 更新狀態</button><button class="button primary" data-gepa-start ${disabled?'disabled':''}>${bankMode?'開始題庫演化':'開始 GEPA 搜尋'}</button>${run&&['queued','running'].includes(run.status)?`<button class="button danger" data-live-cancel="${esc(run.id)}">取消這輪</button>`:''}</div></div>
+ return `<div class="page-heading"><div><p class="eyebrow">REAL GEPA · NANOBOT SDK</p><h1>GEPA 技能最佳化</h1><p>只演化 Python 修復 Skill 本文，以實際工具操作與可信測試評估候選。</p></div><div class="actions"><button class="button secondary" data-live-refresh>↻ 更新狀態</button><button class="button primary" data-gepa-start ${bankIssues.length?'aria-describedby="gepa-start-blockers"':''} ${disabled?'disabled':''}>${bankMode?'開始題庫演化':'開始 GEPA 搜尋'}</button>${run&&['queued','running'].includes(run.status)?`<button class="button danger" data-live-cancel="${esc(run.id)}">取消這輪</button>`:''}</div></div>
+ ${bankIssues.length?`<div class="error-banner spaced" id="gepa-start-blockers" data-gepa-start-blockers role="status"><div><strong>目前無法開始題庫演化</strong><ul>${bankIssues.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul>${tokenBlocked?'<button class="button secondary" data-page="integrations">前往框架整合修改輸出上限</button>':'<button class="button secondary" data-page="challenges">檢查題庫設定</button>'}</div></div>`:''}
  <div class="demo-banner"><span class="info-icon">i</span><div><strong>GEPA 0.1.4 × nanobot 0.3.5</strong><span>合成 Python fixture · 任務群組不跨資料分割 · <a href="#challenges">管理多難度題庫</a> · 全新 workspace／session · 僅三個受控工具。最終資料在候選選定後才評測。</span></div><a href="#logs">檢閱模組 Log ↗</a></div>
  ${runtime.actionBusy?'<p class="body-copy" role="status">正在提交操作或重新驗證證據，請稍候…</p>':''}
  ${stale?`<div class="error-banner spaced">${esc(runtime.error||'等待 WSL 本機服務／polling 已暫停')}。請使用 localhost GUI。</div>`:''}

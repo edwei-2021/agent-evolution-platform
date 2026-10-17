@@ -220,7 +220,15 @@ test('app form events preserve settings through click, submit, navigation and LL
    assert.equal(runtime.provider.config.maxTokens,256,'preparation must preserve the saved output cap');
   }
   assert.equal(calls.filter(c=>c.options?.method==='POST').length,before,'preparation must not dispatch any workflow');
-  runtime.provider.config.maxTokens=1024;await click(button(null,{liveRefresh:''}));
+  assert.match(html,/目前已儲存的最大輸出 tokens：256/);
+  assert.match(html,/data-page="integrations"/);
+  await click(button(null,{page:'integrations'}));for(let i=0;i<20;i++)await Promise.resolve();
+  assert.match(html,/name="maxTokens"/);
+  await submit(form('ollama-settings-form',{...saved.config,maxTokens:'1024'}));
+  assert.equal(saved.config.maxTokens,1024);
+  // The server's next read reflects the settings mutation, as in production.
+  runtime.provider={revision:saved.revision,config:{...saved.config},busy:false};
+  await click(button(null,{page:'gepa'}));await click(button(null,{liveRefresh:''}));
   assert.ok(!html.match(/data-gepa-start[^>]*disabled/),html.match(/error-banner[\s\S]*?<\/div>/)?.[0]||'Bank start remained disabled');
   await click(button(null,{gepaStart:''}));
   const posts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(posts.length,3);

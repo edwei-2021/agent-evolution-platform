@@ -19,6 +19,21 @@ test('bank preparation selects the profile, clears historical selection and pres
  client.pendingGepaSubmission=null;client.actionBusy=true;assert.throws(()=>client.prepareChallengeGepa(),/上一筆 GEPA/);
 });
 
+test('Full and bank expose their different output-cap gates next to Start, including the exact threshold',()=>{
+ const client=new RuntimeClient({fetcher:()=>{throw Error('Rendering must not make requests');}});
+ client.data={gepa:{sdk:{available:true},optimizer:{available:true},versions:[],runs:[]},challenges:{revision:1,ready:true,counts:{train:6,validation:3,heldout:3}},provider:{config:{maxTokens:256}}};
+ client.capabilities={};client.enabled=true;
+ client.setGepaProfile('full');assert.doesNotMatch(gepaView(client.snapshot()),/data-gepa-start[^>]*disabled/);
+ client.setGepaProfile('bank');let html=gepaView(client.snapshot());
+ assert.match(html,/data-gepa-start[^>]*aria-describedby="gepa-start-blockers"[^>]*disabled/);
+ assert.match(html,/目前已儲存的最大輸出 tokens：256/);assert.match(html,/data-page="integrations"/);
+ assert.ok(html.indexOf('data-gepa-start-blockers')<html.indexOf('data-gepa-results'));
+ client.data.provider.config.maxTokens=511;assert.match(gepaView(client.snapshot()),/data-gepa-start[^>]*disabled/);
+ for(const cap of [512,1024]){client.data.provider.config.maxTokens=cap;html=gepaView(client.snapshot());assert.doesNotMatch(html,/data-gepa-start[^>]*disabled/);assert.doesNotMatch(html,/data-gepa-start-blockers/);}
+ client.data.challenges.ready=false;client.data.challenges.error='Related groups cross splits <example>';
+ html=gepaView(client.snapshot());assert.match(html,/data-gepa-start[^>]*disabled/);assert.match(html,/Related groups cross splits &lt;example&gt;/);assert.match(html,/data-page="challenges"/);
+});
+
 test('twelve original challenges expose three difficulties, separate splits, source links and escaped editors',()=>{
  const data=validateBank(bank());assert.equal(data.questions.length,12);assert.equal(new Set(data.questions.map(q=>q.difficulty)).size,3);
  const client=new ChallengesClient({request:async()=>data});client.data=data;client.select(data.questions[0].id);client.edit('prompt','<script>bad</script>');
