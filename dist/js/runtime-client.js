@@ -252,6 +252,10 @@ export class RuntimeClient{
       this.pendingGepaSubmission=null;this.selectedGepaRun=null;
     },'gepa');
   }
+  prepareChallengeGepa(){
+    if(this.actionBusy||this.pendingGepaSubmission)throw Error('請先確認上一筆 GEPA 提交狀態，再準備新的題庫實驗');
+    this.setGepaProfile('bank');this.selectedGepaRun=null;
+  }
   setGepaProfile(profile){
     if(!Object.hasOwn(GEPA_PRESETS,profile))throw Error('GEPA 規模不正確');
     this.gepaProfile=profile;const p=GEPA_PRESETS[profile];this.gepaTaskCalls=profile==='bank'?10:8;

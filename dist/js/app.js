@@ -105,6 +105,7 @@ document.addEventListener('click',async event=>{
  if(b.form&&b.type==='submit')return;
  try{
  if(b.dataset.page) return navigate(b.dataset.page);
+ if(b.hasAttribute('data-bank-gepa')){await live.refresh();live.prepareChallengeGepa();navigate('gepa');toast('已選取多難度題庫；確認設定後按「開始題庫演化」');return;}
  if(b.hasAttribute('data-bank-refresh')){await bank.load();return;}
  if(b.hasAttribute('data-bank-new')){bank.create();return;}
  if(b.dataset.bankSelect){bank.select(b.dataset.bankSelect);return;}

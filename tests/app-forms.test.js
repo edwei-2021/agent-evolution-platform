@@ -179,6 +179,7 @@ test('app form events preserve settings through click, submit, navigation and LL
   runtime.repair={engine:'nanobot-python-repair-v1',sdk:{available:true,version:'0.3.5'},latestRun:null,runs:[]};
   await click(button(null,{page:'repair'}));await click(button(null,{liveRefresh:''}));
   assert.match(html,/Python 修復實驗/);await click(button(null,{repairStart:''}));
+  assert.match(html,/固定單題：整數範圍 clamp/);assert.match(html,/開始單題 Python 修復/);
   const starts=calls.filter(c=>c.path==='/api/v1/repair/runs');assert.equal(starts.length,1);
   const body=JSON.parse(starts[0].options.body);assert.equal(body.callBudget,8);assert.equal(body.providerRevision,saved.revision);assert.equal(body.registry.agents.length,5);
  });
@@ -203,6 +204,30 @@ test('app form events preserve settings through click, submit, navigation and LL
   await submit(form('challenge-form',{...fields,group:'new-fixture-family',enabled:'on'}));assert.equal(challengeData.questions.at(-1).id,'CH-created-fixture');
   globalThis.window.confirm=()=>true;await click(button(null,{bankDelete:'CH-created-fixture'}));assert.ok(!challengeData.questions.some(q=>q.id==='CH-created-fixture'));
   assert.equal(calls.filter(c=>c.path==='/api/v1/gepa/runs').length,2,'editing questions must not start GEPA');
+ });
+
+ await t.test('repair and bank entrypoints prepare the bank without dispatch; explicit Start submits the bank revision',async()=>{
+  const counts=Object.fromEntries(['train','validation','heldout'].map(s=>[s,challengeData.questions.filter(q=>q.enabled&&q.split===s).length]));
+  runtime.challenges={revision:challengeData.revision,version:challengeData.version,ready:true,counts};
+  runtime.provider={revision:saved.revision,config:{...saved.config,maxTokens:256},busy:false};
+  const before=calls.filter(c=>c.options?.method==='POST').length;
+  for(const origin of ['repair','challenges']){
+   await click(button(null,{page:origin}));for(let i=0;i<20;i++)await Promise.resolve();
+   assert.match(html,/data-bank-gepa/);
+   await click(button(null,{bankGepa:''}));
+   assert.match(html,/<option value="bank" selected>/);assert.match(html,/下一輪使用：多難度題庫/);
+   assert.match(html,/data-gepa-start[^>]*disabled/);assert.match(html,/開始題庫演化/);
+   assert.equal(runtime.provider.config.maxTokens,256,'preparation must preserve the saved output cap');
+  }
+  assert.equal(calls.filter(c=>c.options?.method==='POST').length,before,'preparation must not dispatch any workflow');
+  runtime.provider.config.maxTokens=1024;await click(button(null,{liveRefresh:''}));
+  assert.ok(!html.match(/data-gepa-start[^>]*disabled/),html.match(/error-banner[\s\S]*?<\/div>/)?.[0]||'Bank start remained disabled');
+  await click(button(null,{gepaStart:''}));
+  const posts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(posts.length,3);
+  const submitted=JSON.parse(posts.at(-1).options.body);
+  assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,challengeData.revision);
+  assert.equal(submitted.metricBudget,10);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,3600);
+  assert.equal(calls.filter(c=>c.path==='/api/v1/repair/runs').length,1,'bank Start must not repeat the single repair');
  });
 
 });

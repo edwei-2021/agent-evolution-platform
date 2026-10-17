@@ -9,6 +9,16 @@ import {gepaPlan} from '../dist/js/gepa-plan.js';
 const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v1.json',import.meta.url)));
 const bank=()=>({schemaVersion:1,version:'python-challenges-v1',revision:1,questions:structuredClone(seeds)});
 
+test('bank preparation selects the profile, clears historical selection and preserves uncertain submissions',()=>{
+ const client=new RuntimeClient({fetcher:()=>{throw Error('Preparation must not make requests');}});
+ client.selectedGepaRun={id:'RUN-old-selection'};client.prepareChallengeGepa();
+ assert.equal(client.gepaProfile,'bank');assert.equal(client.selectedGepaRun,null);assert.equal(client.gepaTaskCalls,10);
+ const pending={requestId:'frozen-fixture-request',profile:'smoke',maxSeconds:1800};
+ client.pendingGepaSubmission=pending;assert.throws(()=>client.prepareChallengeGepa(),/上一筆 GEPA/);
+ assert.equal(client.pendingGepaSubmission,pending);
+ client.pendingGepaSubmission=null;client.actionBusy=true;assert.throws(()=>client.prepareChallengeGepa(),/上一筆 GEPA/);
+});
+
 test('twelve original challenges expose three difficulties, separate splits, source links and escaped editors',()=>{
  const data=validateBank(bank());assert.equal(data.questions.length,12);assert.equal(new Set(data.questions.map(q=>q.difficulty)).size,3);
  const client=new ChallengesClient({request:async()=>data});client.data=data;client.select(data.questions[0].id);client.edit('prompt','<script>bad</script>');
