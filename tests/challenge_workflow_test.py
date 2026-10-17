@@ -13,6 +13,7 @@ import unittest
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from challenge_bank import validate_snapshot
+from change_trace import snapshot as change_snapshot
 from gepa_engine import REFLECTION_SYSTEM,verify
 from ollama_bridge import DEFAULTS
 from runtime_service import RuntimeService,ROLES,ROOT
@@ -104,6 +105,28 @@ try{validateGepaRun(run);process.exit(1);}catch(e){if(!e.message.includes('分�
             cfg=json.loads((child/'repair-config.json').read_text())
             initial=json.loads((child/'repair-calls.json').read_text())[0]['request']['messages']
             self.assertNotIn(BY_ID[cfg['taskId']]['reference'],str(initial))
+        # Inspect real SDK artifacts through the same read-only projection and
+        # shipped frontend used by the GUI, including the edited live bank.
+        calls_before=len(Model.calls)
+        pages=[change_snapshot(self.service,run['id'],offset=i) for i in range(0,result['rollouts'],20)]
+        self.assertEqual(len(Model.calls),calls_before)
+        rows=[r for page in pages for r in page['rollouts']]
+        self.assertEqual(len(rows),result['rollouts'])
+        self.assertTrue(all(r['records']['evaluation'] is not None for r in rows))
+        self.assertNotIn('Edited after dispatch',json.dumps(pages))
+        self.assertTrue(any(r['attempt']>1 for r in rows))
+        for row in rows:
+            saved=json.loads((directory/'rollouts'/row['id']/'repair-evaluation.json').read_text())
+            self.assertEqual(row['records']['evaluation']['candidate']['hidden'],
+                             {k:saved['candidate']['hidden'][k] for k in ('passed','total')})
+        table_parser="""import fs from 'node:fs';import {validateChanges} from './dist/js/changes-client.js';
+import {changesView} from './dist/js/changes-view.js';
+for(const page of JSON.parse(fs.readFileSync(0,'utf8'))){validateChanges(page);
+const html=changesView({changes:page},{id:page.runId,task:page.task});
+if(!html.includes('逐題修復與 Skill 對照紀錄')||!html.includes('未執行・沒有測量結果'))process.exit(1);}
+"""
+        parsed=subprocess.run(['node','--input-type=module','-e',table_parser],cwd=ROOT,input=json.dumps(pages),text=True,capture_output=True,timeout=10)
+        self.assertEqual(parsed.returncode,0,parsed.stdout+parsed.stderr)
         approved=self.service.gepa.approve(run['id'],1);self.assertNotEqual(approved['activeVersionId'],'GSV-baseline')
         cfg_path=directory/'gepa-config.json';cfg=json.loads(cfg_path.read_text());cfg['datasetSnapshot']['data']['heldout'][0]['fixture']['hidden'][0]['expected']='tampered';cfg_path.write_text(json.dumps(cfg))
         with self.assertRaises(ValueError):verify(directory)

@@ -8,7 +8,7 @@ test('app form events preserve settings through click, submit, navigation and LL
  const names=['document','window','location','history','FormData','fetch','setTimeout','clearTimeout','setInterval','clearInterval'];
  const originals=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
  t.after(()=>{for(const [name,descriptor] of originals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}});
- const listeners=new Map(),windowListeners=new Map(),forms=new Set(),calls=[];let openChanges=false;
+ const listeners=new Map(),windowListeners=new Map(),forms=new Set(),calls=[];let openChanges=false,delayHistory=false,historyReply;
  const node=()=>({textContent:'',dataset:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},addEventListener(){}});
  const main=node();let html='',renders=0;
  Object.defineProperty(main,'innerHTML',{get:()=>html,set:value=>{html=value;renders++;for(const form of forms)form.isConnected=false;}});
@@ -60,6 +60,7 @@ test('app form events preserve settings through click, submit, navigation and LL
    else{assert.equal(body.expectedRevision,saved.revision);saved={...saved,revision:saved.revision+1,config:body.config};value=saved;}
   }else if(path.endsWith('/runs'))value={};
   else throw Error(`Unexpected request: ${path}`);
+  if(delayHistory&&path.startsWith('/api/v1/debug/changes/')){delayHistory=false;await new Promise(resolve=>{historyReply=resolve;});}
   return {ok,status:ok?200:409,json:async()=>structuredClone(value)};
  };
  await import(`../dist/js/app.js?forms-regression=${Date.now()}`);
@@ -155,6 +156,16 @@ test('app form events preserve settings through click, submit, navigation and LL
   assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
   globalThis.document.activeElement=null;
  });
+ await t.test('GEPA page loads saved task records automatically and idle polls add no history reads',async()=>{
+  for(let i=0;i<20;i++)await Promise.resolve();
+  const reads=()=>calls.filter(c=>c.path.startsWith('/api/v1/debug/changes/')).length;
+  const before=reads();assert.ok(before>0);
+  assert.ok(calls.some(c=>c.path.startsWith('/api/v1/debug/changes/RUN-focused-result')));
+  await click(button(null,{liveRefresh:''}));for(let i=0;i<20;i++)await Promise.resolve();
+  assert.equal(reads(),before);
+  assert.match(html,/逐題修復與 Skill 對照紀錄/);
+  assert.ok(calls.filter(c=>c.path.startsWith('/api/v1/debug/changes/')).every(c=>c.options.method==='GET'));
+ });
  await t.test('profile selection and explicit time changes reach actual submission with final workload shown',async()=>{
   const target=(selector,value)=>({value,dataset:{},matches:s=>s===selector,hasAttribute:()=>false});
   await dispatch('change',{target:target('[data-gepa-profile]','full')});
@@ -173,6 +184,18 @@ test('app form events preserve settings through click, submit, navigation and LL
   panel.dataset.changeRevision=html.match(/data-change-revision="(\d+)"/)[1];panel.outerHTML='preserved open details';
   openChanges=true;const before=renders;await click(button(null,{liveRefresh:''}));
   assert.equal(renders,before);assert.equal(panel.outerHTML,'preserved open details');openChanges=false;
+ });
+ await t.test('background history completion preserves details opened while the GET is in flight',async()=>{
+  const oldRun=runtime.gepa.latestRun;
+  runtime.gepa.latestRun={...oldRun,id:'RUN-background-records'};
+  delayHistory=true;await click(button(null,{liveRefresh:''}));
+  assert.equal(typeof historyReply,'function');
+  const panel=nodes.get('[data-change-panel]');panel.dataset.changeRunId='RUN-background-records';
+  panel.outerHTML='open source preserved during background read';openChanges=true;
+  historyReply();for(let i=0;i<30;i++)await Promise.resolve();
+  assert.equal(panel.outerHTML,'open source preserved during background read');
+  openChanges=false;runtime.gepa.latestRun=oldRun;await click(button(null,{liveRefresh:''}));
+  for(let i=0;i<30;i++)await Promise.resolve();
  });
  await t.test('Python repair navigation and Start post through the actual app listeners',async()=>{
   runtime.provider.busy=false;runtime.provider.warmup.status='PRELOAD_PASS';

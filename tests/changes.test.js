@@ -63,3 +63,38 @@ test('profile presets count mandatory final runs and three verifier passes, whil
  assert.equal(client.gepaSeconds,1800); // Rendering cannot extend an explicit deadline.
  client.setGepaProfile('smoke');assert.equal(client.gepaSeconds,1800);assert.equal(client.gepaMetrics,8);
 });
+
+function recorded(){
+ const d=fixture();d.runStatus='completed';d.verified=true;
+ const q={id:'CH-example',title:'凍結題目 <script>',difficulty:'hard',topic:'boundaries',split:'validation',attempts:2};
+ const e={baseline:{visible:{passed:1,total:3},hidden:{passed:0,total:4}},candidate:{visible:{passed:3,total:3},hidden:{passed:4,total:4}},repairPassed:true,calls:5,toolCalls:7,taskOutcome:'completed',sdkStopReason:'completed'};
+ d.rollouts=[1,2].map((n)=>({id:`R000${n}`,taskId:q.id,stage:n===1?'baseline':'selected',score:1,completed:true,skillChanged:false,question:q,attempt:n,
+  records:{skill:{name:'python-repair',hash:'a'.repeat(64),label:'baseline'},writes:{attempted:4,applied:3,changed:2,rejected:1},evaluation:structuredClone(e)}}));
+ d.taskCatalog={revision:7,version:'python-challenges-v1',hash:'b'.repeat(64),unassignedRollouts:0,tasks:[q,{...q,id:'CH-unattempted',title:'尚未抽到',split:'train',attempts:0}]};
+ return d;
+}
+test('per-question table pairs saved before/after results with actual Skill and distinct rollout/write attempts',()=>{
+ const d=validateChanges(recorded()),html=changesView({changes:d},{id:d.runId,task:d.task});
+ for(const text of ['逐題修復與 Skill 對照紀錄','同題第 2 次','公開 1/3','保留 0/4','公開 3/3','保留 4/4','要求 4 次／套用 3 次','有變更 2 次／遭拒 1 次','aaaaaaaaaaaa','未執行・沒有測量結果','1/2 題有嘗試','v7','沿用基準・未修改'])assert.ok(html.includes(text),text);
+ assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
+ d.rollouts[1].records.evaluation.taskOutcome='call-limit';d.rollouts[1].records.evaluation.sdkStopReason='max_iterations';d.rollouts[1].records.evaluation.repairPassed=false;d.rollouts[1].score=0;
+ const capped=changesView({changes:validateChanges(d)},{id:d.runId});assert.match(capped,/單題額度耗盡・記為失敗/);assert.match(capped,/max_iterations/);
+ d.rollouts[1].records.evaluation=null;
+ assert.match(changesView({changes:validateChanges(d)},{id:d.runId}),/測試明細未保存/);
+});
+test('new task-record fields reject malformed counts and identities before HTML rendering',()=>{
+ for(const mutate of [d=>d.rollouts[0].attempt=0,d=>d.rollouts[0].records.evaluation.calls='<img>',d=>d.rollouts[0].records.evaluation.candidate.hidden.passed=5,d=>d.rollouts[0].records.writes.changed=24,d=>d.rollouts[0].records.skill.hash='bad',d=>d.rollouts[0].records.skill.label='<script>',d=>d.taskCatalog.tasks[0].attempts=-1,d=>d.taskCatalog.tasks.push(...Array(50).fill(d.taskCatalog.tasks[0]))]){
+  const d=recorded();mutate(d);assert.throws(()=>validateChanges(d));
+ }
+});
+test('automatic GEPA history reads coalesce and refresh only on run, status or rollout changes',async()=>{
+ const calls=[],client=new RuntimeClient({fetcher:async(path,options)=>{calls.push({path,options});const d=recorded();d.runId=new URL(path,'http://localhost').pathname.split('/').at(-1);return {ok:true,json:async()=>d};}});
+ client.data={serviceId:'service',gepa:{latestRun:{id:'RUN-history',status:'running',gepaProgress:{rollouts:2}}}};
+ const first=client.ensureGepaHistory();assert.equal(client.ensureGepaHistory(),undefined);assert.equal(await first,true);
+ assert.equal(client.ensureGepaHistory(),undefined);assert.equal(calls.length,1);
+ client.data.gepa.latestRun.gepaProgress.rollouts=3;assert.equal(await client.ensureGepaHistory(),true);
+ client.data.gepa.latestRun.status='completed';assert.equal(await client.ensureGepaHistory(),true);
+ client.selectedGepaRun={id:'RUN-older',status:'completed'};assert.equal(await client.ensureGepaHistory(),true);assert.equal(client.changes.runId,'RUN-older');
+ client.changes={runId:'RUN-repair'};assert.equal(await client.ensureGepaHistory(),true);
+ assert.equal(calls.length,5);assert.ok(calls.every(c=>c.options.method==='GET'));
+});

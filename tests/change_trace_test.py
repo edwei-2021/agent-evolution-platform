@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from change_trace import snapshot
+from change_trace import snapshot, Reader
 from serve_gui import GuiHandler, DIST
 
 BASE = 'def clamp(value, lower, upper):\n    return value\n'
@@ -201,6 +201,97 @@ class ChangeHistoryTests(unittest.TestCase):
             child.symlink_to(Path(root), target_is_directory=True)
             with self.assertRaises(ValueError):
                 snapshot(service, 'RUN-history', 'R0003')
+
+    def recorded_bank(self, service, total=3):
+        service.run['task'] = 'gepa-evolution'
+        question = {'id': 'CH-history', 'title': 'Original frozen title', 'difficulty': 'hard',
+                    'topic': 'boundaries', 'fixture': {'hidden': ['PRIVATE_FROZEN_CASE']}}
+        save(service.directory, 'gepa-config.json', {
+            'baseline': {'skill': {'body': 'Baseline Skill'}},
+            'datasetSnapshot': {'version': 'python-challenges-v1', 'revision': 7, 'hash': 'c'*64,
+                                'data': {'validation': [question], 'train': [{**question, 'id': 'CH-unseen'}]}}})
+        ledger = []
+        for i in range(1, total+1):
+            identifier = f'R{i:04d}'
+            directory = service.directory/'rollouts'/identifier
+            prepare(directory)
+            cfg = json.loads((directory/'repair-config.json').read_text())
+            cfg['taskId'] = question['id']
+            cfg['skill'] = {'name': 'python-fix-and-verify', 'body': 'Baseline Skill', 'hash': 'a'*64}
+            save(directory, 'repair-config.json', cfg)
+            ledger.append({'id': identifier, 'stage': 'search' if i == 1 else 'baseline' if i == 2 else 'selected',
+                           'taskId': question['id'], 'body': 'Baseline Skill', 'score': 1,
+                           'evidenceHash': 'b'*64})
+            saved_counts = {'passed': 1, 'total': 3, 'results': ['PRIVATE_TEST_EXPECTED']}
+            save(directory, 'repair-evaluation.json', {
+                'taskId': question['id'], 'checksPassed': True, 'repairPassed': True, 'evidenceHash': 'b'*64,
+                'baseline': {'visible': saved_counts, 'hidden': saved_counts},
+                'candidate': {split: {**saved_counts, 'passed': 3} for split in ('visible', 'hidden')},
+                'calls': 5, 'toolCalls': 7, 'taskOutcome': 'completed', 'sdkStopReason': 'completed'})
+        save(service.directory, 'gepa-rollouts.json', ledger)
+
+    def test_task_records_keep_frozen_question_each_attempt_counts_and_independent_results(self):
+        with tempfile.TemporaryDirectory() as root:
+            service = Service(root)
+            self.recorded_bank(service)
+            before = {p: p.read_bytes() for p in service.directory.rglob('*') if p.is_file()}
+            with patch('subprocess.run', side_effect=AssertionError('Read must not execute')):
+                result = snapshot(service, 'RUN-history')
+            self.assertEqual([r['attempt'] for r in result['rollouts']], [1, 2, 3])
+            row = result['rollouts'][2]
+            self.assertEqual(row['question']['title'], 'Original frozen title')
+            self.assertEqual(row['question']['split'], 'validation')
+            records = row['records']
+            self.assertEqual(records['writes'], {'attempted': 4, 'applied': 3, 'changed': 2, 'rejected': 1})
+            self.assertEqual(records['skill'], {'name': 'python-fix-and-verify', 'hash': 'a'*64, 'label': 'baseline'})
+            self.assertEqual(records['evaluation']['baseline']['visible'], {'passed': 1, 'total': 3})
+            self.assertEqual(records['evaluation']['candidate']['hidden'], {'passed': 3, 'total': 3})
+            unseen = next(q for q in result['taskCatalog']['tasks'] if q['id'] == 'CH-unseen')
+            self.assertEqual(unseen['attempts'], 0)
+            self.assertEqual(result['taskCatalog']['revision'], 7)
+            for secret in ('PRIVATE_CONFIG_KEY', 'PRIVATE_HIDDEN_TEST', 'PRIVATE_FROZEN_CASE', 'PRIVATE_TEST_EXPECTED'):
+                self.assertNotIn(secret, json.dumps(result))
+            self.assertEqual(before, {p: p.read_bytes() for p in service.directory.rglob('*') if p.is_file()})
+
+    def test_task_records_paginate_without_resetting_attempts_and_expose_no_untrusted_counts(self):
+        with tempfile.TemporaryDirectory() as root:
+            service = Service(root)
+            self.recorded_bank(service, total=21)
+            result = snapshot(service, 'RUN-history', offset=20)
+            self.assertEqual(result['rollouts'][0]['attempt'], 21)
+            child = service.directory/'rollouts'/'R0021'
+            saved = json.loads((child/'repair-evaluation.json').read_text())
+            saved.update(taskOutcome='call-limit', sdkStopReason='max_iterations', repairPassed=False)
+            save(child, 'repair-evaluation.json', saved)
+            ledger = json.loads((service.directory/'gepa-rollouts.json').read_text())
+            ledger[-1]['score'] = 0
+            save(service.directory, 'gepa-rollouts.json', ledger)
+            self.assertFalse(snapshot(service, 'RUN-history', offset=20)['rollouts'][0]['records']['evaluation']['repairPassed'])
+            saved['taskId'] = 'CH-other'
+            save(child, 'repair-evaluation.json', saved)
+            result = snapshot(service, 'RUN-history', offset=20)
+            self.assertIsNone(result['rollouts'][0]['records']['evaluation'])
+            self.assertTrue(result['warnings'])
+            (child/'repair-evaluation.json').unlink()
+            result = snapshot(service, 'RUN-history', offset=20)
+            self.assertIsNone(result['rollouts'][0]['records']['evaluation'])
+            # In-flight directories stay inspectable, with no invented final score.
+            save(service.directory, 'gepa-rollouts.json', [])
+            result = snapshot(service, 'RUN-history', offset=20)
+            self.assertFalse(result['rollouts'][0]['completed'])
+            self.assertEqual(result['rollouts'][0]['attempt'], 21)
+
+    def test_aggregate_read_limit_omits_later_previews_instead_of_unbounded_reads(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)/'large.json'
+            path.write_text('x'*100)
+            reader = Reader(root)
+            reader.bytes_read = 8*1024*1024-20
+            self.assertIsNone(reader.json('large.json', None, 128000))
+            self.assertEqual(reader.bytes_read, 8*1024*1024)
+            self.assertIsNone(reader.json('large.json', None, 128000))
+            self.assertEqual(reader.bytes_read, 8*1024*1024)
+            self.assertTrue(reader.warnings)
 
     def test_actual_http_route_checks_origin_identity_and_query_without_model_dispatch(self):
         with tempfile.TemporaryDirectory() as root:

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import stat
+from task_records import catalog, records
 
 
 def patch(before, after):
@@ -23,6 +24,10 @@ class Reader:
         if self.root.is_symlink() or not self.root.is_dir():
             raise ValueError('Run directory is unavailable or is a symlink')
 
+    def warn(self, message):
+        if len(self.warnings) < 100:
+            self.warnings.append(message[:300])
+
     def text(self, relative, maximum=8000):
         path = self.root / relative
         cursor = self.root
@@ -37,12 +42,14 @@ class Reader:
         with os.fdopen(descriptor, 'rb') as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ValueError('Change history requires regular files')
-            raw = stream.read(maximum + 1)
+            remaining = 8 * 1024 * 1024 - self.bytes_read
+            raw = stream.read(min(maximum + 1, max(0, remaining)))
         self.bytes_read += len(raw)
-        if self.bytes_read > 8 * 1024 * 1024:
-            raise ValueError('Change history input exceeds 8 MiB')
+        if remaining <= maximum and len(raw) == remaining:
+            self.warn(f'{relative}: aggregate preview limit reached; counts or source unavailable')
+            return None
         if len(raw) > maximum:
-            self.warnings.append(f'{relative}: preview limit exceeded; inspect the original file locally')
+            self.warn(f'{relative}: preview limit exceeded; inspect the original file locally')
             return None
         return raw.decode('utf-8')
 
@@ -53,7 +60,7 @@ class Reader:
         try:
             return json.loads(raw)
         except (ValueError, UnicodeError):
-            self.warnings.append(f'{relative}: incomplete or invalid JSON snapshot')
+            self.warn(f'{relative}: incomplete or invalid JSON snapshot')
             return default
 
 
@@ -86,7 +93,7 @@ def source_trace(reader, prefix, cfg):
                 if type(result.get('passed')) is int and type(result.get('total')) is int:
                     entry.update(visiblePassed=result['passed'], visibleTotal=result['total'])
             except (ValueError, TypeError):
-                reader.warnings.append(prefix + 'repair-tools.json: test result unavailable')
+                reader.warn(prefix + 'repair-tools.json: test result unavailable')
         steps.append(entry)
     candidate = reader.text(prefix + 'repair-candidate.py')
     return {'baseline': baseline, 'currentSource': current, 'candidate': candidate, 'steps': steps,
@@ -144,13 +151,34 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
         identities = sorted(set(by_id) | set(children))
         if len(identities) > 200:
             raise ValueError('Too many rollouts')
+        child_configs = {}
+        task_ids = []
+        attempts = {}
+        ordinals = {}
+        for identifier in identities:
+            task_id = by_id.get(identifier, {}).get('taskId')
+            if task_id is None:
+                child_configs[identifier] = reader.json('rollouts/' + identifier + '/repair-config.json', {}, 128000)
+                task_id = child_configs[identifier].get('taskId')
+            task_ids.append(task_id)
+            attempts[task_id] = attempts.get(task_id, 0) + 1
+            ordinals[identifier] = attempts[task_id] if task_id is not None and None not in task_ids else None
+        task_catalog = catalog(cfg, task_ids)
+        metadata = {task['id']: task for task in task_catalog['tasks']}
         for identifier in identities[offset:offset + limit]:
             row = by_id.get(identifier, {})
-            child = reader.json('rollouts/' + identifier + '/repair-config.json', {}, 128000)
+            prefix = 'rollouts/' + identifier + '/'
+            child = child_configs.get(identifier)
+            if child is None:
+                child = reader.json(prefix + 'repair-config.json', {}, 128000)
+                child_configs[identifier] = child
             body = row.get('body', child.get('skill', {}).get('body'))
-            rows.append({'id': identifier, 'taskId': row.get('taskId', child.get('taskId')),
+            projected = {'id': identifier, 'taskId': row.get('taskId', child.get('taskId')),
                          'stage': row.get('stage'), 'score': row.get('score'), 'completed': identifier in by_id,
-                         'skillChanged': body != baseline.get('body') if body is not None else None})
+                         'skillChanged': body != baseline.get('body') if body is not None else None,
+                         'attempt': ordinals[identifier], 'question': metadata.get(row.get('taskId', child.get('taskId')))}
+            projected['records'] = records(reader, prefix, child, {**row, **projected}, baseline, proposals)
+            rows.append(projected)
         if not rollout and identities:
             rollout = identities[min(offset, len(identities) - 1)]
         if rollout and rollout not in identities:
@@ -179,7 +207,9 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
             history.append({'id': 'pending', 'kind': 'pending', 'before': baseline.get('body'), 'after': None,
                             'changed': False, 'note': 'No frozen selection; no evolution outcome confirmed'})
         prefix = 'rollouts/' + rollout + '/' if rollout else None
-        child_cfg = reader.json(prefix + 'repair-config.json', {}, 128000) if prefix else {}
+        child_cfg = child_configs.get(rollout)
+        if child_cfg is None:
+            child_cfg = reader.json(prefix + 'repair-config.json', {}, 128000) if prefix else {}
         trace = source_trace(reader, prefix, child_cfg) if prefix else None
         total = len(identities)
     else:
@@ -193,4 +223,5 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
             'verified': run['status'] == 'completed' and result.get('checksPassed') is True,
             'rollouts': rows, 'totalRollouts': total, 'offset': offset, 'limit': limit,
             'selectedRollout': rollout, 'trace': trace, 'skillHistory': history,
+            **({'taskCatalog': task_catalog} if gepa else {}),
             'warnings': reader.warnings, 'historyOnly': True}

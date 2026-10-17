@@ -25,7 +25,10 @@ try { storage=window.localStorage; } catch {}
 const api=new DemoAdapter(storage);
 let page=['overview','agents','runtime','skills','llm','repair','gepa','challenges','steps','logs','evolution','evaluations','releases','integrations'].includes(location.hash.slice(1))?location.hash.slice(1):'agents';
 const labels={challenges:'多難度 Python 題庫',steps:'逐步執行紀錄',gepa:'GEPA 技能最佳化',repair:'Python 修復實驗',logs:'模組 Log',overview:'總覽',agents:'代理人',runtime:'執行監控',skills:'本機技能實驗',llm:'LLM 技能實驗',evolution:'演化展示',evaluations:'展示評估紀錄',releases:'展示版本管理',integrations:'框架整合'};
+let changeRequested=false;
+async function inspectChanges(action){changeRequested=true;try{return await action();}finally{changeRequested=false;}}
 const live=new RuntimeClient({onUpdate(){
+  if(page==='gepa'&&!document.querySelector('.change-history details[open]'))live.ensureGepaHistory();
   const provider=live.data?.provider;
   if(provider&&ollama.data&&provider.revision>=ollama.data.revision)ollama.data={...ollama.data,...provider};
   if(live.error&&live.error!==lastReportedError){lastReportedError=live.error;reportBrowserError(live.error);}
@@ -95,10 +98,11 @@ function refreshProgressOnly(){
  const run=page==='gepa'?(state.selectedGepaRun||state.data?.gepa?.latestRun):page==='repair'?(state.selectedRepairRun||state.data?.repair?.latestRun):page==='llm'?(state.selectedLlmRun||state.data?.llm?.latestRun):page==='skills'?(state.selectedSkillRun||state.data?.skills?.latestRun):state.data?.latestRun;
  target.outerHTML=runProgressView(state,run);
  const changePanel=document.querySelector('[data-change-panel]');
- if(['gepa','repair'].includes(page)&&changePanel&&String(changePanel.dataset.changeRevision)!==String(state.changeRevision??0))changePanel.outerHTML=changesView(state,run);
+ const keepHistoryOpen=document.querySelector('.change-history details[open]')&&!changeRequested&&(!changePanel?.dataset.changeRunId||changePanel.dataset.changeRunId===run?.id);
+ if(['gepa','repair'].includes(page)&&changePanel&&!keepHistoryOpen&&String(changePanel.dataset.changeRevision)!==String(state.changeRevision??0))changePanel.outerHTML=changesView(state,run);
  if(page==='gepa'){const results=document.querySelector('[data-gepa-results]');if(results)results.outerHTML=gepaResultsView(state);const panel=document.querySelector('[data-gepa-search-progress]');if(panel){const holder=document.createElement('div');holder.innerHTML=gepaView(state);panel.outerHTML=holder.querySelector('[data-gepa-search-progress]').outerHTML;}}
 }
-function navigate(next){page=next;history.replaceState(null,'',`#${next}`);render();if(next==='challenges')bank.load();if(next==='steps'){if(!steps.runId&&live.data?.latestRun?.id)steps.select(live.data.latestRun.id);else steps.refresh();}if(next==='logs')logs.refresh();if(next==='integrations')ollama.operate('reload').catch(()=>{});}
+function navigate(next){page=next;history.replaceState(null,'',`#${next}`);render();if(next==='gepa')live.ensureGepaHistory();if(next==='challenges')bank.load();if(next==='steps'){if(!steps.runId&&live.data?.latestRun?.id)steps.select(live.data.latestRun.id);else steps.refresh();}if(next==='logs')logs.refresh();if(next==='integrations')ollama.operate('reload').catch(()=>{});}
 document.addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
  // Let the browser dispatch submit before any rendering can detach the form.
@@ -120,13 +124,13 @@ document.addEventListener('click',async event=>{
  if(b.dataset.logRole){await logs.readRole(b.dataset.logRole);return;}
  if(b.hasAttribute('data-log-export')){const url=URL.createObjectURL(new Blob([logs.export()],{type:'application/x-ndjson;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='module-debug-log.jsonl';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}
  if(b.dataset.ollama){await ollama.operate(b.dataset.ollama);return;}
- if(b.dataset.changeLoad){await live.readChanges(b.dataset.changeLoad,live.changes?.runId===b.dataset.changeLoad?live.changes.selectedRollout:'',live.changes?.runId===b.dataset.changeLoad?live.changes.offset:0);return;}
- if(b.dataset.changeRollout){await live.readChanges(b.dataset.changeRun,b.dataset.changeRollout,Number(b.dataset.changeOffset));return;}
- if(b.hasAttribute('data-change-page')){await live.readChanges(b.dataset.changeRun,'',Number(b.dataset.changePage));return;}
+ if(b.dataset.changeLoad){await inspectChanges(()=>live.readChanges(b.dataset.changeLoad,live.changes?.runId===b.dataset.changeLoad?live.changes.selectedRollout:'',live.changes?.runId===b.dataset.changeLoad?live.changes.offset:0));return;}
+ if(b.dataset.changeRollout){await inspectChanges(()=>live.readChanges(b.dataset.changeRun,b.dataset.changeRollout,Number(b.dataset.changeOffset)));return;}
+ if(b.hasAttribute('data-change-page')){await inspectChanges(()=>live.readChanges(b.dataset.changeRun,'',Number(b.dataset.changePage)));return;}
  if(b.hasAttribute('data-step-refresh')){await steps.refresh();return;}
  if(b.hasAttribute('data-step-toggle')){steps.enabled=!steps.enabled;render();if(steps.enabled)await steps.refresh();return;}
  if(b.hasAttribute('data-gepa-start')){await live.startGepa(api.snapshot().registry);toast('已提交 GEPA 搜尋');return;}
- if(b.hasAttribute('data-gepa-select')){await live.selectGepaRun(b.dataset.gepaSelect);return;}
+ if(b.hasAttribute('data-gepa-select')){await inspectChanges(()=>live.selectGepaRun(b.dataset.gepaSelect));return;}
  if(b.dataset.gepaApprove){await live.approveGepa(b.dataset.gepaApprove);toast('已核准並啟用 GEPA Skill');return;}
  if(b.dataset.gepaActivate){await live.activateGepa(b.dataset.gepaActivate);toast('已切換 GEPA Skill 版本');return;}
  if(b.hasAttribute('data-gepa-export')){const run=live.selectedGepaRun||live.data?.gepa.latestRun;const s=run?.gepaResult?.selectedSkill||run?.gepaProgress?.selectedSkill;if(!s)throw Error('尚未選定候選');const content=`---\nname: ${s.name}\ndescription: ${s.description}\n---\n\n${s.body}\n`;const url=URL.createObjectURL(new Blob([content],{type:'text/markdown;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='SKILL.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}

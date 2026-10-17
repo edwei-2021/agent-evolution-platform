@@ -275,6 +275,15 @@ export class RuntimeClient{
     }catch(error){if(generation===this.changeGeneration)this.changeError=error.message;return false;}
     finally{if(generation===this.changeGeneration){this.changeBusy=false;this.changeRevision=(this.changeRevision??0)+1;this.onUpdate();}}
   }
+  ensureGepaHistory(){
+    const run=this.selectedGepaRun||this.data?.gepa?.latestRun;
+    if(!run||this.changeBusy)return;
+    const key=JSON.stringify([this.data?.serviceId,run.id,run.status,run.gepaProgress?.rollouts??run.gepaResult?.rollouts??0]);
+    if(this.changeAutoKey===key&&(this.changes?.runId===run.id||this.changeError))return;
+    this.changeAutoKey=key;
+    const same=this.changes?.runId===run.id;
+    return this.readChanges(run.id,same?this.changes.selectedRollout:'',same?this.changes.offset:0);
+  }
   async approveGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/runs/${encodeURIComponent(id)}/approve`,{method:'POST',body:{expectedRevision:this.data.gepa.revision},timeoutMs:120000}),'gepa');}
   async activateGepa(id){return this.skillMutation(()=>this.request(`/api/v1/gepa/versions/${encodeURIComponent(id)}/activate`,{method:'POST',body:{expectedRevision:this.data.gepa.revision}}),'gepa');}
   async selectGepaRun(id){this.selectedGepaRun=id?validateGepaRun(await this.request(`/api/v1/runtime/runs/${encodeURIComponent(id)}`)):null;this.onUpdate();}
