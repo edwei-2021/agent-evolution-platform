@@ -57,8 +57,8 @@ class GepaBudgetTests(unittest.TestCase):
 
     def test_full_module_is_split_before_parent_cap_and_rejects_unsafe_aggregate(self):
         expanded = expand_plan([('python-gepa_test', ['python', 'runner', 'gepa_test.py'])], ROOT)
-        self.assertEqual(len(expanded), 12)
-        self.assertEqual(len({name for name, _ in expanded}), 12)
+        self.assertEqual(len(expanded), 13)
+        self.assertEqual(len({name for name, _ in expanded}), 13)
         for name, _ in expanded:
             self.assertFalse(set(name) & set('<>:"/\\|?*'))
             self.assertLess(len(name + '.log'), 255)
@@ -107,7 +107,7 @@ class GepaBudgetTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT))
         from platform_m.gates import release_step_count
         modules = [('python-' + path.stem, []) for path in sorted((ROOT/'tests').glob('*_test.py'))]
-        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 11)
+        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 12)
         self.assertEqual(release_step_count(ROOT), 2 + len(expand_plan(modules, ROOT)))
 
     def test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch(self):
@@ -118,8 +118,8 @@ class GepaBudgetTests(unittest.TestCase):
             module_budget(2, ['--case', 'gepa_test.C.missing'], ROOT)
         with self.assertRaises(ValueError):
             expand_plan([('python-gepa_test', ['--from-case', 'gepa_test.C.missing'])], ROOT)
-        for io in (0, 1.6926176800043322, 2.193912688002456):
-            budget = smoke_budget(io)
+        for io_seconds in (0, 1.6926176800043322, 2.193912688002456):
+            budget = smoke_budget(io_seconds)
             self.assertEqual(budget['workflowSeconds'], math.ceil(sum(budget['phasesSeconds'].values())))
 
 

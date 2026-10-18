@@ -44,6 +44,8 @@ Local read-only endpoints, protected by the existing localhost/origin boundary:
 
 Each detail preview uses an 8 MiB file-read ceiling, at most 32 generation attempts and bounded instruction text. Symlinks, unsupported task types and invalid identities/queries are rejected. Local query/export never imports an optional SDK, starts a new experiment or recomputes scores. Records remain in local run storage without automatic pruning; manual deletion is outside retention guarantees.
 
+[Multi-candidate exploration](gepa-exploration.md) supports sixteen GEPA proposals per Run. Strategy, acceptance policy, seed, duplicate/rejection decisions and coverage accompany the existing instruction/Parent records. The GUI defaults to twelve proposal slots for the shipped bank; saved attempts never imply twelve distinct bodies or twelve approved releases.
+
 ## Verification (驗證)
 
 Focused tests cover unchanged/unselected/failed candidates, interrupted response recovery, refused overwrite, read-only behavior, redaction through the actual ZIP consumer, history older than ten Runs, approved-version metadata, pagination, input bounds, origin enforcement and stale replies. Actual pinned GEPA/nanobot SDK workflows with scripted loopback responses check both generation and perfect-score skips; separate real subprocess LLM and rule workflows check failure capture and every unchosen rule probe. Original repair/evaluation/approval/tamper gates and model-call counts remain intact. This validates implementation behavior, not a new Windows/GPU evolution gain or broad M7 acceptance.

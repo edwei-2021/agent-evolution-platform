@@ -133,7 +133,7 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
         selection = reader.json('gepa-selection.json', {})
         if not isinstance(search, dict) or not isinstance(selection, dict):
             raise ValueError('Invalid saved Skill selection')
-        if not isinstance(ledger, list) or len(ledger) > 200 or not isinstance(proposals, list) or len(proposals) > 8:
+        if not isinstance(ledger, list) or len(ledger) > 200 or not isinstance(proposals, list) or len(proposals) > 16:
             raise ValueError('GEPA history exceeds bounded limits')
         for row in ledger:
             if not isinstance(row, dict) or not isinstance(row.get('id'), str) or not re.fullmatch(r'R\d{4}', row['id']):

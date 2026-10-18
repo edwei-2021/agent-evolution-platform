@@ -173,7 +173,7 @@ def build_bundle(root=ROOT, run_id=None):
 
         source = {}
         for name in ('serve_gui.py','diagnostic_log.py','ollama_bridge.py','model_provider.py','warmup_worker.py',
-                     'sdk_runtime_probe.py','skill_audit.py','skill_archive.py','gepa_sdk.py','repair_fixture.py','repair_engine.py','repair_sdk.py','llm_transport.py'):
+                     'sdk_runtime_probe.py','skill_audit.py','skill_archive.py','gepa_sdk.py','gepa_exploration.py','repair_fixture.py','repair_engine.py','repair_sdk.py','llm_transport.py'):
             path = root/'scripts'/name
             if path.is_file() and not path.is_symlink():source[name]=hashlib.sha256(path.read_bytes()).hexdigest()
         try:

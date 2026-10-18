@@ -15,6 +15,7 @@ from gepa_runtime import GEPA_VERSION
 from skill_engine import write
 from debug_log import DebugLog
 from skill_audit import Generation, save, stamp
+from gepa_exploration import exploring, proposal_context, CoverageSampler, NovelNonRegression, STRATEGIES, summary
 
 class GlobalRunner(RepairRunner):
     def __init__(self,directory,config,session,tags):
@@ -106,9 +107,12 @@ class Adapter:
         if any(t['taskId'] not in train_ids for t in training):raise ValueError('Final/validation data cannot enter reflection')
         identifier=f'P{len(session.proposals)+1:03d}';child=session.directory/'reflections'/identifier;child.mkdir(parents=True)
         cfg={**session.cfg,'callBudget':1,'reflectionOnly':True};runner=GlobalRunner(child,cfg,session,{'proposalId':identifier,'stage':'reflection'})
-        content=json.dumps({'candidate':candidate,'training':training},ensure_ascii=False)
+        content=json.dumps(proposal_context(candidate,training,session.proposals,session.cfg),ensure_ascii=False)
         with Generation(session.directory,identifier,session.cfg,skill(candidate['skill_body']),training,
-                        'gepa-worker',seed=0,skipPerfectScore=True,cacheEvaluation=False,useMerge=False,reflectionInstruction=REFLECTION_SYSTEM,metricEvaluations=sum(r['stage']=='search' for r in session.ledger),
+                        'gepa-worker',seed=session.cfg.get('searchSeed',0),skipPerfectScore=not exploring(session.cfg),
+                        searchMode=session.cfg.get('searchMode','standard'),strategy=STRATEGIES[len(session.proposals)%len(STRATEGIES)][0] if exploring(session.cfg) else 'training-reflection',
+                        acceptance='novel-non-regression' if exploring(session.cfg) else 'strict-improvement',
+                        cacheEvaluation=False,useMerge=False,reflectionInstruction=REFLECTION_SYSTEM,metricEvaluations=sum(r['stage']=='search' for r in session.ledger),
                         callsUsed=len(session.calls)) as audit:
             reply=runner.call([{'role':'system','content':REFLECTION_SYSTEM},{'role':'user','content':content}],[])
             value=json.loads(reply['choices'][0]['message']['content'])
@@ -126,8 +130,16 @@ def search(directory,cfg):
     if importlib.metadata.version('gepa')!=GEPA_VERSION:raise RuntimeError('Unexpected GEPA SDK version')
     logs=DebugLog(cfg['logRoot']);logs.append('gepa','INFO','Real GEPA search started',directory.name,{'metricBudget':cfg['metricBudget'],'profile':cfg['profile']})
     session=Session(directory,cfg);adapter=Adapter(session);data=data_for(cfg);minibatch=cfg['reflectionBatch']
-    search_audit={'schemaVersion':1,'seed':0,'skipped':[],'stop':None}
+    explore=exploring(cfg);seed=cfg.get('searchSeed',0)
+    search_audit={'schemaVersion':1,'seed':seed,'mode':cfg.get('searchMode','standard'),'skipped':[],'decisions':[],'stop':None}
     class Observer:
+        def decision(self,event,accepted):
+            if session.proposals:
+                search_audit['decisions'].append({'proposalId':session.proposals[-1]['id'],'accepted':accepted,
+                    **{k:event[k] for k in ('iteration','new_candidate_idx','old_score','new_score','reason') if k in event}})
+                save(directory/'gepa-search-audit.json',search_audit)
+        def on_candidate_accepted(self,event):self.decision(event,True)
+        def on_candidate_rejected(self,event):self.decision(event,False)
         def on_evaluation_skipped(self,event):
             if len(search_audit['skipped'])<80:
                 search_audit['skipped'].append({k:event.get(k) for k in ('iteration','candidate_idx','reason','scores')})
@@ -146,12 +158,17 @@ def search(directory,cfg):
                 'requiredNext':2*minibatch+len(data['validation']),'proposals':len(session.proposals)}
             save(directory/'gepa-search-audit.json',search_audit)
         return bool(reasons)
+    extra={'batch_sampler':CoverageSampler(minibatch,seed),'acceptance_criterion':NovelNonRegression()} if explore else {'reflection_minibatch_size':minibatch}
     result=optimize(seed_candidate={'skill_body':cfg['baseline']['skill']['body']},trainset=data['train'],valset=data['validation'],
-      adapter=adapter,callbacks=[Observer()],max_metric_calls=cfg['metricBudget'],stop_callbacks=stop,reflection_minibatch_size=minibatch,
-      skip_perfect_score=True,use_merge=False,cache_evaluation=False,seed=0,raise_on_exception=True,display_progress_bar=False)
+      adapter=adapter,callbacks=[Observer()],max_metric_calls=cfg['metricBudget'],stop_callbacks=stop,
+      skip_perfect_score=not explore,use_merge=False,cache_evaluation=False,seed=seed,raise_on_exception=True,display_progress_bar=False,**extra)
     if session.fatal is not None:raise RuntimeError('GEPA proposal failed; no retry or final evaluation: '+session.fatal)
     report={'gepaVersion':GEPA_VERSION,'candidates':result.candidates,'validationScores':result.val_aggregate_scores,
-      'bestIndex':result.best_idx,'sdkMetricCalls':result.total_metric_calls,'metricCalls':sum(r['stage']=='search' for r in session.ledger),'seed':0}
+      'bestIndex':result.best_idx,'sdkMetricCalls':result.total_metric_calls,'metricCalls':sum(r['stage']=='search' for r in session.ledger),'seed':seed}
+    if explore:
+        search_audit['exploration']=summary(cfg,session.ledger,session.proposals,result.candidates)
+        save(directory/'gepa-search-audit.json',search_audit)
+        progress(directory,exploration=search_audit['exploration'])
     write(directory/'gepa-search.json',report)
     selected=skill(result.best_candidate['skill_body']);write(directory/'gepa-selection.json',{'skill':selected,'bestIndex':result.best_idx,'frozenAt':time.time()})
     progress(directory,phase='selection-frozen',selectedSkill=selected,validationScores=report['validationScores'])

@@ -153,7 +153,7 @@ test('app form events preserve settings through click, submit, navigation and LL
    final:{baseline:{validation:{passed:2,total:2},heldout:{passed:4,total:4}},selected:{validation:{passed:2,total:2},heldout:{passed:4,total:4}}}};
   await click(button(null,{liveRefresh:''}));
   assert.equal(renders,before);assert.equal(focused.isConnected,true);
-  assert.match(nodes.get('[data-gepa-results]').outerHTML,/未產生新 Skill・沿用基準/);
+  assert.match(nodes.get('[data-gepa-results]').outerHTML,/未產生候選・尚未完成有效比較/);
   assert.match(nodes.get('[data-gepa-results]').outerHTML,/0 題 · 0 個百分點/);
   assert.equal(calls.filter(c=>c.options?.method==='POST').length,posts);
   globalThis.document.activeElement=null;
@@ -259,7 +259,15 @@ test('app form events preserve settings through click, submit, navigation and LL
   const posts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(posts.length,3);
   const submitted=JSON.parse(posts.at(-1).options.body);
   assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,challengeData.revision);
-  assert.equal(submitted.metricBudget,10);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,3600);
+  assert.equal(submitted.metricBudget,87);assert.equal(submitted.proposalBudget,12);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');
+  const target=(selector,value)=>({value,dataset:{},matches:s=>s===selector,hasAttribute:()=>false});
+  const postsBefore=calls.filter(c=>c.options?.method==='POST').length;
+  await dispatch('change',{target:target('[data-gepa-mode]','standard')});
+  assert.match(html,/data-gepa-metrics[^>]*value="10"/);assert.match(html,/data-gepa-proposals[^>]*value="1"/);
+  await dispatch('change',{target:target('[data-gepa-mode]','explore')});
+  assert.match(html,/data-gepa-metrics[^>]*value="87"/);assert.match(html,/data-gepa-proposals[^>]*value="12"/);
+  assert.equal(calls.filter(c=>c.options?.method==='POST').length,postsBefore);
+
   assert.equal(calls.filter(c=>c.path==='/api/v1/repair/runs').length,1,'bank Start must not repeat the single repair');
  });
 

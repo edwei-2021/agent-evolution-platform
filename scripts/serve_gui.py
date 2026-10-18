@@ -239,6 +239,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
             elif path == '/api/v1/gepa/runs':
                 fields={'registry','requestId','profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
                 if body.get('profile')=='bank':fields.add('bankRevision')
+                if 'searchMode' in body:fields.add('searchMode')
                 if set(body)!=fields:raise ValueError('Unexpected GEPA submission fields')
                 self.json_response(202, runtime.start(body['registry'],body['requestId'],'gepa-evolution',{k:body[k] for k in fields-{'registry','requestId'}}))
             elif path == '/api/v1/challenges':

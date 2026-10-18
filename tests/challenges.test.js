@@ -58,13 +58,27 @@ test('edit/delete use stable identities, optimistic revisions and only explicit 
 test('bank GEPA preset freezes current bank revision with dynamic workload and no silent token increase',async()=>{
  const calls=[],client=new RuntimeClient({fetcher:async(path,options)=>{calls.push({path,options});return {ok:true,status:200,json:async()=>path==='/api/v1/llm/ollama'?{revision:7}:{}};}});
  client.data={serviceId:'bank-fixture',gepa:{revision:1,sdk:{available:true},optimizer:{available:true},versions:[],runs:[],latestRun:null},challenges:{revision:9,ready:true,counts:{train:6,validation:3,heldout:3}},provider:{config:{maxTokens:256}}};client.capabilities={csrfToken:'test-local-token'};client.enabled=true;
- client.setGepaProfile('bank');assert.equal(client.gepaMetrics,10);assert.equal(client.gepaTaskCalls,10);assert.equal(gepaPlan(client).calls,221);
+ client.setGepaProfile('bank');assert.equal(client.gepaMetrics,87);assert.equal(client.gepaTaskCalls,10);assert.equal(gepaPlan(client).calls,1002);
  assert.match(gepaView(client.snapshot()),/至少 512/);assert.match(gepaView(client.snapshot()),/data-gepa-start[^>]*disabled/);
  client.data.provider.config.maxTokens=1024;
  assert.ok(!gepaView(client.snapshot()).match(/data-gepa-start[^>]*disabled/));
  // The production request body is captured; terminate the following refresh.
  client.refresh=async()=>{};await client.startGepa({agents:[]});
  const submitted=JSON.parse(calls.find(c=>c.path==='/api/v1/gepa/runs').options.body);
- assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,9);assert.equal(submitted.metricBudget,10);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,3600);
+ assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,9);assert.equal(submitted.metricBudget,87);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');assert.equal(submitted.proposalBudget,12);
  assert.equal(client.data.provider.config.maxTokens,1024);
+});
+
+test('exploration mode preserves pending submissions and blocks incomplete training coverage before Start',()=>{
+ const client=new RuntimeClient({fetcher:()=>{throw Error('Local settings only');}});
+ client.data={gepa:{sdk:{available:true},optimizer:{available:true},versions:[],runs:[]},challenges:{revision:1,ready:true,counts:{train:6,validation:3,heldout:3}},provider:{config:{maxTokens:1024}}};
+ client.capabilities={};client.enabled=true;client.setGepaProfile('bank');
+ const frozen={profile:'bank',searchMode:'explore',metricBudget:87};client.pendingGepaSubmission=frozen;
+ assert.equal(client.gepaProposals,12);assert.equal(gepaPlan(client).verificationBatches,297);
+ let html=gepaView(client.snapshot());assert.match(html,/多候選探索（建議）/);assert.match(html,/max="16"/);
+ client.gepaMetrics=23;html=gepaView(client.snapshot());assert.match(html,/完整訓練覆蓋至少需要 3 個提案與 24 次搜尋評測/);assert.match(html,/data-gepa-start[^>]*disabled/);
+ client.setGepaSearchMode('standard');assert.equal(client.gepaMetrics,10);assert.equal(client.gepaProposals,1);assert.equal(client.gepaSeconds,3600);
+ assert.equal(client.pendingGepaSubmission,frozen);assert.equal(frozen.searchMode,'explore');
+ client.setGepaSearchMode('explore');client.data.challenges.counts={train:30,validation:18,heldout:2};client.setGepaSearchMode('explore');
+ assert.match(gepaView(client.snapshot()),/超過上限時請減少啟用題目/);assert.equal(client.gepaMetrics,120);
 });

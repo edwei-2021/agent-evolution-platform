@@ -60,7 +60,7 @@ def instruction(skill):
 def clean_conditions(value):
     if not isinstance(value, dict):
         return {}
-    text_keys = ('component','profile','baselineVersionId','datasetVersion','datasetHash','model','provider','reasoningEffort','trigger','mutation','sdkVersion','optimizerVersion','reflectionInstruction')
+    text_keys = ('component','profile','baselineVersionId','datasetVersion','datasetHash','model','provider','reasoningEffort','trigger','mutation','sdkVersion','optimizerVersion','reflectionInstruction','searchMode','strategy','acceptance')
     number_keys = ('outputLimit','temperature','seed','reflectionBatch','metricEvaluations','callsUsed','round','bankRevision')
     result = {k: redact(value[k])[:1000] for k in text_keys if isinstance(value.get(k),str)}
     result.update({k:value[k] for k in number_keys if type(value.get(k)) in (int,float)})
@@ -91,7 +91,19 @@ def clean_search(value):
         stop={k:raw.get(k) for k in ('used','metricBudget','requiredNext','proposals') if type(raw.get(k)) is int}
         stop['reasons']=[r for r in raw.get('reasons',[]) if r in ('proposal-failed','iteration-reservation','proposal-budget','deadline')]
         stop['at']=str(raw.get('at',''))[:40]
-    return {'seed':value.get('seed') if type(value.get('seed')) is int else None,'skipped':skipped,'stop':stop}
+    result={'seed':value.get('seed') if type(value.get('seed')) is int else None,'skipped':skipped,'stop':stop}
+    if value.get('mode')=='explore':
+        result['mode']='explore'
+        result['decisions']=[]
+        for e in value.get('decisions',[])[:16]:
+            if not isinstance(e,dict) or not re.fullmatch(r'P\d{3}',str(e.get('proposalId',''))):continue
+            item={'proposalId':e['proposalId'],'accepted':e.get('accepted') is True}
+            item.update({k:e[k] for k in ('iteration','new_candidate_idx','old_score','new_score') if type(e.get(k)) in (int,float)})
+            if e.get('reason') in ('duplicate-instructions','training-regression'):item['reason']=e['reason']
+            result['decisions'].append(item)
+        result['exploration']={k:v for k,v in value.get('exploration',{}).items() if k in
+            ('seed','trainingTested','trainingTotal','generated','uniqueNew','duplicates','validatedNew') and type(v) is int}
+    return result
 
 
 def recover_response(reader, filename, base, config, component):
@@ -152,7 +164,7 @@ def snapshot(root, run_id, *, run=None, input_budget=8*1024*1024):
             scores = search.get('validationScores', [])
             if i < len(scores):
                 validation[item.get('skill_body', '')] = scores[i]
-        if not isinstance(proposals, list) or len(proposals) > 8:
+        if not isinstance(proposals, list) or len(proposals) > 16:
             raise ValueError('Invalid bounded Skill proposals')
         for p in proposals:
             entries[p['id']] = {'candidate': candidate(p.get('body'), base), 'parent': candidate(p.get('parentBody'), base),

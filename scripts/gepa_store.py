@@ -2,6 +2,7 @@
 import json
 import time
 import uuid
+import secrets
 from gepa_dataset import skill, dataset
 from repair_fixture import SKILL
 from repair_engine import TASK_FAILURE_POLICY
@@ -31,11 +32,19 @@ class GepaStore:
     def freeze(self,options):
         fields={'profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
         if isinstance(options,dict) and options.get('profile')=='bank':fields.add('bankRevision')
+        if isinstance(options,dict) and 'searchMode' in options:fields.add('searchMode')
         if not isinstance(options,dict) or set(options)!=fields:raise ValueError('Unexpected GEPA options')
+        mode=options.get('searchMode','standard')
+        if mode not in ('standard','explore') or mode=='explore' and options['profile']!='bank':raise ValueError('Exploration requires the challenge bank profile')
         frozen=self.service.challenges.freeze(options['bankRevision']) if options['profile']=='bank' else None
         data=frozen['data'] if frozen else dataset(options['profile']);mini=2 if frozen else 1 if options['profile']=='smoke' else 3
-        for key,low,high in [('maxSeconds',60,7200),('callTimeoutSeconds',10,3600),('taskCallBudget',2,12),('metricBudget',len(data['validation'])+2*mini+len(data['validation']),80),('proposalBudget',1,8)]:
+        for key,low,high in [('maxSeconds',60,7200),('callTimeoutSeconds',10,3600),('taskCallBudget',2,12),('metricBudget',len(data['validation'])+2*mini+len(data['validation']),120 if mode=='explore' else 80),('proposalBudget',1,16 if mode=='explore' else 8)]:
             if type(options[key]) is not int or not low<=options[key]<=high:raise ValueError(f'{key} must be an integer in {low}..{high}')
+        if mode=='explore':
+            batches=(len(data['train'])+mini-1)//mini
+            minimum=len(data['validation'])+batches*(2*mini+len(data['validation']))
+            if options['proposalBudget']<batches or options['metricBudget']<minimum:
+                raise ValueError(f'Full training coverage requires proposalBudget >={batches} and metricBudget >={minimum}; reduce enabled questions if above exploration limits')
         with self.service.ollama.lock:provider=self.service.ollama.frozen()
         if type(options['providerRevision']) is not int or options['providerRevision']!=provider['revision']:raise RuntimeError('Provider settings changed; refresh first')
         if not provider['config']['model']:raise ValueError('Select and save a model first')
@@ -47,7 +56,8 @@ class GepaStore:
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
           'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile'],frozen),'logRoot':str(self.service.root),
-          **({'datasetSnapshot':frozen,'taskFailurePolicy':TASK_FAILURE_POLICY} if frozen else {})}
+          **({'datasetSnapshot':frozen,'taskFailurePolicy':TASK_FAILURE_POLICY} if frozen else {}),
+          **({'searchSeed':secrets.randbelow(2**31)} if mode=='explore' else {})}
     def approve(self,identifier,expected):
         with self.service.lock:
             self.check_revision(expected);run=self.service.get_run(identifier)

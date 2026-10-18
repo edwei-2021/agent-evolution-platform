@@ -31,6 +31,7 @@ def conditions(config, component):
             'limits': {key: config.get(key) for key in ('metricBudget', 'proposalBudget', 'taskCallBudget',
                        'callBudget', 'maxSeconds', 'callTimeoutSeconds', 'maxCandidates')},
             'seed': None,
+            'searchMode': config.get('searchMode','standard'),
             'reflectionBatch': config.get('reflectionBatch'),
             'trigger': 'training-feedback-only'}
 

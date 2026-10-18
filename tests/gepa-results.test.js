@@ -32,8 +32,8 @@ test('difficulty breakdown labels absent samples and retains the frozen bank ide
 
 test('completed perfect seed visibly reports zero evolution before settings, rather than generic success',()=>{
  const runtime=fixture(),html=gepaView(runtime);
- assert.match(html,/實際演化成果：未產生新 Skill・沿用基準/);
- assert.match(html,/候選提案為 0/);assert.match(html,/候選提案 0 個/);
+ assert.match(html,/實際演化成果：未產生候選・尚未完成有效比較/);
+ assert.match(html,/本輪沒有產生候選/);assert.match(html,/候選提案 0 個/);
  assert.match(html,/2 \/ 2（100%）/);assert.match(html,/4 \/ 4（100%）/);
  assert.equal((html.match(/0 題 · 0 個百分點/g)||[]).length,2);
  assert.match(html,/未開放核准・維持現行版本/);assert.match(approval(html),/disabled/);
@@ -59,13 +59,13 @@ test('held-out regression and unchanged validation cannot be presented as succes
 test('unchanged skill with variable replay scores still does not claim a new evolved skill',()=>{
  const runtime=fixture();runtime.data.gepa.latestRun.gepaResult.final.baseline.validation.passed=1;
  const html=gepaResultsView(runtime);
- assert.match(html,/未產生新 Skill/);assert.match(html,/同一 Skill 的分數差異不視為新技能演化/);
+ assert.match(html,/尚未完成有效比較/);assert.match(html,/同一 Skill 的分數差異不視為新技能演化/);
  assert.match(html,/\+50 個百分點/);assert.doesNotMatch(html,/已驗證改善/);
 });
 test('rejected proposals are distinct from the number of accepted evolved skills',()=>{
  const runtime=fixture();runtime.data.gepa.latestRun.gepaResult.proposals=2;
  const html=gepaResultsView(runtime);
- assert.match(html,/產生 2 個候選提案，最後仍選定基準 Skill/);assert.match(html,/未產生新 Skill/);
+ assert.match(html,/產生 2 個候選提案，最後仍選定基準 Skill/);assert.match(html,/已探索候選・沿用基準/);
 });
 test('partial, failed and interrupted results never unlock approval or final improvement claims',()=>{
  for(const status of ['queued','running','failed','cancelled','interrupted']){
@@ -103,4 +103,12 @@ test('empty and escaped source states are readable without injecting markup',()=
  assert.match(gepaResultsView({}),/尚無實驗結果/);
  const runtime=fixture();runtime.data.gepa.latestRun.id='<img src=x onerror=alert(1)>';
  const html=gepaResultsView(runtime);assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img/);
+});
+
+test('exploration shows unique candidates, duplicate attempts and coverage separately from approval',()=>{
+ const runtime=fixture(),run=runtime.data.gepa.latestRun;
+ run.gepaResult.proposals=12;run.gepaResult.exploration={seed:21,trainingTested:6,trainingTotal:6,generated:12,uniqueNew:9,duplicates:3,validatedNew:5};
+ const html=gepaResultsView(runtime);
+ for(const text of ['訓練覆蓋 6/6','生成提案 12 個','不同新本文 9 個','重複本文 3 個','進入搜尋驗證 5 個','未開放核准'])assert.ok(html.includes(text));
+ assert.doesNotMatch(html,/已驗證改善/);
 });

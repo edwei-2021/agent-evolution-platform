@@ -1,6 +1,7 @@
 """Trusted GEPA evidence contracts; imports no optimizer in the GUI process."""
 from model_provider import payload as provider_payload
 from step_trace import traced
+from gepa_exploration import exploring, proposal_context, summary
 import hashlib
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the s
 
 def provenance(profile,frozen=None):
     return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),
-      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py','skill_audit.py')}}
+      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py','skill_audit.py','gepa_exploration.py')}}
 
 def progress(directory,**changes):
     p=directory/'gepa-progress.json';data=json.loads(p.read_text()) if p.exists() else {'engine':ENGINE,'phase':'queued','calls':0,'completedCalls':0,'failedCalls':0,'metricEvaluations':0,'proposals':0,'rollouts':0,'lastCall':None}
@@ -93,7 +94,7 @@ def verify(directory, progress_callback=None):
         if len(call)!=1 or call[0]['request']['tools'] or call[0]['request']['messages']!=[{'role':'system','content':p['system']},{'role':'user','content':p['input']}]:raise ValueError('Reflection request drift')
         response=json.loads(call[0]['response']['choices'][0]['message']['content'])
         if response!={'skill_body':p['body']}:raise ValueError('Proposal differs from model completion')
-        if json.loads(p['input'])!={'candidate':p['candidate'],'training':p['training']}:raise ValueError('Reflection input drift')
+        if json.loads(p['input'])!=proposal_context(p['candidate'],p['training'],proposals[:i],cfg):raise ValueError('Reflection input drift')
         for trace in p['training']:
             matches=[r for r in ledger if r['id']==trace['rolloutId'] and r['stage']=='search' and r['body']==p['parentBody'] and tasks[r['taskId']][0]=='train']
             if len(matches)!=1:raise ValueError('Reflection trajectory lacks training rollout evidence')
@@ -118,7 +119,8 @@ def verify(directory, progress_callback=None):
     return {'engine':ENGINE,'checksPassed':True,'eligible':eligible,'selectedSkill':selected,'baselineSkill':seed,'final':final,
       'metricEvaluations':len(search_rows),'rollouts':len(ledger),'proposals':len(proposals),'calls':len(actual),'validationScores':scores,
       'gepaVersion':GEPA_VERSION,'sdkVersion':cfg['sdk']['version'],'datasetVersion':cfg['provenance']['datasetVersion'],'evidenceHash':digest(hashes),
-      **({'breakdown':breakdown(ledger,tasks),'taskFailures':[{'rolloutId':r['id'],'taskId':r['taskId'],'stage':r['stage'],'reason':r['sdkStopReason']} for r in ledger if r.get('taskOutcome')=='call-limit']} if cfg['profile']=='bank' else {})}
+      **({'breakdown':breakdown(ledger,tasks),'taskFailures':[{'rolloutId':r['id'],'taskId':r['taskId'],'stage':r['stage'],'reason':r['sdkStopReason']} for r in ledger if r.get('taskOutcome')=='call-limit']} if cfg['profile']=='bank' else {}),
+      **({'exploration':summary(cfg,ledger,proposals,search['candidates'])} if exploring(cfg) else {})}
 
 def breakdown(ledger,tasks):
     result={}

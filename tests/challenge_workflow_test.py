@@ -35,7 +35,9 @@ class Model(BaseHTTPRequestHandler):
         matched=re.search(r'Task ID: (CH-[A-Za-z0-9-]+)',str(messages));identifier=matched[1] if matched else None
         improved=IMPROVED in str(messages)
         if messages[0]['content']==REFLECTION_SYSTEM:
-            message['content']=json.dumps({'skill_body':IMPROVED})
+            attempt=json.loads(messages[1]['content']).get('exploration',{}).get('attempt',1)
+            body_text=IMPROVED+(f' Strategy {1 if attempt==2 else attempt}.' if type(self).mode=='explore' else '')
+            message['content']=json.dumps({'skill_body':body_text})
         elif type(self).mode=='http-failure' and identifier=='CH-signed-decimal':
             self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
         elif type(self).mode=='last-write' or type(self).mode=='bounded-caps' and (identifier in ('CH-signed-decimal','CH-binary-search-first') or identifier=='CH-stable-record-sort' and improved):
@@ -44,7 +46,7 @@ class Model(BaseHTTPRequestHandler):
             source=BY_ID[identifier]['reference'] if type(self).mode=='last-write' else rejected[max(0,used-2)%len(rejected)]
             name,args=('read_solution',{'path':'solution.py'}) if used==0 else ('write_solution',{'path':'solution.py','source':source}) if type(self).mode=='last-write' or used>=2 else ('run_tests',{})
             message={'role':'assistant','content':None,'tool_calls':[{'id':'cap-'+str(used),'type':'function','function':{'name':name,'arguments':json.dumps(args)}}]}
-        elif IMPROVED in str(messages):
+        elif IMPROVED in str(messages) or type(self).mode=='explore' and BY_ID[identifier]['split']=='train':
             identifier=re.search(r'Task ID: (CH-[A-Za-z0-9-]+)',str(messages))[1]
             used=sum(m.get('role')=='tool' for m in messages)
             steps=[('read_solution',{'path':'solution.py'}),('write_solution',{'path':'solution.py','source':BY_ID[identifier]['reference']}),('run_tests',{})]
@@ -151,5 +153,6 @@ if(!skillArchiveView({data,offset:0}).includes('產生條件'))process.exit(1);
         approved=self.service.gepa.approve(run['id'],1);self.assertNotEqual(approved['activeVersionId'],'GSV-baseline')
         cfg_path=directory/'gepa-config.json';cfg=json.loads(cfg_path.read_text());cfg['datasetSnapshot']['data']['heldout'][0]['fixture']['hidden'][0]['expected']='tampered';cfg_path.write_text(json.dumps(cfg))
         with self.assertRaises(ValueError):verify(directory)
+
 
 if __name__=='__main__':unittest.main()
