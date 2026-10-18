@@ -1,6 +1,62 @@
 """Frozen, bounded exploration policy (多候選探索); release gates stay separate."""
 import random
 
+POLICY = 'failure-diversity-v2'
+OPERATIONS = ('rewrite', 'replace', 'reorder', 'compress')
+OPERATION_GUIDANCE = {
+    'rewrite': 'Start from a blank outline and write 3-6 actionable steps. Do not preserve the parent sentence structure.',
+    'replace': 'Replace an unhelpful assumption or step with a concrete action grounded in the observed training failures.',
+    'reorder': 'Change the order of diagnosis, policy checking, editing and testing so the observed failure is caught earlier.',
+    'compress': 'Remove generic reminders. Keep only decision rules that connect an observed failure to a permitted corrective action.',
+}
+
+
+def adaptive(config):
+    return exploring(config) and config.get('explorationPolicy') == POLICY
+
+
+def instruction_key(body):
+    # Formatting alone is not a new repair strategy. Keep original text intact.
+    return ' '.join(body.split())
+
+
+def duplicate_of(body, proposals, baseline):
+    key = instruction_key(body)
+    if key == instruction_key(baseline):
+        return 'baseline'
+    return next((p['id'] for p in proposals if instruction_key(p['body']) == key), None)
+
+
+def duplicate_streak(proposals, baseline):
+    streak = 0
+    for i in range(len(proposals)-1, -1, -1):
+        if duplicate_of(proposals[i]['body'], proposals[:i], baseline) is None:
+            break
+        streak += 1
+    return streak
+
+
+def reflection_temperature(config, proposals):
+    if not adaptive(config):
+        return 0
+    streak = duplicate_streak(proposals, config['baseline']['skill']['body'])
+    return 1.0 if streak >= 2 else 0.7
+
+
+def failure_lessons(training, proposals):
+    """Compact memory from training only, never from validation or final data."""
+    failures = {}
+    for trace in [t for p in proposals for t in p.get('training', [])] + training:
+        if trace.get('score', 1) >= 1:
+            continue
+        errors = list(dict.fromkeys(t['error'][:1600] for t in trace.get('tools', []) if t.get('error')))
+        feedback = trace.get('feedback', {})
+        failures[trace['taskId']] = {'taskId': trace['taskId'], 'rolloutId': trace['rolloutId'],
+            'score': trace['score'], 'taskOutcome': trace.get('taskOutcome'), 'toolRejections': errors[-3:],
+            'tests': {s: {k: feedback[s].get(k) for k in ('passed', 'total')}
+                      for s in ('visible', 'hidden') if isinstance(feedback.get(s), dict)}}
+    return list(failures.values())[-4:]
+
 STRATEGIES = (
     ('contract', 'Derive a compact checklist from the task contract. Preserve its actual function signature; remove unrelated legacy examples.'),
     ('boundaries', 'Use boundary partitions and counterexamples to guide repairs, including empty, equal, negative and invalid inputs where applicable.'),
@@ -33,6 +89,18 @@ def proposal_context(candidate, training, proposals, config):
             'instruction': instruction,
             'diversity': 'Produce a materially different general Skill, even when these training tasks passed. Do not claim improvement without evaluation.',
             'recentInstructions': [p['body'] for p in proposals[-3:]]}
+        if adaptive(config):
+            prior = list(dict.fromkeys(p['body'] for p in proposals))
+            value['exploration'].update(policy=POLICY,
+                operation=OPERATIONS[len(proposals) % len(OPERATIONS)],
+                operationGuidance=OPERATION_GUIDANCE[OPERATIONS[len(proposals) % len(OPERATIONS)]],
+                consecutiveDuplicates=duplicate_streak(proposals, config['baseline']['skill']['body']),
+                temperature=reflection_temperature(config, proposals),
+                recentInstructions=prior[-3:], failureLessons=failure_lessons(training, proposals),
+                diversity='Write a different operational workflow, not a paraphrase, extra reminders, or a copy of prior instructions. '
+                          'Use the requested mutation operation. Remove irrelevant legacy examples. '
+                          'State what observation triggers an action, what to change after rejection, and when to stop. '
+                          'Use only training evidence; do not include solution code, task IDs, test answers or claims of improvement.')
     return value
 
 
@@ -64,12 +132,20 @@ class NovelNonRegression:
 
 
 def summary(config, ledger, proposals, candidates):
-    train = {t['id'] for t in config['datasetSnapshot']['data']['train']}
+    from gepa_dataset import data_for
+    train = {t['id'] for t in data_for(config)['train']}
     tested = {r['taskId'] for r in ledger if r['stage']=='search' and r['taskId'] in train}
     bodies = {p['body'] for p in proposals}
     base = config['baseline']['skill']['body']
-    return {'mode': 'explore', 'seed': config['searchSeed'],
+    result = {'mode': 'explore', 'seed': config['searchSeed'],
             'trainingTested': len(tested), 'trainingTotal': len(train),
             'generated': len(proposals), 'uniqueNew': len(bodies-{base}),
             'duplicates': len(proposals)-len(bodies-{base}),
             'validatedNew': len(candidates)-1}
+    if adaptive(config):
+        result.update(policy=POLICY,
+            uniqueNew=len({instruction_key(b) for b in bodies}-{instruction_key(base)}),
+            duplicates=sum(duplicate_of(p['body'], proposals[:i], base) is not None for i, p in enumerate(proposals)),
+            skippedDuplicates=sum(p.get('duplicateOf') is not None for p in proposals),
+            savedCandidateEvaluations=sum(p.get('skippedEvaluations', 0) for p in proposals))
+    return result

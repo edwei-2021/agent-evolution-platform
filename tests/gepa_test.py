@@ -316,7 +316,7 @@ class GepaWorkflowTests(unittest.TestCase):
             script="""import {RuntimeClient,validateGepaRun} from './dist/js/runtime-client.js';
 import {initialRegistry} from './dist/js/agents.js';
 const base=process.argv[1],client=new RuntimeClient({fetcher:(p,o)=>fetch(base+p,o)});
-await client.refresh();client.gepaSeconds=Number(process.argv[2]);await client.startGepa(initialRegistry());
+await client.refresh();client.gepaMetrics=8;client.gepaTaskCalls=6;client.gepaSeconds=Number(process.argv[2]);await client.startGepa(initialRegistry());
 const deadline=Date.now()+(Number(process.argv[2])+20)*1000;
 while(Date.now()<deadline){await client.refresh();const run=client.data?.gepa?.latestRun;if(run&&['completed','failed'].includes(run.status)){validateGepaRun(run);console.log(JSON.stringify({status:run.status,eligible:run.gepaResult?.eligible}));process.exit(run.status==='completed'?0:2);}await new Promise(r=>setTimeout(r,50));}process.exit(3);"""
             command=[find_node()['path'], '--input-type=module','-e',script,

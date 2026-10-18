@@ -1,7 +1,7 @@
 """Trusted GEPA evidence contracts; imports no optimizer in the GUI process."""
 from model_provider import payload as provider_payload
 from step_trace import traced
-from gepa_exploration import exploring, proposal_context, summary
+from gepa_exploration import exploring, adaptive, proposal_context, summary, duplicate_of, reflection_temperature, POLICY
 import hashlib
 import json
 from pathlib import Path
@@ -39,6 +39,7 @@ def score(result):
 def verify(directory, progress_callback=None):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
     if cfg['provenance']!=provenance(cfg['profile'],cfg.get('datasetSnapshot')):raise ValueError('GEPA code or dataset provenance changed')
+    if 'explorationPolicy' in cfg and (not adaptive(cfg) or cfg['explorationPolicy']!=POLICY):raise ValueError('Unknown frozen exploration policy')
     if cfg['profile']=='bank' and cfg.get('taskFailurePolicy')!=TASK_FAILURE_POLICY:raise ValueError('Bank task failure policy changed')
     data=data_for(cfg);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
     ledger=json.loads((directory/'gepa-rollouts.json').read_text());proposals=json.loads((directory/'gepa-proposals.json').read_text())
@@ -90,6 +91,10 @@ def verify(directory, progress_callback=None):
             if sorted(r['taskId'] for r in rows)!=sorted(t['id'] for t in data[split]):raise ValueError('Final evaluation is incomplete or duplicated')
             final[label][split]={'passed':sum(r['score'] for r in rows),'total':len(rows)}
     for i,p in enumerate(proposals):
+        if p['id']!=f'P{i+1:03d}':raise ValueError('Proposal identity drift')
+        if adaptive(cfg):
+            duplicate=duplicate_of(p['body'],proposals[:i],seed['body'])
+            if p.get('duplicateOf')!=duplicate or p.get('skippedEvaluations',0)!=(len(p['training']) if duplicate is not None else 0):raise ValueError('Early duplicate evidence drift')
         call=json.loads((directory/'reflections'/f'P{i+1:03d}'/'repair-calls.json').read_text())
         if len(call)!=1 or call[0]['request']['tools'] or call[0]['request']['messages']!=[{'role':'system','content':p['system']},{'role':'user','content':p['input']}]:raise ValueError('Reflection request drift')
         response=json.loads(call[0]['response']['choices'][0]['message']['content'])
@@ -106,10 +111,12 @@ def verify(directory, progress_callback=None):
     actual=json.loads((directory/'gepa-calls.json').read_text())
     expected=[{**c,'id':i+1,'localId':c['id']} for i,c in enumerate(reconstructed)]
     if expected!=actual or len(actual)>cfg['callBudget']:raise ValueError('Global model call accounting drift')
+    temperatures={p['id']:reflection_temperature(cfg,proposals[:i]) for i,p in enumerate(proposals)}
     for call in actual:
         if call['request'] != provider_payload(cfg['provider']['config'], call['request']):
             raise ValueError('GEPA provider reasoning settings changed')
-        if call['status']!='completed' or call['request']['model']!=cfg['provider']['config']['model'] or call['request']['temperature']!=0 or call['request']['max_tokens']!=cfg['provider']['config']['maxTokens']:raise ValueError('Model settings changed or request failed')
+        temperature=temperatures[call['proposalId']] if call.get('stage')=='reflection' else 0
+        if call['status']!='completed' or call['request']['model']!=cfg['provider']['config']['model'] or type(call['request']['temperature']) not in (int,float) or call['request']['temperature']!=temperature or call['request']['max_tokens']!=cfg['provider']['config']['maxTokens']:raise ValueError('Model settings changed or request failed')
         if 'streamEvents' in call:
             acc=ToolAccumulator()
             for e in call['streamEvents']:acc.add(e)

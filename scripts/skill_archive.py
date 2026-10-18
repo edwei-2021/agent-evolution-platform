@@ -60,7 +60,7 @@ def instruction(skill):
 def clean_conditions(value):
     if not isinstance(value, dict):
         return {}
-    text_keys = ('component','profile','baselineVersionId','datasetVersion','datasetHash','model','provider','reasoningEffort','trigger','mutation','sdkVersion','optimizerVersion','reflectionInstruction','searchMode','strategy','acceptance')
+    text_keys = ('component','profile','baselineVersionId','datasetVersion','datasetHash','model','provider','reasoningEffort','trigger','mutation','sdkVersion','optimizerVersion','reflectionInstruction','searchMode','explorationPolicy','strategy','acceptance')
     number_keys = ('outputLimit','temperature','seed','reflectionBatch','metricEvaluations','callsUsed','round','bankRevision')
     result = {k: redact(value[k])[:1000] for k in text_keys if isinstance(value.get(k),str)}
     result.update({k:value[k] for k in number_keys if type(value.get(k)) in (int,float)})
@@ -89,7 +89,7 @@ def clean_search(value):
     stop = None
     if isinstance(raw,dict):
         stop={k:raw.get(k) for k in ('used','metricBudget','requiredNext','proposals') if type(raw.get(k)) is int}
-        stop['reasons']=[r for r in raw.get('reasons',[]) if r in ('proposal-failed','iteration-reservation','proposal-budget','deadline')]
+        stop['reasons']=[r for r in raw.get('reasons',[]) if r in ('proposal-failed','iteration-reservation','proposal-budget','deadline','duplicate-stagnation')]
         stop['at']=str(raw.get('at',''))[:40]
     result={'seed':value.get('seed') if type(value.get('seed')) is int else None,'skipped':skipped,'stop':stop}
     if value.get('mode')=='explore':
@@ -99,11 +99,33 @@ def clean_search(value):
             if not isinstance(e,dict) or not re.fullmatch(r'P\d{3}',str(e.get('proposalId',''))):continue
             item={'proposalId':e['proposalId'],'accepted':e.get('accepted') is True}
             item.update({k:e[k] for k in ('iteration','new_candidate_idx','old_score','new_score') if type(e.get(k)) in (int,float)})
-            if e.get('reason') in ('duplicate-instructions','training-regression'):item['reason']=e['reason']
+            if e.get('reason') in ('duplicate-instructions','training-regression','duplicate-before-evaluation'):item['reason']=e['reason']
+            if re.fullmatch(r'(baseline|P\d{3})',str(e.get('duplicateOf',''))):item['duplicateOf']=e['duplicateOf']
+            if type(e.get('skippedEvaluations')) is int:item['skippedEvaluations']=e['skippedEvaluations']
             result['decisions'].append(item)
         result['exploration']={k:v for k,v in value.get('exploration',{}).items() if k in
-            ('seed','trainingTested','trainingTotal','generated','uniqueNew','duplicates','validatedNew') and type(v) is int}
+            ('seed','trainingTested','trainingTotal','generated','uniqueNew','duplicates','validatedNew','skippedDuplicates','savedCandidateEvaluations') and type(v) is int}
     return result
+
+
+def saved_outcome(run):
+    """Project saved review counts; reading history never replays evaluation."""
+    task=run.get('task')
+    result=run.get({'gepa-evolution':'gepaResult','llm-evolution':'llmResult','skill-evolution':'skillResult'}[task])
+    if not isinstance(result,dict):return None
+    def mapping(value):return value if isinstance(value,dict) else {}
+    def metric(value):
+        if not isinstance(value,dict):return None
+        p,n=value.get('passed'),value.get('total')
+        return {'passed':p,'total':n} if type(p) is int and type(n) is int and 0<=p<=n<=50 else None
+    final=mapping(result.get('final')) if task=='gepa-evolution' else {
+        'baseline':{'validation':result.get('baselineValidation'),'heldout':mapping(result.get('heldout')).get('baseline')},
+        'selected':{'validation':result.get('selectedValidation'),'heldout':mapping(result.get('heldout')).get('selected')}}
+    cleaned={label:{split:metric(mapping(final.get(label)).get(split)) for split in ('validation','heldout')}
+             for label in ('baseline','selected')}
+    return {'origin':'saved-result','checksPassed':result.get('checksPassed') is True,
+            'eligible':result.get('eligible') if type(result.get('eligible')) is bool else None,'final':cleaned,
+            'counts':{k:v for k,v in result.items() if k in ('metricEvaluations','rollouts','proposals','calls') and type(v) is int and v>=0}}
 
 
 def recover_response(reader, filename, base, config, component):
@@ -244,14 +266,22 @@ def snapshot(root, run_id, *, run=None, input_budget=8*1024*1024):
                     entries[identifier]['candidate']=recovered['candidate']
                     entries[identifier]['origin']='recovered-response'
     rows = []
+    from gepa_exploration import instruction_key
+    seen = {instruction_key(base['body']): 'baseline'} if isinstance(base.get('body'),str) else {}
     for identifier, entry in sorted(entries.items()):
         item, parent = instruction(entry.get('candidate')), instruction(entry.get('parent', base))
         before, after = parent['text'], item['text']
+        raw_body=(entry.get('candidate') or {}).get('body')
+        key=instruction_key(raw_body) if isinstance(raw_body,str) and item['text'] is not None else None
+        duplicate=seen.get(key) if key is not None else None
+        novelty='unknown' if key is None else 'duplicate' if duplicate is not None else 'new'
+        if key is not None:seen.setdefault(key,identifier)
         rows.append({'id': identifier, 'status': entry.get('status', 'unknown'),
                      'origin': entry.get('origin', 'reconstructed'),
                      'startedAt': entry.get('startedAt'), 'finishedAt': entry.get('finishedAt'),
                      'instruction': item, 'parent': parent,
                      'changed': before != after if before is not None and after is not None else None,
+                     'novelty': novelty, 'duplicateOf': duplicate,
                      'patch': ''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile='parent', tofile=identifier)) if before is not None and after is not None else None,
                      'conditions': clean_conditions(entry.get('conditions', conditions(cfg, component))),
                      'trainingRefs': feedback_refs(entry.get('trainingRefs', [])), 'errorType': entry.get('errorType'),
@@ -272,5 +302,6 @@ def snapshot(root, run_id, *, run=None, input_budget=8*1024*1024):
     return {'schemaVersion': 1, 'runId': run_id, 'task': task, 'runStatus': run.get('status'),
             'baselineVersionId': cfg.get('baseline', {}).get('id'), 'baseline': instruction(base),
             'conditions': clean_conditions(conditions(cfg, component)), 'records': rows, 'approvedVersions': versions,
+            'outcome': saved_outcome(run),
             'searchAudit': clean_search(search_audit), 'inputBytes': reader.bytes_read,
             'warnings': reader.warnings, 'historyOnly': True}

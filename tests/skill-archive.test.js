@@ -11,6 +11,13 @@ test('query view keeps generated unselected instructions, conditions, parent dif
 test('malformed and oversized archive replies fail before display',()=>{
  for(const mutate of [d=>d.runId='../outside',d=>d.records[0].id='../../file',d=>d.records[0].instruction.text='a'.repeat(16001),d=>d.records[0].status='auto-approved',d=>d.records.push(...Array(32).fill(d.records[0]))]){const d=fixture();mutate(d);assert.throws(()=>validateSkillArchive(d));}
 });
+test('sixteen changed records cannot be presented as sixteen distinct Skill bodies',()=>{
+ const d=fixture(),row=d.records[0];
+ d.records=Array.from({length:16},(_,i)=>({...structuredClone(row),id:`P${String(i+1).padStart(3,'0')}`,novelty:i?'duplicate':'new',duplicateOf:i?'P001':null}));
+ const html=skillArchiveView({data:validateSkillArchive(d),offset:0});
+ assert.match(html,/不同新本文 1 個 · 重複 15 筆/);assert.match(html,/重複本文（P001）/);
+ assert.equal(d.records.filter(r=>r.changed).length,16);
+});
 test('list plus exact Run lookup uses GET-only requests and rejects stale service/Run replies',async()=>{
  const calls=[];let service='one';
  const request=async path=>{calls.push(path);if(path.includes('?'))return {schemaVersion:1,historyOnly:true,offset:0,limit:20,total:1,runs:[{id:'RUN-one',task:'gepa-evolution'}]};return fixture(path.split('/').at(-1));};

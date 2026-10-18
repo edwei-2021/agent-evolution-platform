@@ -107,8 +107,9 @@ test('empty and escaped source states are readable without injecting markup',()=
 
 test('exploration shows unique candidates, duplicate attempts and coverage separately from approval',()=>{
  const runtime=fixture(),run=runtime.data.gepa.latestRun;
- run.gepaResult.proposals=12;run.gepaResult.exploration={seed:21,trainingTested:6,trainingTotal:6,generated:12,uniqueNew:9,duplicates:3,validatedNew:5};
+ run.gepaResult.proposals=12;run.gepaResult.exploration={seed:21,trainingTested:6,trainingTotal:6,generated:12,uniqueNew:9,duplicates:3,validatedNew:5,skippedDuplicates:3,savedCandidateEvaluations:6};
  const html=gepaResultsView(runtime);
  for(const text of ['訓練覆蓋 6/6','生成提案 12 個','不同新本文 9 個','重複本文 3 個','進入搜尋驗證 5 個','未開放核准'])assert.ok(html.includes(text));
+ assert.match(html,/評測前攔下重複 3 次/);assert.match(html,/省下候選訓練評測 6 次/);
  assert.doesNotMatch(html,/已驗證改善/);
 });

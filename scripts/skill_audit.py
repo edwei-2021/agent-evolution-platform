@@ -32,6 +32,7 @@ def conditions(config, component):
                        'callBudget', 'maxSeconds', 'callTimeoutSeconds', 'maxCandidates')},
             'seed': None,
             'searchMode': config.get('searchMode','standard'),
+            'explorationPolicy': config.get('explorationPolicy'),
             'reflectionBatch': config.get('reflectionBatch'),
             'trigger': 'training-feedback-only'}
 

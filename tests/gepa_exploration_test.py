@@ -13,9 +13,11 @@ from functools import partial
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 import threading
+import time
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from gepa_exploration import CoverageSampler, NovelNonRegression, proposal_context, STRATEGIES
+from gepa_exploration import (CoverageSampler, NovelNonRegression, proposal_context, STRATEGIES,
+                              POLICY, duplicate_of, reflection_temperature)
 from gepa_store import GepaStore
 from export_diagnostics import build_bundle
 from skill_archive import snapshot
@@ -27,6 +29,94 @@ from serve_gui import GuiHandler, DIST
 
 
 class ExplorationTests(unittest.TestCase):
+    def test_failure_memory_survives_perfect_batch_and_duplicate_temperature_changes_only_reflection(self):
+        cfg={'searchMode':'explore','explorationPolicy':POLICY,'baseline':{'skill':{'body':'baseline'}}}
+        failed={'taskId':'TRAIN-failed','rolloutId':'R0001','score':0,'taskOutcome':'call-limit',
+                'tools':[{'error':'Unavailable call: isspace'}],
+                'feedback':{'visible':{'passed':1,'total':3,'cases':'PRIVATE_ANSWERS'}}}
+        proposals=[{'id':'P001','body':'new workflow','training':[failed]},
+                   {'id':'P002','body':'new  workflow','training':[]},
+                   {'id':'P003','body':'new workflow','training':[]}]
+        context=proposal_context({'skill_body':'baseline'},[{'taskId':'TRAIN-perfect','score':1}],proposals,cfg)
+        e=context['exploration']
+        self.assertEqual(e['consecutiveDuplicates'],2);self.assertEqual(e['temperature'],1)
+        self.assertEqual(e['failureLessons'][0]['taskId'],'TRAIN-failed')
+        self.assertEqual(e['failureLessons'][0]['toolRejections'],['Unavailable call: isspace'])
+        self.assertNotIn('PRIVATE_ANSWERS',json.dumps(e))
+        self.assertEqual(duplicate_of('new\nworkflow',proposals,'baseline'),'P001')
+        self.assertEqual(duplicate_of(' baseline ',proposals,'baseline'),'baseline')
+        self.assertEqual(reflection_temperature({},proposals),0)
+
+    def test_smoke_and_full_can_freeze_explicit_exploration_while_omitted_mode_stays_standard(self):
+        from gepa_dataset import skill
+        with tempfile.TemporaryDirectory() as root:
+            service=Service(root);service.closed=False
+            provider={'revision':1,'endpoint':'http://127.0.0.1:1','config':{'model':'fixture','maxTokens':1024,'inferenceTimeout':120}}
+            service.ollama=SimpleNamespace(lock=threading.RLock(),frozen=lambda:provider)
+            store=object.__new__(GepaStore);store.service=service
+            store.snapshot=Mock(return_value={'revision':1,'active':{'id':'GSV-baseline','skill':skill('baseline')},
+                'sdk':{'available':True,'version':'0.3.5'},'optimizer':{'available':True,'version':'0.1.4'}})
+            options={'profile':'smoke','maxSeconds':1800,'callTimeoutSeconds':120,'taskCallBudget':8,
+                'metricBudget':10,'proposalBudget':2,'providerRevision':1,'expectedRevision':1}
+            for profile,metrics in [('smoke',10),('full',26)]:
+                frozen=store.freeze({**options,'profile':profile,'metricBudget':metrics,'searchMode':'explore'})
+                self.assertEqual(frozen['explorationPolicy'],POLICY)
+                self.assertIsInstance(frozen['searchSeed'],int)
+            legacy=store.freeze(options)
+            self.assertNotIn('searchSeed',legacy);self.assertNotIn('explorationPolicy',legacy)
+
+    def test_actual_search_skips_duplicate_children_and_stops_stagnation_without_fabricated_metrics(self):
+        from gepa_dataset import skill
+        from gepa_sdk import search
+        with tempfile.TemporaryDirectory() as root:
+            service=Service(root);directory=Path(root)/'RUN-native';directory.mkdir()
+            cfg={'profile':'bank','searchMode':'explore','explorationPolicy':POLICY,'searchSeed':19,
+                'baseline':{'id':'GSV-baseline','skill':skill('baseline')},'datasetSnapshot':service.challenges.freeze(1),
+                'reflectionBatch':2,'metricBudget':87,'proposalBudget':16,'callBudget':1204,
+                'deadlineEpoch':time.time()+60,'logRoot':root}
+            session=SimpleNamespace(cfg=cfg,directory=directory,ledger=[],calls=[],proposals=[],fatal=None)
+            def rollout(task,body,stage):
+                row={'id':f'R{len(session.ledger)+1:04d}','taskId':task['id'],'stage':stage,'body':body,'score':1}
+                session.ledger.append(row)
+                return row,{'rolloutId':row['id'],'taskId':task['id'],'score':1}
+            session.rollout=rollout;temperatures=[]
+            def runner(child,config,*args):
+                temperatures.append(config['reflectionTemperature'])
+                return SimpleNamespace(call=lambda *args:{'choices':[{'message':{'content':json.dumps({'skill_body':'A different operational workflow.'})}}]})
+            with patch('gepa_sdk.Session',return_value=session),patch('gepa_sdk.GlobalRunner',side_effect=runner),patch('sys.stdout',new=io.StringIO()):
+                search(directory,cfg)
+            result=json.loads((directory/'gepa-search.json').read_text())
+            audit=json.loads((directory/'gepa-search-audit.json').read_text())
+            self.assertEqual(len(session.proposals),7)
+            self.assertEqual(result['metricCalls'],22);self.assertEqual(result['sdkMetricCalls'],22)
+            self.assertEqual(result['bestIndex'],0);self.assertEqual(len(result['candidates']),2)
+            self.assertEqual(temperatures,[.7,.7,.7,1,1,1,1])
+            self.assertIn('duplicate-stagnation',audit['stop']['reasons'])
+            self.assertEqual(audit['exploration']['savedCandidateEvaluations'],12)
+            self.assertEqual(audit['exploration']['trainingTested'],6)
+            self.assertEqual([e.get('reason') for e in audit['decisions'][1:]],['duplicate-before-evaluation']*6)
+
+    def test_native_smoke_and_full_exploration_do_not_skip_perfect_training(self):
+        from gepa import optimize
+        from gepa.core.adapter import EvaluationBatch
+        from gepa_dataset import dataset
+        for profile,mini,metrics in [('smoke',1,6),('full',3,26)]:
+            proposals=[];data=dataset(profile)
+            class Adapter:
+                def evaluate(self,batch,candidate,capture_traces=False):
+                    return EvaluationBatch(outputs=[{} for _ in batch],scores=[1.0]*len(batch),
+                        trajectories=list(batch) if capture_traces else None,num_metric_calls=len(batch))
+                def make_reflective_dataset(self,candidate,eval_batch,components_to_update):return {'skill_body':eval_batch.trajectories}
+                def propose_new_texts(self,*args):
+                    proposals.append(args);return {'skill_body':'Different workflow'}
+            with self.subTest(profile=profile),patch('sys.stdout',new=io.StringIO()):
+                result=optimize(seed_candidate={'skill_body':'baseline'},trainset=data['train'],valset=data['validation'],
+                    adapter=Adapter(),batch_sampler=CoverageSampler(mini,17),skip_perfect_score=False,
+                    acceptance_criterion=NovelNonRegression(),max_metric_calls=metrics,stop_callbacks=lambda _:len(proposals)>=1,
+                    use_merge=False,cache_evaluation=False,display_progress_bar=False)
+                self.assertEqual(len(proposals),1);self.assertEqual(len(result.candidates),2)
+                self.assertEqual(result.total_metric_calls,metrics);self.assertEqual(result.best_idx,0)
+
     def test_actual_http_route_forwards_explicit_mode_and_rejects_unknown_fields_without_model_work(self):
         with tempfile.TemporaryDirectory() as root:
             service=Service(root);service.start=Mock(return_value={'id':'RUN-route-fixture'})

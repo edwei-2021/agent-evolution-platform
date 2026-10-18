@@ -12,6 +12,8 @@ The separate uploaded repair archive is an older single-repair record. It contai
 
 ## Corrected presets and explicit counts (預設與工作量)
 
+The historical preset table below predates the failure/diversity follow-up. Current GUI Smoke uses exploration with 10 search evaluations, two proposals, 22 total rollouts, 178 request slots and 66 verifier batches. Full defaults to exploration with its existing 26/1 ceiling. Both modes remain selectable; legacy API omissions remain standard. See [current exploration behavior and counts](gepa-exploration.md).
+
 | GUI preset | Search ceiling | Required final rollouts | Total rollout ceiling | Calls/task | Proposals | Global call ceiling | Whole-run cap |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Smoke | 8 | 12 | 20 | 8 | 2 | 162 | 1,800 s |

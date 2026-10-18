@@ -53,15 +53,17 @@ test('out-of-order replies and responses from another Run or service cannot repl
 });
 test('profile presets count mandatory final runs and three verifier passes, while explicit caps stay frozen',()=>{
  const client=new RuntimeClient({fetcher:async()=>{throw Error('No HTTP');}});
- assert.deepEqual(gepaPlan(client),{search:8,final:12,rollouts:20,calls:162,verificationBatches:60,seconds:1800,full:false});
+ assert.deepEqual(gepaPlan(client),{search:10,final:12,rollouts:22,calls:178,verificationBatches:66,seconds:1800,full:false});
  client.pendingGepaSubmission={profile:'smoke',maxSeconds:1800};client.setGepaProfile('full');
+ assert.equal(client.gepaSearchMode,'explore');assert.match(gepaView(client.snapshot()),/data-gepa-mode/);
  assert.deepEqual(gepaPlan(client),{search:26,final:60,rollouts:86,calls:689,verificationBatches:258,seconds:7200,full:true});
  assert.deepEqual(client.pendingGepaSubmission,{profile:'smoke',maxSeconds:1800});
  client.gepaMetrics=80;client.gepaProposals=4;client.gepaSeconds=1800;
  assert.equal(gepaPlan(client).calls,1124);assert.equal(gepaPlan(client).rollouts,140);
  assert.match(gepaView(client.snapshot()),/容易在取得最終成果前逾時/);
  assert.equal(client.gepaSeconds,1800); // Rendering cannot extend an explicit deadline.
- client.setGepaProfile('smoke');assert.equal(client.gepaSeconds,1800);assert.equal(client.gepaMetrics,8);
+ client.setGepaProfile('smoke');assert.equal(client.gepaSeconds,1800);assert.equal(client.gepaMetrics,10);assert.equal(client.gepaSearchMode,'explore');
+ client.setGepaSearchMode('standard');assert.equal(client.gepaMetrics,8);
 });
 
 function recorded(){

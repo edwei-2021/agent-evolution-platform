@@ -70,3 +70,7 @@ The archive does not contain Windows Ollama's own server log or GPU telemetry. C
 Local tests cover actual service startup/shutdown and bind failure, cross-process JSONL writes/rotation, redaction and body exclusion, connection refusal, injected OS connection timeout, real header/body stalls, failed preload child cleanup/retained metadata and stderr/exit-code capture. Bundle tests verify read-only export, origin enforcement, symlink exclusion, absence of SDK/model dispatch and state-change filtering.
 
 Existing warmup lifecycle/deadline/cancellation, provider, journal, transport, SDK discovery and trace-reuse regressions remain checked. Actual SDK repair and the GEPA iteration cap are checked in an offline verification environment using the SDK's built-in conservative tokenizer fallback; the normal tokenizer download could not be qualified in this environment. No full M7 rerun or real GPU/Windows acceptance is claimed.
+
+## Saved evolution outcome projection (已保存演化結果)
+
+Skill artifacts now include bounded `outcome` fields from the persisted review result: final baseline/selected validation and held-out passed/total counts, checks/eligibility and request/rollout/proposal counts where present. Export never recomputes scores or imports an SDK. Missing results stay null; partial measurements do not become approval. Candidate novelty and pre-evaluation duplicate decisions remain separate from parent diffs and formal versions. This closes the previous support-package gap where a completed Run was visible but its final score comparison was unavailable.

@@ -49,6 +49,27 @@ class SkillArchiveTests(unittest.TestCase):
             db.execute('INSERT INTO runs VALUES(?,?,?)',(identifier,json.dumps(run),f'2026-01-{number:02d}'))
         return identifier,directory
 
+    def test_duplicate_bodies_and_saved_final_scores_survive_redacted_zip_without_replay(self):
+        rid,directory=self.run_record()
+        body='Check allowed syntax before editing.'
+        write(directory/'gepa-proposals.json',[{'id':f'P{i:03d}','body':body,'parentBody':self.base['body'],'training':[]} for i in (1,2)])
+        metrics={label:{split:{'passed':2,'total':3,'source':'PRIVATE_TASK_SOURCE'} for split in ('validation','heldout')} for label in ('baseline','selected')}
+        with sqlite3.connect(self.root/'.local/runtime.sqlite3') as db:
+            run=json.loads(db.execute('SELECT data FROM runs WHERE id=?',(rid,)).fetchone()[0])
+            run.update(status='completed',gepaResult={'checksPassed':True,'eligible':False,'final':metrics,
+                'calls':31,'modelResponse':'PRIVATE_MODEL_RESPONSE'})
+            db.execute('UPDATE runs SET data=? WHERE id=?',(json.dumps(run),rid))
+        with patch('urllib.request.OpenerDirector.open',side_effect=AssertionError('No replay/network')):
+            with zipfile.ZipFile(io.BytesIO(build_bundle(self.root,run_id=rid))) as bundle:
+                value=json.loads(bundle.read('skills/'+rid+'.json'))
+        self.assertEqual([r['novelty'] for r in value['records']],['new','duplicate'])
+        self.assertEqual(value['records'][1]['duplicateOf'],'P001')
+        self.assertTrue(all(r['changed'] for r in value['records']))
+        self.assertEqual(value['outcome']['final']['selected']['validation'],{'passed':2,'total':3})
+        self.assertEqual(value['outcome']['counts']['calls'],31)
+        self.assertFalse(value['outcome']['eligible'])
+        self.assertNotIn('PRIVATE_TASK_SOURCE',json.dumps(value));self.assertNotIn('PRIVATE_MODEL_RESPONSE',json.dumps(value))
+
     def test_every_generated_unchanged_unselected_and_failed_body_has_conditions_and_diff(self):
         rid,directory=self.run_record()
         body='Check every boundary.\n'*90

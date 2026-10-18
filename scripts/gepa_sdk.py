@@ -15,7 +15,8 @@ from gepa_runtime import GEPA_VERSION
 from skill_engine import write
 from debug_log import DebugLog
 from skill_audit import Generation, save, stamp
-from gepa_exploration import exploring, proposal_context, CoverageSampler, NovelNonRegression, STRATEGIES, summary
+from gepa_exploration import (exploring, adaptive, proposal_context, CoverageSampler, NovelNonRegression,
+                              STRATEGIES, summary, duplicate_of, duplicate_streak, reflection_temperature)
 
 class GlobalRunner(RepairRunner):
     def __init__(self,directory,config,session,tags):
@@ -106,24 +107,34 @@ class Adapter:
         training=list(reflective_dataset['skill_body'])
         if any(t['taskId'] not in train_ids for t in training):raise ValueError('Final/validation data cannot enter reflection')
         identifier=f'P{len(session.proposals)+1:03d}';child=session.directory/'reflections'/identifier;child.mkdir(parents=True)
-        cfg={**session.cfg,'callBudget':1,'reflectionOnly':True};runner=GlobalRunner(child,cfg,session,{'proposalId':identifier,'stage':'reflection'})
+        temperature=reflection_temperature(session.cfg,session.proposals)
+        cfg={**session.cfg,'callBudget':1,'reflectionOnly':True,'reflectionTemperature':temperature};runner=GlobalRunner(child,cfg,session,{'proposalId':identifier,'stage':'reflection'})
         content=json.dumps(proposal_context(candidate,training,session.proposals,session.cfg),ensure_ascii=False)
         with Generation(session.directory,identifier,session.cfg,skill(candidate['skill_body']),training,
                         'gepa-worker',seed=session.cfg.get('searchSeed',0),skipPerfectScore=not exploring(session.cfg),
                         searchMode=session.cfg.get('searchMode','standard'),strategy=STRATEGIES[len(session.proposals)%len(STRATEGIES)][0] if exploring(session.cfg) else 'training-reflection',
                         acceptance='novel-non-regression' if exploring(session.cfg) else 'strict-improvement',
                         cacheEvaluation=False,useMerge=False,reflectionInstruction=REFLECTION_SYSTEM,metricEvaluations=sum(r['stage']=='search' for r in session.ledger),
-                        callsUsed=len(session.calls)) as audit:
+                        callsUsed=len(session.calls),temperature=temperature) as audit:
             reply=runner.call([{'role':'system','content':REFLECTION_SYSTEM},{'role':'user','content':content}],[])
             value=json.loads(reply['choices'][0]['message']['content'])
             audit.capture(value.get('skill_body') if isinstance(value,dict) else None)
             if not isinstance(value,dict) or set(value)!={'skill_body'}:raise ValueError('Reflection must return only skill_body JSON')
             body=skill(value['skill_body'])['body']
             audit.generated(skill(body))
-            session.proposals.append({'id':identifier,'parentBody':candidate['skill_body'],'candidate':dict(candidate),'training':training,
-              'components':components_to_update,'system':REFLECTION_SYSTEM,'input':content,'body':body,'createdAt':time.time()})
+            row={'id':identifier,'parentBody':candidate['skill_body'],'candidate':dict(candidate),'training':training,
+              'components':components_to_update,'system':REFLECTION_SYSTEM,'input':content,'body':body,'createdAt':time.time()}
+            duplicate=duplicate_of(body,session.proposals,session.cfg['baseline']['skill']['body']) if adaptive(session.cfg) else None
+            if duplicate is not None:
+                row.update(duplicateOf=duplicate,skippedEvaluations=len(training))
+                session.search_audit['decisions'].append({'proposalId':identifier,'accepted':False,
+                    'reason':'duplicate-before-evaluation','duplicateOf':duplicate,'skippedEvaluations':len(training)})
+                save(session.directory/'gepa-search-audit.json',session.search_audit)
+            session.proposals.append(row)
             write(session.directory/'gepa-proposals.json',session.proposals);progress(session.directory,proposals=len(session.proposals))
-            return {'skill_body':body}
+            # Native GEPA's empty-update branch does not evaluate a child. The
+            # real model response remains an archived attempt, never a score.
+            return {} if duplicate is not None else {'skill_body':body}
 
 @traced('gepa','search')
 def search(directory,cfg):
@@ -132,6 +143,7 @@ def search(directory,cfg):
     session=Session(directory,cfg);adapter=Adapter(session);data=data_for(cfg);minibatch=cfg['reflectionBatch']
     explore=exploring(cfg);seed=cfg.get('searchSeed',0)
     search_audit={'schemaVersion':1,'seed':seed,'mode':cfg.get('searchMode','standard'),'skipped':[],'decisions':[],'stop':None}
+    session.search_audit=search_audit
     class Observer:
         def decision(self,event,accepted):
             if session.proposals:
@@ -152,6 +164,8 @@ def search(directory,cfg):
         if session.fatal is not None:reasons.append('proposal-failed')
         if used+2*minibatch+len(data['validation'])>cfg['metricBudget']:reasons.append('iteration-reservation')
         if len(session.proposals)>=cfg['proposalBudget']:reasons.append('proposal-budget')
+        covered={r['taskId'] for r in session.ledger if r['stage']=='search'}
+        if adaptive(cfg) and {t['id'] for t in data['train']}<=covered and duplicate_streak(session.proposals,cfg['baseline']['skill']['body'])>=6:reasons.append('duplicate-stagnation')
         if time.time()>=cfg['deadlineEpoch']:reasons.append('deadline')
         if reasons:
             search_audit['stop']={'at':stamp(),'reasons':reasons,'used':used,'metricBudget':cfg['metricBudget'],

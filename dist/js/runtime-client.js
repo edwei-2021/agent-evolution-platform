@@ -91,7 +91,8 @@ export function validateGepaRun(run){
  validateRuntime({schemaVersion:1,mode:'native-tools',serviceId:'validation',serverTime:new Date().toISOString(),runs:[],latestRun:run});
  const c=run.gepaConfig,p=run.gepaProgress,r=run.gepaResult;
  if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full','bank'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>2176||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>(c.searchMode==='explore'?120:80)||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
- if(c.searchMode!==undefined&&!['standard','explore'].includes(c.searchMode)||c.searchMode==='explore'&&(c.profile!=='bank'||!Number.isInteger(c.searchSeed)||c.searchSeed<0||c.searchSeed>=2**31||!Number.isInteger(c.proposalBudget)||c.proposalBudget<1||c.proposalBudget>16))throw Error('GEPA 探索設定不正確');
+ if(c.searchMode!==undefined&&!['standard','explore'].includes(c.searchMode)||c.searchMode==='explore'&&(!Number.isInteger(c.searchSeed)||c.searchSeed<0||c.searchSeed>=2**31||!Number.isInteger(c.proposalBudget)||c.proposalBudget<1||c.proposalBudget>16))throw Error('GEPA 探索設定不正確');
+ if(c.explorationPolicy!==undefined&&(c.explorationPolicy!=='failure-diversity-v2'||c.searchMode!=='explore'))throw Error('GEPA 探索策略不正確');
  if(c.profile==='bank'){const n=c.counts;if(!n||['train','validation','heldout'].some(k=>!Number.isInteger(n[k])||n[k]<2||n[k]>(k==='train'?30:20))||n.validation+n.heldout>30||n.train+n.validation+n.heldout>50||c.datasetSnapshot?.revision!==c.bankRevision||c.datasetSnapshot?.version!=='python-challenges-v1')throw Error('題庫凍結資料不正確');}
  else for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
  if(p){
@@ -107,7 +108,7 @@ export function validateGepaRun(run){
   if(r.taskFailures!==undefined&&(!Array.isArray(r.taskFailures)||r.taskFailures.length>r.rollouts||new Set(r.taskFailures.map(f=>f?.rolloutId)).size!==r.taskFailures.length||r.taskFailures.some(f=>!/^R\d{4}$/.test(f?.rolloutId)||!/^CH-[A-Za-z0-9-]+$/.test(f.taskId)||!['search','baseline','selected'].includes(f.stage)||f.reason!=='max_iterations')))throw Error('GEPA 單題失敗證據不正確');
   const eligible=r.selectedSkill.hash!==r.baselineSkill.hash&&r.final.selected.validation.passed>r.final.baseline.validation.passed&&r.final.selected.heldout.passed>=r.final.baseline.heldout.passed;
   if(r.eligible!==eligible)throw Error('GEPA 核准門檻與證據不一致');
-  if(r.exploration){const e=r.exploration;if(c.searchMode!=='explore'||e.mode!=='explore'||e.seed!==c.searchSeed||e.trainingTotal!==c.counts.train||e.generated!==r.proposals||['trainingTested','generated','uniqueNew','duplicates','validatedNew'].some(k=>!Number.isInteger(e[k])||e[k]<0)||e.trainingTested>e.trainingTotal||e.generated>c.proposalBudget||e.uniqueNew+e.duplicates!==e.generated||e.validatedNew>e.uniqueNew)throw Error('GEPA 探索紀錄不正確');}
+  if(r.exploration){const e=r.exploration;if(c.searchMode!=='explore'||e.mode!=='explore'||e.seed!==c.searchSeed||e.trainingTotal!==c.counts.train||e.generated!==r.proposals||['trainingTested','generated','uniqueNew','duplicates','validatedNew'].some(k=>!Number.isInteger(e[k])||e[k]<0)||e.trainingTested>e.trainingTotal||e.generated>c.proposalBudget||e.uniqueNew+e.duplicates!==e.generated||e.validatedNew>e.uniqueNew)throw Error('GEPA 探索紀錄不正確');if(c.explorationPolicy==='failure-diversity-v2'&&(e.policy!==c.explorationPolicy||!Number.isInteger(e.skippedDuplicates)||e.skippedDuplicates<0||e.skippedDuplicates!==e.duplicates||!Number.isInteger(e.savedCandidateEvaluations)||e.savedCandidateEvaluations<0||e.savedCandidateEvaluations>e.skippedDuplicates*c.reflectionBatch))throw Error('GEPA 提前去重紀錄不正確');}
  }
  return run;
 }
@@ -122,7 +123,7 @@ export function telemetryLabel(runtime,id){
 }
 export class RuntimeClient{
   // Native browser fetch requires the global receiver, not this RuntimeClient.
-  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;this.gepaProfile='smoke';this.gepaSearchMode='standard';this.gepaMetrics=8;this.gepaProposals=2;this.gepaTaskCalls=8;this.gepaSeconds=1800;this.gepaCallSeconds=120;this.selectedGepaRun=null;this.pendingGepaSubmission=null;}
+  constructor({fetcher=globalThis.fetch.bind(globalThis),onUpdate=()=>{},interval=2000}={}){this.fetcher=fetcher;this.onUpdate=onUpdate;this.interval=interval;this.data=null;this.capabilities=null;this.error=null;this.lastSuccess=null;this.lastAttempt=null;this.pollCount=0;this.busy=false;this.enabled=false;this.timer=null;this.pendingRequestId=null;this.pendingSkillSubmission=null;this.selectedSkillRun=null;this.skillLimit=4;this.actionBusy=false;this.llmProfile='smoke';this.llmSeconds=900;this.llmCallSeconds=120;this.selectedLlmRun=null;this.pendingLlmSubmission=null;this.pendingRepairSubmission=null;this.selectedRepairRun=null;this.repairSeconds=900;this.repairCallSeconds=120;this.repairBudget=8;this.repairEvidence=null;this.repairEvidenceError=null;this.gepaProfile='smoke';this.gepaSearchMode='explore';this.gepaMetrics=10;this.gepaProposals=2;this.gepaTaskCalls=8;this.gepaSeconds=1800;this.gepaCallSeconds=120;this.selectedGepaRun=null;this.pendingGepaSubmission=null;}
   snapshot(){return {changes:this.changes,changeBusy:this.changeBusy,changeError:this.changeError,changeRevision:this.changeRevision,data:this.data,capabilities:this.capabilities,error:this.error,lastSuccess:this.lastSuccess,lastAttempt:this.lastAttempt,pollCount:this.pollCount,busy:this.busy,enabled:this.enabled,interval:this.interval,selectedSkillRun:this.selectedSkillRun,skillLimit:this.skillLimit,actionBusy:this.actionBusy,skillTrial:this.skillTrial,trialInput:this.trialInput??'  Ｓｅｒｖｉｃｅ   Down  ',llmProfile:this.llmProfile,llmSeconds:this.llmSeconds,llmCallSeconds:this.llmCallSeconds,selectedLlmRun:this.selectedLlmRun,selectedRepairRun:this.selectedRepairRun,repairSeconds:this.repairSeconds,repairCallSeconds:this.repairCallSeconds,repairBudget:this.repairBudget,repairEvidence:this.repairEvidence,repairEvidenceError:this.repairEvidenceError,gepaProfile:this.gepaProfile,gepaSearchMode:this.gepaSearchMode,gepaMetrics:this.gepaMetrics,gepaProposals:this.gepaProposals,gepaTaskCalls:this.gepaTaskCalls,gepaSeconds:this.gepaSeconds,gepaCallSeconds:this.gepaCallSeconds,selectedGepaRun:this.selectedGepaRun};}
   async request(path,{method='GET',body,timeoutMs=8000}={}){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -248,7 +249,7 @@ export class RuntimeClient{
   async startGepa(registry){
     return this.skillMutation(async()=>{
       if(!this.data.gepa?.sdk.available||!this.data.gepa?.optimizer.available)throw Error('請安裝 nanobot 與 GEPA');
-      if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision,...(this.gepaProfile==='bank'?{bankRevision:this.data.challenges?.revision,searchMode:this.gepaSearchMode}: {})};}
+      if(!this.pendingGepaSubmission){const provider=await this.request('/api/v1/llm/ollama');this.pendingGepaSubmission={registry:structuredClone(registry),requestId:crypto.randomUUID(),profile:this.gepaProfile,maxSeconds:this.gepaSeconds,callTimeoutSeconds:this.gepaCallSeconds,taskCallBudget:this.gepaTaskCalls,metricBudget:this.gepaMetrics,proposalBudget:this.gepaProposals,expectedRevision:this.data.gepa.revision,providerRevision:provider.revision,searchMode:this.gepaSearchMode,...(this.gepaProfile==='bank'?{bankRevision:this.data.challenges?.revision}: {})};}
       // Two serial pinned probes (nanobot + GEPA), then response/dispatch grace.
       try{await this.request('/api/v1/gepa/runs',{method:'POST',body:this.pendingGepaSubmission,timeoutMs:270000});}
       catch(error){if(error.status>=400&&error.status<500)this.pendingGepaSubmission=null;throw error;}
@@ -263,11 +264,11 @@ export class RuntimeClient{
     if(!Object.hasOwn(GEPA_PRESETS,profile))throw Error('GEPA 規模不正確');
     this.gepaProfile=profile;const p=GEPA_PRESETS[profile];this.gepaTaskCalls=profile==='bank'?10:8;
     this.gepaMetrics=p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;
-    this.gepaSearchMode=profile==='bank'?'explore':'standard';
-    if(profile==='bank')this.setGepaSearchMode('explore');
+    this.setGepaSearchMode('explore');
   }
   setGepaSearchMode(mode){
-    if(!['standard','explore'].includes(mode)||this.gepaProfile!=='bank')throw Error('題庫搜尋模式不正確');
+    if(!['standard','explore'].includes(mode))throw Error('搜尋模式不正確');
+    if(this.gepaProfile!=='bank'){const p=GEPA_PRESETS[this.gepaProfile];this.gepaSearchMode=mode;this.gepaMetrics=this.gepaProfile==='smoke'&&mode==='explore'?10:p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;return;}
     this.gepaSearchMode=mode;const c=this.data?.challenges?.counts??{train:6,validation:3};
     this.gepaProposals=mode==='explore'?Math.min(16,Math.max(12,Math.ceil(c.train/2))):1;
     this.gepaMetrics=mode==='explore'?Math.min(120,c.validation+this.gepaProposals*(4+c.validation)):2*c.validation+4;

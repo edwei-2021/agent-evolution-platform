@@ -129,7 +129,9 @@ class RepairRunner:
         if sorted(t['function']['name'] for t in tools)!=sorted(grants):raise ValueError('SDK requested an unexpected tool grant')
         final_summary=not cfg.get('reflectionOnly') and summary_ready(self.tools,self.path('solution.py').read_bytes().decode('utf-8'))
         settings={**cfg['provider']['config'],'inferenceTimeout':min(cfg['callTimeoutSeconds'],cfg['provider']['config']['inferenceTimeout'],max(1,int(cfg['deadlineEpoch']-time.time())))}
-        payload={'model':settings['model'],'messages':messages,'tools':tools,'stream':True,'temperature':0,'max_tokens':settings['maxTokens']}
+        temperature=cfg.get('reflectionTemperature',0) if cfg.get('reflectionOnly') else 0
+        if type(temperature) not in (int,float) or not 0<=temperature<=1:raise ValueError('Invalid reflection temperature')
+        payload={'model':settings['model'],'messages':messages,'tools':tools,'stream':True,'temperature':temperature,'max_tokens':settings['maxTokens']}
         payload=provider_payload(settings,payload)
         if final_summary:
             payload.update(messages=[*messages,dict(SUMMARY_MESSAGE)],tools=[])

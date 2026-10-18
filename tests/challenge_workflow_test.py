@@ -36,7 +36,7 @@ class Model(BaseHTTPRequestHandler):
         improved=IMPROVED in str(messages)
         if messages[0]['content']==REFLECTION_SYSTEM:
             attempt=json.loads(messages[1]['content']).get('exploration',{}).get('attempt',1)
-            body_text=IMPROVED+(f' Strategy {1 if attempt==2 else attempt}.' if type(self).mode=='explore' else '')
+            body_text=IMPROVED+(f' Strategy {1 if attempt in (2,3) else attempt}.' if type(self).mode=='explore' else '')
             message['content']=json.dumps({'skill_body':body_text})
         elif type(self).mode=='http-failure' and identifier=='CH-signed-decimal':
             self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
