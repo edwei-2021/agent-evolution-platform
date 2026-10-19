@@ -9,6 +9,20 @@ import {gepaPlan} from '../dist/js/gepa-plan.js';
 const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v1.json',import.meta.url)));
 const bank=()=>({schemaVersion:1,version:'python-challenges-v1',revision:1,questions:structuredClone(seeds)});
 const v2=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v2.json',import.meta.url)));
+const v3=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v3.json',import.meta.url)));
+
+test('sixty-question V3 catalog has 20 per difficulty and an explicit batch submission',async()=>{
+ assert.equal(v3.length,60);for(const level of ['easy','medium','hard'])assert.equal(v3.filter(q=>q.difficulty===level).length,20);
+ const calls=[];let fail=true;
+ const client=new ChallengesClient({request:async(path,options)=>{calls.push({path,options});if(!options)return bank();if(fail)throw Error('Revision conflict');return {...bank(),version:'python-challenges-v3',revision:2,questions:[...seeds.map(q=>({...q,enabled:false})),...v3]};}});
+ await client.load();client.create();client.edit('title','Keep draft');client.v3Batch=4;
+ assert.match(challengesView(client.snapshot()),/初階、中階、進階各 20 題/);assert.equal(calls.length,1);
+ assert.equal(await client.installV3(),false);assert.equal(client.draft.title,'Keep draft');
+ fail=false;assert.equal(await client.installV3(),true);assert.equal(client.draft,null);
+ assert.equal(calls[2].path,'/api/v1/challenges/presets/repair-v3');assert.equal(calls[2].options.timeoutMs,360000);
+ assert.deepEqual(calls[2].options.body,{expectedRevision:1,batch:4});
+ assert.equal(client.data.version,'python-challenges-v3');assert.match(challengesView(client.snapshot()),/啟用所選批次/);
+});
 
 test('V2 preset is explicit, revisioned and preserves drafts on failure; viewing never installs',async()=>{
  const calls=[];let fail=true;

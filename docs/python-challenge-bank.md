@@ -2,6 +2,14 @@
 
 The GUI includes 12 original repair challenges, a local question editor, and a **多難度題庫** GEPA profile. Finishing an experiment does not imply a new Skill. A perfect seed can leave GEPA with no measurable improvement and zero proposals. More offsets of the same easy program do not establish broader repair capability.
 
+## Sixty-question V3 catalog (60 題分級題庫)
+
+V3 now supplies **60 tasks: 20 easy, 20 medium and 20 hard**, retaining the twelve V2 IDs and adding 48 original programs. It includes 123 public and 259 retained examples. See [the complete catalog, grading criteria, fixed splits and verification scope](python-challenges-v3-catalog.md).
+
+Choose **均衡批次 1–5** and click **載入 60 題並啟用所選批次**. Each explicit selection enables 6/3/3 tasks, with four questions from every difficulty. Five disjoint batches cover the entire catalog; related groups never change their split between batches. All other stored questions are disabled, not deleted. Existing edits and frozen V1/V2 Runs remain intact. The schema accepts V1, V2 and V3 snapshots. Selected catalog questions with edited split/difficulty/group require restoring those fields or manual enablement, preventing a batch from silently violating its grouping contract.
+
+`POST /api/v1/challenges/presets/repair-v3` accepts only `expectedRevision` and an integer `batch` in 0..4 through the existing localhost/origin/token boundary. First import validates missing questions before an atomic revision update. Later batch switches preserve bodies/references/cases and add no duplicates. The existing 100 stored / 50 enabled-per-run limits and 6/45/7200 exploration defaults remain unchanged. Difficulty filters and total counts include disabled older/custom questions, so the stored total may exceed the catalog's 60.
+
 ## Multi-defect V2 update (多缺陷題庫 v2)
 
 The October 19 Strata Run `RUN-bb2efa32-1065-4571-b4fe-e365dfd379cd` generated twelve distinct instructions and completed all 87 search evaluations, but selected baseline index 0. Nine candidates tied at 3/3 search validation, three scored 2/3. The baseline's 3/3 is inferred from the pinned highest-score/earliest-tie selection rule. Search took about 101 minutes; the two-hour deadline stopped the last of twelve independent final tasks, before evaluator replay and reviewer replay. This is evidence for candidate diversity and a saturated small validation split, not a completed improving release.

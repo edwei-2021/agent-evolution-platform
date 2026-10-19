@@ -9,10 +9,38 @@ from repair_fixture import digest
 
 VERSION = 'python-challenges-v1'
 V2 = 'python-challenges-v2'
-VERSIONS = (VERSION, V2)
+V3 = 'python-challenges-v3'
+VERSIONS = (VERSION, V2, V3)
 SPLITS = ('train', 'validation', 'heldout')
 FIELDS = {'id', 'title', 'difficulty', 'topic', 'group', 'split', 'enabled', 'prompt', 'baseline',
           'reference', 'visible', 'hidden', 'sources', 'attribution'}
+
+
+def catalog_v3():
+    """Fixed catalog groups never change splits between operating batches."""
+    rows = json.loads((Path(__file__).resolve().parents[1]/'data/python-challenges-v3.json').read_text())
+    if len(rows)!=60 or len({q['id'] for q in rows})!=60:
+        raise ValueError('V3 catalog requires 60 distinct question IDs')
+    groups = {}
+    for q in rows:
+        validate_question(q)
+        if q['group'] in groups and groups[q['group']]!=q['split']:
+            raise ValueError('Related catalog groups cannot cross splits')
+        groups[q['group']] = q['split']
+    return rows
+
+
+def catalog_batch(rows, batch):
+    if type(batch) is not int or not 0<=batch<5:
+        raise ValueError('Choose a balanced batch from 0 through 4')
+    selected = set()
+    for level in ('easy','medium','hard'):
+        for split,size in (('train',2),('validation',1),('heldout',1)):
+            pool = [q for q in rows if q['difficulty']==level and q['split']==split]
+            if len(pool)!=size*5:
+                raise ValueError('Each difficulty needs 10 train, 5 validation and 5 held-out questions')
+            selected.update(q['id'] for q in pool[batch*size:(batch+1)*size])
+    return selected
 
 
 def fixture(question):
@@ -179,6 +207,31 @@ class ChallengeBank:
             with self.service.connect() as db:
                 db.execute('UPDATE challenge_bank SET revision=?,data=?,version=? WHERE singleton=1',
                            (revision+1, json.dumps(rows, ensure_ascii=False), V2))
+        return self.snapshot()
+
+    def install_v3(self, revision, batch):
+        """Append missing catalog entries; preserve edits and select one batch."""
+        self.check_revision(revision)
+        seeds = catalog_v3()
+        selected = catalog_batch(seeds,batch)
+        snap = self.snapshot()
+        existing = {q['id'] for q in snap['questions']}
+        missing = [q for q in seeds if q['id'] not in existing]
+        if len(snap['questions'])+len(missing)>100:
+            raise ValueError('Challenge bank is limited to 100 questions; remove unused custom questions first')
+        for question in missing:
+            validate_question(question,execute=True)
+        with self.service.lock:
+            self.check_revision(revision)
+            rows = self.snapshot()['questions'] + missing
+            rows = [dict(q,enabled=q['id'] in selected) for q in rows]
+            expected = {q['id']:(q['split'],q['difficulty'],q['group']) for q in seeds}
+            for q in rows:
+                if q['enabled'] and (q['split'],q['difficulty'],q['group'])!=expected[q['id']]:
+                    raise ValueError('Selected catalog split/difficulty/group was edited; restore these fields or enable questions manually')
+            with self.service.connect() as db:
+                db.execute('UPDATE challenge_bank SET revision=?,data=?,version=? WHERE singleton=1',
+                           (revision+1,json.dumps(rows,ensure_ascii=False),V3))
         return self.snapshot()
 
     def mutate(self, revision, question=None, identifier=None, delete=False):

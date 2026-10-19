@@ -40,6 +40,17 @@ test('app form events preserve settings through click, submit, navigation and LL
    if(options.method==='POST'){const body=JSON.parse(options.body);assert.equal(body.expectedRevision,challengeData.revision);challengeData={...challengeData,revision:challengeData.revision+1,questions:[...challengeData.questions,{...body.challenge,id:'CH-created-fixture'}]};}
    value=challengeData;
   }
+  else if(path==='/api/v1/challenges/presets/repair-v3'){
+   const body=JSON.parse(options.body);assert.equal(body.expectedRevision,challengeData.revision);
+   const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v3.json',import.meta.url)));
+   const selected=new Set();for(const level of ['easy','medium','hard'])for(const [split,n] of [['train',2],['validation',1],['heldout',1]]){
+    for(const q of seeds.filter(q=>q.difficulty===level&&q.split===split).slice(body.batch*n,(body.batch+1)*n))selected.add(q.id);
+   }
+   const ids=new Set(challengeData.questions.map(q=>q.id));
+   challengeData={...challengeData,version:'python-challenges-v3',revision:challengeData.revision+1,
+    questions:[...challengeData.questions,...seeds.filter(q=>!ids.has(q.id))].map(q=>({...q,enabled:selected.has(q.id)}))};
+   runtime.challenges={version:challengeData.version,revision:challengeData.revision,ready:true,counts:{train:6,validation:3,heldout:3}};value=challengeData;
+  }
   else if(path==='/api/v1/challenges/presets/repair-v2'){
    const body=JSON.parse(options.body);assert.deepEqual(body,{expectedRevision:challengeData.revision});
    const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v2.json',import.meta.url)));
@@ -288,6 +299,18 @@ test('app form events preserve settings through click, submit, navigation and LL
   await click(button(null,{bankGepa:''}));assert.match(html,/data-gepa-metrics[^>]*value="45"/);
   assert.match(html,/data-gepa-proposals[^>]*value="6"/);
   assert.equal(calls.slice(before).filter(c=>c.options?.method==='POST').length,1);
+ });
+
+ await t.test('actual sixty-question catalog button freezes selected batch without starting a model',async()=>{
+  await click(button(null,{page:'challenges'}));for(let i=0;i<20;i++)await Promise.resolve();
+  assert.match(html,/data-bank-v3/);const before=calls.length;
+  await dispatch('change',{target:{value:'4',matches:s=>s==='[data-bank-v3-batch]'}});
+  assert.equal(calls.length,before);await click(button(null,{bankV3:''}));
+  const posts=calls.slice(before).filter(c=>c.options?.method==='POST');assert.equal(posts.length,1);
+  assert.equal(posts[0].path,'/api/v1/challenges/presets/repair-v3');assert.equal(JSON.parse(posts[0].options.body).batch,4);
+  assert.equal(challengeData.version,'python-challenges-v3');assert.equal(challengeData.questions.length,72);
+  assert.equal(challengeData.questions.filter(q=>q.enabled).length,12);
+  assert.equal(challengeData.questions.find(q=>q.id==='CH-normalize-whitespace').title,'Edited through real form');
  });
 
  await t.test('Skill archive navigation and exact Run queries read local records without mutations',async()=>{

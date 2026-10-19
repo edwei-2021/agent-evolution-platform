@@ -1,0 +1,5704 @@
+[
+  {
+    "id": "CH-v2-quoted-fields",
+    "title": "引號欄位掃描 / Quoted fields",
+    "difficulty": "medium",
+    "topic": "lexical-state",
+    "group": "v2-quoted-fields",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is one CSV-like record string. Return its fields. Commas separate fields outside double quotes. A quoted field must start at the field boundary; doubled quotes inside it represent one quote. After a closing quote only a comma or end is valid. Quotes inside unquoted fields and unclosed quotes raise ValueError. Preserve spaces and empty fields, including a trailing empty field. Empty input returns [\"\"]. No multiline records are supplied.",
+    "baseline": "def solve(data):\n    out = []\n    field = ''\n    state = 'start'\n    i = 0\n    while i < len(data):\n        ch = data[i]\n        if state == 'quoted':\n            if ch == '\"':\n                if i + 1 < len(data) and data[i + 1] == '\"':\n                    field += '\"'\n                    i += 0\n                else:\n                    state = 'closed'\n            else:\n                field += ch\n        elif state == 'closed':\n            if ch != ',':\n                raise ValueError\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == ',':\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == '\"':\n            if state != 'start':\n                raise ValueError\n            state = 'quoted'\n        else:\n            field += ch\n            state = 'plain'\n        i += 1\n    if state == 'quoted':\n        raise ValueError\n    if field:\n        out.append(field)\n    return out\n",
+    "reference": "def solve(data):\n    out = []\n    field = ''\n    state = 'start'\n    i = 0\n    while i < len(data):\n        ch = data[i]\n        if state == 'quoted':\n            if ch == '\"':\n                if i + 1 < len(data) and data[i + 1] == '\"':\n                    field += '\"'\n                    i += 1\n                else:\n                    state = 'closed'\n            else:\n                field += ch\n        elif state == 'closed':\n            if ch != ',':\n                raise ValueError\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == ',':\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == '\"':\n            if state != 'start':\n                raise ValueError\n            state = 'quoted'\n        else:\n            field += ch\n            state = 'plain'\n        i += 1\n    if state == 'quoted':\n        raise ValueError\n    out.append(field)\n    return out\n",
+    "visible": [
+      {
+        "input": "a,b",
+        "expected": [
+          "a",
+          "b"
+        ]
+      },
+      {
+        "input": "\"a,b\",c",
+        "expected": [
+          "a,b",
+          "c"
+        ]
+      },
+      {
+        "input": "x,",
+        "expected": [
+          "x",
+          ""
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": "",
+        "expected": [
+          ""
+        ]
+      },
+      {
+        "input": "\"a\"\"b\",,",
+        "expected": [
+          "a\"b",
+          "",
+          ""
+        ]
+      },
+      {
+        "input": "\"\", z",
+        "expected": [
+          "",
+          " z"
+        ]
+      },
+      {
+        "input": "a\"b",
+        "raises": "ValueError"
+      },
+      {
+        "input": "\"a\"x",
+        "raises": "ValueError"
+      },
+      {
+        "input": "\"open",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-sessionize",
+    "title": "事件分段 / Sessionization",
+    "difficulty": "medium",
+    "topic": "event-partition",
+    "group": "v2-sessionize",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {events:[[user,time],...], gap:nonnegative integer}. Events may be unordered; user is a string and time an integer. For each user, sort times ascending, preserving duplicates. Consecutive events belong to the same session when their gap is <= gap. Return [user,start,end,count] sessions ordered by user ascending, then start ascending. Negative gap raises ValueError. Empty events return []. Do not modify input.",
+    "baseline": "def solve(data):\n    gap = data['gap']\n    if gap < 0:\n        raise ValueError\n    events = data['events']\n    out = []\n    for user, t in events:\n        if out and out[-1][0] == user and t - out[-1][2] < gap:\n            out[-1][2] = t\n            out[-1][3] += 1\n        else:\n            out.append([user, t, t, 1])\n    return out\n",
+    "reference": "def solve(data):\n    gap = data['gap']\n    if gap < 0:\n        raise ValueError\n    events = sorted(data['events'])\n    out = []\n    for user, t in events:\n        if out and out[-1][0] == user and t - out[-1][2] <= gap:\n            out[-1][2] = t\n            out[-1][3] += 1\n        else:\n            out.append([user, t, t, 1])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "events": [
+            [
+              "a",
+              1
+            ],
+            [
+              "a",
+              2
+            ],
+            [
+              "b",
+              8
+            ]
+          ],
+          "gap": 2
+        },
+        "expected": [
+          [
+            "a",
+            1,
+            2,
+            2
+          ],
+          [
+            "b",
+            8,
+            8,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "x",
+              5
+            ],
+            [
+              "x",
+              1
+            ],
+            [
+              "x",
+              3
+            ]
+          ],
+          "gap": 2
+        },
+        "expected": [
+          [
+            "x",
+            1,
+            5,
+            3
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "events": [],
+          "gap": 0
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "b",
+              0
+            ],
+            [
+              "a",
+              3
+            ],
+            [
+              "a",
+              3
+            ],
+            [
+              "a",
+              4
+            ]
+          ],
+          "gap": 0
+        },
+        "expected": [
+          [
+            "a",
+            3,
+            3,
+            2
+          ],
+          [
+            "a",
+            4,
+            4,
+            1
+          ],
+          [
+            "b",
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "events": [],
+          "gap": -1
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "u",
+              -4
+            ],
+            [
+              "u",
+              0
+            ]
+          ],
+          "gap": 4
+        },
+        "expected": [
+          [
+            "u",
+            -4,
+            0,
+            2
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-lru",
+    "title": "有界 LRU 快取 / LRU cache",
+    "difficulty": "medium",
+    "topic": "recency-state",
+    "group": "v2-lru",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {capacity:integer, ops:[operation,...]}. An operation is [\"put\",string-key,JSON-value] or [\"get\",string-key]. Return {reads:[value-or-null,...], keys:[least-recent,...,most-recent]}. Successful get and every put make the key most recent. Updating an existing key must not evict a different key. At capacity, inserting a new key evicts the least recent. Capacity zero stores nothing; negative capacity or an unknown operation raises ValueError. Values may be null. Do not mutate input.",
+    "baseline": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    values = {}\n    order = []\n    reads = []\n    for op in data['ops']:\n        name, key = op[0], op[1]\n        if name == 'get':\n            reads.append(values.get(key))\n            if key in values:\n                pass\n        elif name == 'put':\n            if cap < 0:\n                continue\n            if key in values:\n                order.pop(order.index(key))\n            elif len(order) >= cap:\n                old = order.pop(0)\n                values.pop(old)\n            values[key] = op[2]\n            order.append(key)\n        else:\n            raise ValueError\n    return {'reads': reads, 'keys': order}\n",
+    "reference": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    values = {}\n    order = []\n    reads = []\n    for op in data['ops']:\n        name, key = op[0], op[1]\n        if name == 'get':\n            reads.append(values.get(key))\n            if key in values:\n                order.pop(order.index(key))\n                order.append(key)\n        elif name == 'put':\n            if cap == 0:\n                continue\n            if key in values:\n                order.pop(order.index(key))\n            elif len(order) >= cap:\n                old = order.pop(0)\n                values.pop(old)\n            values[key] = op[2]\n            order.append(key)\n        else:\n            raise ValueError\n    return {'reads': reads, 'keys': order}\n",
+    "visible": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "put",
+              "a",
+              1
+            ],
+            [
+              "put",
+              "b",
+              2
+            ],
+            [
+              "get",
+              "a"
+            ],
+            [
+              "put",
+              "c",
+              3
+            ],
+            [
+              "get",
+              "b"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            1,
+            null
+          ],
+          "keys": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "get",
+              "x"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "keys": []
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "capacity": 0,
+          "ops": [
+            [
+              "put",
+              "a",
+              1
+            ],
+            [
+              "get",
+              "a"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "keys": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "put",
+              "a",
+              null
+            ],
+            [
+              "put",
+              "b",
+              2
+            ],
+            [
+              "put",
+              "a",
+              3
+            ],
+            [
+              "put",
+              "c",
+              4
+            ],
+            [
+              "get",
+              "a"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            3
+          ],
+          "keys": [
+            "c",
+            "a"
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": -1,
+          "ops": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "bad",
+              "x"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-dependency-layers",
+    "title": "相依批次排序 / Dependency layers",
+    "difficulty": "medium",
+    "topic": "dag-frontier",
+    "group": "v2-dependency-layers",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {nodes:[distinct string IDs in priority order], edges:[[prerequisite,dependent],...]}. Return execution layers: each layer contains every remaining node whose prerequisites were in earlier layers, in original nodes order. Nodes in the same layer cannot unlock one another until the next layer. Duplicate edges count once. Unknown IDs, self edges, duplicate node IDs or cycles raise ValueError. Empty graph returns []. Do not mutate input.",
+    "baseline": "def solve(data):\n    nodes = data['nodes']\n    if len(set(nodes)) != len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a, b in data['edges']:\n        if a not in needs or b not in needs:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    layers = []\n    while len(done) < len(nodes):\n        layer = []\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                layer.append(n)\n                done.add(n)\n        if not layer:\n            raise ValueError\n        for n in layer:\n            done.add(n)\n        layers.append(layer)\n    return layers\n",
+    "reference": "def solve(data):\n    nodes = data['nodes']\n    if len(set(nodes)) != len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a, b in data['edges']:\n        if a not in needs or b not in needs or a == b:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    layers = []\n    while len(done) < len(nodes):\n        layer = []\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                layer.append(n)\n        if not layer:\n            raise ValueError\n        for n in layer:\n            done.add(n)\n        layers.append(layer)\n    return layers\n",
+    "visible": [
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b",
+            "c"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "a"
+          ],
+          [
+            "b"
+          ],
+          [
+            "c"
+          ]
+        ]
+      },
+      {
+        "input": {
+          "nodes": [
+            "z",
+            "a"
+          ],
+          "edges": []
+        },
+        "expected": [
+          [
+            "z",
+            "a"
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "nodes": [],
+          "edges": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "nodes": [
+            "c",
+            "b",
+            "a"
+          ],
+          "edges": [
+            [
+              "a",
+              "c"
+            ],
+            [
+              "a",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "b",
+            "a"
+          ],
+          [
+            "c"
+          ]
+        ]
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a"
+          ],
+          "edges": [
+            [
+              "x",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "a"
+          ],
+          "edges": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b",
+            "c"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "a"
+          ],
+          [
+            "b"
+          ],
+          [
+            "c"
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-expression",
+    "title": "整數運算式 / Integer expression",
+    "difficulty": "medium",
+    "topic": "operator-state",
+    "group": "v2-expression",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Evaluate a string of unsigned decimal integer operands separated by binary +, - or * operators, with optional ASCII spaces anywhere between tokens. Multiplication has higher precedence; + and - associate left to right. No unary operators, parentheses, implicit multiplication, tabs or other characters. Empty input, missing operands or adjacent operand tokens raise ValueError. Digits within one operand must be contiguous. Return the integer value. All supplied intermediate values are bounded.",
+    "baseline": "def solve(data):\n    total = 0\n    term = 0\n    op = '+'\n    i = 0\n    while True:\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        start = i\n        while i < len(data) and data[i] in '0123456789':\n            i += 1\n        if start == i:\n            raise ValueError\n        num = int(data[start:i])\n        if op == '*':\n            term = (total + term) * num\n            total = 0\n        else:\n            total += term\n            term = num if op == '+' else -num\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        if i == len(data):\n            return total + term\n        op = data[i]\n        if op not in '+-*/':\n            raise ValueError\n        i += 1\n",
+    "reference": "def solve(data):\n    total = 0\n    term = 0\n    op = '+'\n    i = 0\n    while True:\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        start = i\n        while i < len(data) and data[i] in '0123456789':\n            i += 1\n        if start == i:\n            raise ValueError\n        num = int(data[start:i])\n        if op == '*':\n            term *= num\n        else:\n            total += term\n            term = num if op == '+' else -num\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        if i == len(data):\n            return total + term\n        op = data[i]\n        if op not in '+-*':\n            raise ValueError\n        i += 1\n",
+    "visible": [
+      {
+        "input": "2+3*4",
+        "expected": 14
+      },
+      {
+        "input": " 12 - 2 * 3 + 1 ",
+        "expected": 7
+      },
+      {
+        "input": "7",
+        "expected": 7
+      }
+    ],
+    "hidden": [
+      {
+        "input": "9-2*3*2",
+        "expected": -3
+      },
+      {
+        "input": "0*8+03",
+        "expected": 3
+      },
+      {
+        "input": "",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1 2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1+",
+        "raises": "ValueError"
+      },
+      {
+        "input": "-1",
+        "raises": "ValueError"
+      },
+      {
+        "input": "2/1",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1\t+2",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-grid-paths",
+    "title": "網格最短路徑計數 / Grid paths",
+    "difficulty": "medium",
+    "topic": "breadth-first",
+    "group": "v2-grid-paths",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {grid:[equal-length strings of . or #], start:[row,column], end:[row,column]}. Move orthogonally one cell per step through dots. Return {distance:shortest-length, ways:number-of-distinct-shortest-paths}. Unreachable or blocked endpoints return {distance:-1,ways:0}. Start=end on a free cell has distance 0 and one path. Empty/ragged grid or out-of-bounds endpoints raise ValueError. Inputs are otherwise well formed and path counts are <=1000000. Do not mutate input.",
+    "baseline": "def solve(data):\n    grid = data['grid']\n    h = len(grid)\n    if h == 0 or len(grid[0]) == 0:\n        raise ValueError\n    w = len(grid[0])\n    for line in grid:\n        if len(line) != w:\n            raise ValueError\n    sr, sc = data['start']\n    er, ec = data['end']\n    if min(sr, sc, er, ec) < 0 or sr >= h or er >= h or sc >= w or ec >= w:\n        raise ValueError\n    if grid[er][ec] == '#':\n        return {'distance': -1, 'ways': 0}\n    dist = {}\n    ways = {}\n    key = sr * w + sc\n    dist[key] = 0\n    ways[key] = 1\n    queue = [[sr, sc]]\n    pos = 0\n    while pos < len(queue):\n        r, c = queue[pos]\n        pos += 1\n        old = r * w + c\n        for dr, dc in [[0, 1], [1, 0], [0, -1], [-1, 0]]:\n            nr, nc = r + dr, c + dc\n            if nr < 0 or nr >= h or nc < 0 or nc >= w or grid[nr][nc] == '#':\n                continue\n            nxt = nr * w + nc\n            if nxt not in dist:\n                dist[nxt] = dist[old] + 1\n                ways[nxt] = ways[old]\n                queue.append([nr, nc])\n            elif dist[nxt] == dist[old] + 1:\n                ways[nxt] = ways[old]\n    end = er * w + ec\n    return {'distance': dist.get(end, -1), 'ways': ways.get(end, 0)}\n",
+    "reference": "def solve(data):\n    grid = data['grid']\n    h = len(grid)\n    if h == 0 or len(grid[0]) == 0:\n        raise ValueError\n    w = len(grid[0])\n    for line in grid:\n        if len(line) != w:\n            raise ValueError\n    sr, sc = data['start']\n    er, ec = data['end']\n    if min(sr, sc, er, ec) < 0 or sr >= h or er >= h or sc >= w or ec >= w:\n        raise ValueError\n    if grid[sr][sc] == '#' or grid[er][ec] == '#':\n        return {'distance': -1, 'ways': 0}\n    dist = {}\n    ways = {}\n    key = sr * w + sc\n    dist[key] = 0\n    ways[key] = 1\n    queue = [[sr, sc]]\n    pos = 0\n    while pos < len(queue):\n        r, c = queue[pos]\n        pos += 1\n        old = r * w + c\n        for dr, dc in [[0, 1], [1, 0], [0, -1], [-1, 0]]:\n            nr, nc = r + dr, c + dc\n            if nr < 0 or nr >= h or nc < 0 or nc >= w or grid[nr][nc] == '#':\n                continue\n            nxt = nr * w + nc\n            if nxt not in dist:\n                dist[nxt] = dist[old] + 1\n                ways[nxt] = ways[old]\n                queue.append([nr, nc])\n            elif dist[nxt] == dist[old] + 1:\n                ways[nxt] += ways[old]\n    end = er * w + ec\n    return {'distance': dist.get(end, -1), 'ways': ways.get(end, 0)}\n",
+    "visible": [
+      {
+        "input": {
+          "grid": [
+            "..",
+            ".."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            1,
+            1
+          ]
+        },
+        "expected": {
+          "distance": 2,
+          "ways": 2
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            ".#."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            2
+          ]
+        },
+        "expected": {
+          "distance": -1,
+          "ways": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "grid": [
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            0
+          ]
+        },
+        "expected": {
+          "distance": 0,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "#."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            1
+          ]
+        },
+        "expected": {
+          "distance": -1,
+          "ways": 0
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "...",
+            "...",
+            "..."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            2,
+            2
+          ]
+        },
+        "expected": {
+          "distance": 4,
+          "ways": 6
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "..",
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            1
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "grid": [
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            1,
+            0
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-glob",
+    "title": "跳脫萬用字元比對 / Escaped glob",
+    "difficulty": "hard",
+    "topic": "pattern-dp",
+    "group": "v2-glob",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {text:string,pattern:string}. Match the whole text. In pattern, ? matches exactly one arbitrary character and * matches any sequence including empty. A backslash escapes the next character, including *, ? and backslash. A trailing unpaired backslash raises ValueError. Matching is case-sensitive. Return a boolean. Do not use regex or imports.",
+    "baseline": "def solve(data):\n    tokens = []\n    p = data['pattern']\n    i = 0\n    while i < len(p):\n        ch = p[i]\n        if ch == '\\\\':\n            i += 1\n            if i == len(p):\n                raise ValueError\n            tokens.append(['lit', p[i]])\n        elif ch in '*?':\n            tokens.append([ch, ''])\n        else:\n            tokens.append(['lit', ch])\n        i += 1\n    text = data['text']\n    prev = [True] + [False] * len(text)\n    for kind, val in tokens:\n        cur = [False] * (len(text) + 1)\n        if kind == '*':\n            cur[0] = False\n        for j in range(1, len(text) + 1):\n            if kind == '*':\n                cur[j] = prev[j]\n            else:\n                cur[j] = prev[j - 1] and (kind == '?' or val == text[j - 1])\n        prev = cur\n    return prev[-1]\n",
+    "reference": "def solve(data):\n    tokens = []\n    p = data['pattern']\n    i = 0\n    while i < len(p):\n        ch = p[i]\n        if ch == '\\\\':\n            i += 1\n            if i == len(p):\n                raise ValueError\n            tokens.append(['lit', p[i]])\n        elif ch in '*?':\n            tokens.append([ch, ''])\n        else:\n            tokens.append(['lit', ch])\n        i += 1\n    text = data['text']\n    prev = [True] + [False] * len(text)\n    for kind, val in tokens:\n        cur = [False] * (len(text) + 1)\n        if kind == '*':\n            cur[0] = prev[0]\n        for j in range(1, len(text) + 1):\n            if kind == '*':\n                cur[j] = prev[j] or cur[j - 1]\n            else:\n                cur[j] = prev[j - 1] and (kind == '?' or val == text[j - 1])\n        prev = cur\n    return prev[-1]\n",
+    "visible": [
+      {
+        "input": {
+          "text": "abcd",
+          "pattern": "a*d"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ac",
+          "pattern": "a?c"
+        },
+        "expected": false
+      },
+      {
+        "input": {
+          "text": "*",
+          "pattern": "\\*"
+        },
+        "expected": true
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "",
+          "pattern": "**"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ab",
+          "pattern": "*?*?"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "a?b",
+          "pattern": "a\\?b"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "A",
+          "pattern": "a"
+        },
+        "expected": false
+      },
+      {
+        "input": {
+          "text": "",
+          "pattern": "x\\"
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "text": "\\",
+          "pattern": "\\\\"
+        },
+        "expected": true
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-inventory",
+    "title": "原子庫存交易 / Atomic inventory",
+    "difficulty": "hard",
+    "topic": "transaction-rollback",
+    "group": "v2-inventory",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {stock:{string-item:nonnegative-integer,...}, transactions:[[[item,delta],...],...]}. Apply each transaction sequentially to a temporary stock. Unknown items start at zero. If ANY intermediate quantity would be negative, reject that whole transaction and roll back all its changes, even if later deltas could fix it. Otherwise commit. Return {stock:final-stock,accepted:[boolean,...]}. Rejected new keys must not remain in stock. Empty transactions succeed. Negative initial stock raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    stock = dict(data['stock'])\n    for v in stock.values():\n        if v < 0:\n            raise ValueError\n    accepted = []\n    for tx in data['transactions']:\n        trial = stock\n        valid = True\n        for key, delta in tx:\n            trial[key] = trial.get(key, 0) + delta\n        for key in trial:\n            if trial[key] < 0:\n                valid = False\n        accepted.append(valid)\n        if valid:\n            stock = trial\n    return {'stock': stock, 'accepted': accepted}\n",
+    "reference": "def solve(data):\n    stock = dict(data['stock'])\n    for v in stock.values():\n        if v < 0:\n            raise ValueError\n    accepted = []\n    for tx in data['transactions']:\n        trial = dict(stock)\n        valid = True\n        for key, delta in tx:\n            trial[key] = trial.get(key, 0) + delta\n            if trial[key] < 0:\n                valid = False\n        accepted.append(valid)\n        if valid:\n            stock = trial\n    return {'stock': stock, 'accepted': accepted}\n",
+    "visible": [
+      {
+        "input": {
+          "stock": {
+            "a": 2
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -1
+              ]
+            ],
+            [
+              [
+                "a",
+                -3
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 1
+          },
+          "accepted": [
+            true,
+            false
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {},
+          "transactions": [
+            [
+              [
+                "b",
+                2
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "b": 2
+          },
+          "accepted": [
+            true
+          ]
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "stock": {
+            "a": 1
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -2
+              ],
+              [
+                "a",
+                2
+              ]
+            ],
+            []
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 1
+          },
+          "accepted": [
+            false,
+            true
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {},
+          "transactions": [
+            [
+              [
+                "x",
+                2
+              ],
+              [
+                "y",
+                -1
+              ]
+            ],
+            [
+              [
+                "z",
+                0
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "z": 0
+          },
+          "accepted": [
+            false,
+            true
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {
+            "x": -1
+          },
+          "transactions": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "stock": {
+            "a": 2
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -1
+              ],
+              [
+                "a",
+                -1
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 0
+          },
+          "accepted": [
+            true
+          ]
+        }
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-sweep-load",
+    "title": "時段負載統計 / Sweep load",
+    "difficulty": "hard",
+    "topic": "temporal-aggregation",
+    "group": "v2-sweep-load",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {intervals:[[start,end,positive-weight],...], limit:nonnegative-number}. Each interval is half-open [start,end); zero-length intervals contribute nothing. Return {peak:maximum-active-weight, first:earliest-time-at-peak-or-null, over:total-duration-with-active-weight-strictly-greater-than-limit}. With no positive-length intervals use peak=0,first=null,over=0. Endpoints are integer times, may be negative or unordered. start>end, weight<=0 or limit<0 raises ValueError. Aggregate all events at the same time before measuring the following segment. Do not mutate input.",
+    "baseline": "def solve(data):\n    limit = data['limit']\n    if limit < 0:\n        raise ValueError\n    events = {}\n    for a, b, weight in data['intervals']:\n        if a > b or weight <= 0:\n            raise ValueError\n        if a == b:\n            continue\n        events[a] = events.get(a, 0) + weight\n        events[b] = events.get(b, 0) - weight\n    times = sorted(events)\n    active = 0\n    peak = 0\n    first = None\n    over = 0\n    for i in range(len(times) - 1):\n        t = times[i]\n        active += events[t]\n        if active >= peak:\n            peak = active\n            first = t\n        if active >= limit:\n            over += times[i + 1] - t\n    return {'peak': peak, 'first': first, 'over': over}\n",
+    "reference": "def solve(data):\n    limit = data['limit']\n    if limit < 0:\n        raise ValueError\n    events = {}\n    for a, b, weight in data['intervals']:\n        if a > b or weight <= 0:\n            raise ValueError\n        if a == b:\n            continue\n        events[a] = events.get(a, 0) + weight\n        events[b] = events.get(b, 0) - weight\n    times = sorted(events)\n    active = 0\n    peak = 0\n    first = None\n    over = 0\n    for i in range(len(times) - 1):\n        t = times[i]\n        active += events[t]\n        if active > peak:\n            peak = active\n            first = t\n        if active > limit:\n            over += times[i + 1] - t\n    return {'peak': peak, 'first': first, 'over': over}\n",
+    "visible": [
+      {
+        "input": {
+          "intervals": [
+            [
+              0,
+              3,
+              2
+            ],
+            [
+              2,
+              4,
+              3
+            ]
+          ],
+          "limit": 3
+        },
+        "expected": {
+          "peak": 5,
+          "first": 2,
+          "over": 1
+        }
+      },
+      {
+        "input": {
+          "intervals": [],
+          "limit": 0
+        },
+        "expected": {
+          "peak": 0,
+          "first": null,
+          "over": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "intervals": [
+            [
+              0,
+              2,
+              2
+            ],
+            [
+              2,
+              4,
+              2
+            ]
+          ],
+          "limit": 2
+        },
+        "expected": {
+          "peak": 2,
+          "first": 0,
+          "over": 0
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              5,
+              5,
+              9
+            ]
+          ],
+          "limit": 0
+        },
+        "expected": {
+          "peak": 0,
+          "first": null,
+          "over": 0
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              4,
+              5,
+              3
+            ],
+            [
+              -2,
+              0,
+              3
+            ]
+          ],
+          "limit": 2
+        },
+        "expected": {
+          "peak": 3,
+          "first": -2,
+          "over": 3
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              2,
+              1,
+              1
+            ]
+          ],
+          "limit": 0
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "intervals": [],
+          "limit": -1
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-tree-paths",
+    "title": "樹狀路徑編碼 / Tree path encoding",
+    "difficulty": "hard",
+    "topic": "iterative-traversal",
+    "group": "v2-tree-paths",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input is a finite tree node: {kind:\"leaf\",value:JSON-value} or {kind:\"branch\",entries:[[string-key,child-node],...]}. Return [[encoded-path,value],...] for leaves in depth-first entry order. Root path is empty; append '/' and each escaped key when descending. Escape '~' as '~0' and '/' as '~1' in that order. Empty branches emit no rows. Duplicate sibling keys or unknown kinds raise ValueError. Trees have depth <=5; do not recurse, mutate input or sort entries.",
+    "baseline": "def solve(data):\n    stack = [['', data]]\n    out = []\n    while stack:\n        path, node = stack.pop()\n        if node['kind'] == 'leaf':\n            out.append([path, node['value']])\n        elif node['kind'] == 'branch':\n            seen = set()\n            entries = node['entries']\n            for key, child in entries:\n                if key in seen:\n                    raise ValueError\n                seen.add(key)\n            for i in range(len(entries)):\n                key, child = entries[i]\n                encoded = key.replace('/', '~1').replace('~', '~0')\n                stack.append([path + '/' + encoded, child])\n        else:\n            raise ValueError\n    return out\n",
+    "reference": "def solve(data):\n    stack = [['', data]]\n    out = []\n    while stack:\n        path, node = stack.pop()\n        if node['kind'] == 'leaf':\n            out.append([path, node['value']])\n        elif node['kind'] == 'branch':\n            seen = set()\n            entries = node['entries']\n            for key, child in entries:\n                if key in seen:\n                    raise ValueError\n                seen.add(key)\n            for i in range(len(entries) - 1, -1, -1):\n                key, child = entries[i]\n                encoded = key.replace('~', '~0').replace('/', '~1')\n                stack.append([path + '/' + encoded, child])\n        else:\n            raise ValueError\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "kind": "leaf",
+          "value": 7
+        },
+        "expected": [
+          [
+            "",
+            7
+          ]
+        ]
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 1
+              }
+            ],
+            [
+              "b",
+              {
+                "kind": "leaf",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "/a",
+            1
+          ],
+          [
+            "/b",
+            2
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "~/",
+              {
+                "kind": "branch",
+                "entries": [
+                  [
+                    "",
+                    {
+                      "kind": "leaf",
+                      "value": null
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "/~0~1/",
+            null
+          ]
+        ]
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 1
+              }
+            ],
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "kind": "other"
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-ring-buffer",
+    "title": "可調容量緩衝區 / Resizable buffer",
+    "difficulty": "hard",
+    "topic": "buffer-capacity",
+    "group": "v2-ring-buffer",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {capacity:nonnegative-integer,ops:[operation,...]}. Operations: [\"write\",JSON-value], [\"read\"], [\"resize\",nonnegative-integer]. Write appends newest, dropping oldest when full; capacity 0 discards writes. Read removes oldest, or returns null if empty. Resize keeps the newest values that fit, preserving their order; growing never restores discarded values. Return {reads:[read-results,...],items:[oldest,...,newest]}. Negative capacity/resize or unknown operation raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    items = []\n    reads = []\n    for op in data['ops']:\n        if op[0] == 'write':\n            if cap > 0:\n                items.append(op[1])\n                if len(items) > cap:\n                    items.pop(0)\n        elif op[0] == 'read':\n            reads.append(items.pop(0) if items else None)\n        elif op[0] == 'resize':\n            cap = op[1]\n            if cap < 0:\n                raise ValueError\n            if cap == 0:\n                items = items[-cap:]\n            elif len(items) > cap:\n                items = items[:cap]\n        else:\n            raise ValueError\n    return {'reads': reads, 'items': items}\n",
+    "reference": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    items = []\n    reads = []\n    for op in data['ops']:\n        if op[0] == 'write':\n            if cap > 0:\n                items.append(op[1])\n                if len(items) > cap:\n                    items.pop(0)\n        elif op[0] == 'read':\n            reads.append(items.pop(0) if items else None)\n        elif op[0] == 'resize':\n            cap = op[1]\n            if cap < 0:\n                raise ValueError\n            if cap == 0:\n                items = []\n            elif len(items) > cap:\n                items = items[-cap:]\n        else:\n            raise ValueError\n    return {'reads': reads, 'items': items}\n",
+    "visible": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "write",
+              3
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            2
+          ],
+          "items": [
+            3
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": 3,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "resize",
+              1
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [],
+          "items": [
+            2
+          ]
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "resize",
+              0
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "resize",
+              2
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "items": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 0,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "items": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "resize",
+              -1
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "bad"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-bounded-change",
+    "title": "有界找零 / Bounded change",
+    "difficulty": "hard",
+    "topic": "bounded-dp",
+    "group": "v2-bounded-change",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {target:nonnegative-integer,coins:[[positive-denomination,nonnegative-stock],...]}. Coin denominations must be distinct. Return {minimum:minimum-number-of-coins,ways:number-of-distinct-count-vectors-reaching-target}. ways counts ALL feasible combinations, not permutations or just minimum combinations. Impossible target uses minimum=-1,ways=0. Target 0 has minimum=0,ways=1. Negative target/stock, nonpositive denomination or duplicate denomination raises ValueError. Inputs and outputs are bounded. Do not mutate input.",
+    "baseline": "def solve(data):\n    target = data['target']\n    if target < 0:\n        raise ValueError\n    seen = set()\n    best = [target + 1] * (target + 1)\n    ways = [0] * (target + 1)\n    best[0] = 0\n    ways[0] = 1\n    for coin, stock in data['coins']:\n        if coin <= 0 or stock < 0 or coin in seen:\n            raise ValueError\n        seen.add(coin)\n        nxt = [target + 1] * (target + 1)\n        counts = [0] * (target + 1)\n        for amount in range(target + 1):\n            if ways[amount] == 0:\n                continue\n            for n in range(stock):\n                new = amount + n * coin\n                if new > target:\n                    break\n                counts[new] = ways[amount]\n                nxt[new] = min(nxt[new], best[amount] + n)\n        best = nxt\n        ways = counts\n    return {'minimum': best[target] if ways[target] else -1, 'ways': ways[target]}\n",
+    "reference": "def solve(data):\n    target = data['target']\n    if target < 0:\n        raise ValueError\n    seen = set()\n    best = [target + 1] * (target + 1)\n    ways = [0] * (target + 1)\n    best[0] = 0\n    ways[0] = 1\n    for coin, stock in data['coins']:\n        if coin <= 0 or stock < 0 or coin in seen:\n            raise ValueError\n        seen.add(coin)\n        nxt = [target + 1] * (target + 1)\n        counts = [0] * (target + 1)\n        for amount in range(target + 1):\n            if ways[amount] == 0:\n                continue\n            for n in range(stock + 1):\n                new = amount + n * coin\n                if new > target:\n                    break\n                counts[new] += ways[amount]\n                nxt[new] = min(nxt[new], best[amount] + n)\n        best = nxt\n        ways = counts\n    return {'minimum': best[target] if ways[target] else -1, 'ways': ways[target]}\n",
+    "visible": [
+      {
+        "input": {
+          "target": 4,
+          "coins": [
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 3
+        }
+      },
+      {
+        "input": {
+          "target": 3,
+          "coins": [
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": -1,
+          "ways": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "target": 0,
+          "coins": []
+        },
+        "expected": {
+          "minimum": 0,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "target": 4,
+          "coins": [
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "target": 6,
+          "coins": [
+            [
+              4,
+              1
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 2
+        }
+      },
+      {
+        "input": {
+          "target": 2,
+          "coins": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "target": -1,
+          "coins": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "target": 2,
+          "coins": [
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v3-clamp-array",
+    "title": "陣列截限 / Array clamping",
+    "difficulty": "easy",
+    "topic": "clamp-array",
+    "group": "v3-clamp-array",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {values:[numbers],low:number,high:number}. Return a new list with each value clamped inclusively to [low,high]. low>high raises ValueError, even for an empty list.",
+    "baseline": "def solve(data):\n    lo, hi = data['low'], data['high']\n    if lo > hi:\n        raise ValueError\n    out = []\n    for x in data['values']:\n        out.append(min(lo, max(hi, x)))\n    return out\n",
+    "reference": "def solve(data):\n    lo, hi = data['low'], data['high']\n    if lo > hi:\n        raise ValueError\n    out = []\n    for x in data['values']:\n        out.append(max(lo, min(hi, x)))\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "values": [
+            0,
+            4,
+            9
+          ],
+          "low": 2,
+          "high": 6
+        },
+        "expected": [
+          2,
+          4,
+          6
+        ]
+      },
+      {
+        "input": {
+          "values": [],
+          "low": 0,
+          "high": 1
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "values": [
+            -3,
+            0
+          ],
+          "low": -2,
+          "high": -1
+        },
+        "expected": [
+          -2,
+          -1
+        ]
+      },
+      {
+        "input": {
+          "values": [
+            1,
+            2
+          ],
+          "low": 2,
+          "high": 2
+        },
+        "expected": [
+          2,
+          2
+        ]
+      },
+      {
+        "input": {
+          "values": [],
+          "low": 2,
+          "high": 1
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "values": [
+            1.5
+          ],
+          "low": 0,
+          "high": 2
+        },
+        "expected": [
+          1.5
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-positive-total",
+    "title": "正值加總 / Positive total",
+    "difficulty": "easy",
+    "topic": "positive-total",
+    "group": "v3-positive-total",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Return the sum of strictly positive numbers in the input list. Ignore zero and negatives. Empty input returns 0.",
+    "baseline": "def solve(data):\n    out = 0\n    for x in data:\n        if x < 0:\n            out += x\n    return out\n",
+    "reference": "def solve(data):\n    out = 0\n    for x in data:\n        if x > 0:\n            out += x\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          1,
+          -2,
+          3
+        ],
+        "expected": 4
+      },
+      {
+        "input": [],
+        "expected": 0
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          -1,
+          -5
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          0,
+          0
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          2,
+          2
+        ],
+        "expected": 4
+      },
+      {
+        "input": [
+          0.5,
+          -0.2
+        ],
+        "expected": 0.5
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-digit-histogram",
+    "title": "十進位數字統計 / Digit histogram",
+    "difficulty": "easy",
+    "topic": "digit-histogram",
+    "group": "v3-digit-histogram",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is a string. Return a list of ten counts for ASCII digits 0 through 9. Ignore all other characters, including non-ASCII numeric characters.",
+    "baseline": "def solve(data):\n    counts = [0] * 10\n    for ch in data:\n        if ch in '0123456789':\n            counts[int(ch)] = 1\n    return counts\n",
+    "reference": "def solve(data):\n    counts = [0] * 10\n    for ch in data:\n        if ch in '0123456789':\n            counts[int(ch)] += 1\n    return counts\n",
+    "visible": [
+      {
+        "input": "101",
+        "expected": [
+          1,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "input": "",
+        "expected": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": "999",
+        "expected": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ]
+      },
+      {
+        "input": "０1a",
+        "expected": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "input": "0-0",
+        "expected": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "input": "abc",
+        "expected": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-rotate-list",
+    "title": "循環位移 / List rotation",
+    "difficulty": "easy",
+    "topic": "rotate-list",
+    "group": "v3-rotate-list",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {items:[JSON-values],shift:integer}. Return a right rotation by shift positions. Negative shifts rotate left; normalize large shifts. Empty items return []. Do not mutate input.",
+    "baseline": "def solve(data):\n    a = data['items']\n    if not a:\n        return []\n    k = (-data['shift']) % len(a)\n    return a[-k:] + a[:-k] if k else list(a)\n",
+    "reference": "def solve(data):\n    a = data['items']\n    if not a:\n        return []\n    k = data['shift'] % len(a)\n    return a[-k:] + a[:-k] if k else list(a)\n",
+    "visible": [
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3
+          ],
+          "shift": 1
+        },
+        "expected": [
+          3,
+          1,
+          2
+        ]
+      },
+      {
+        "input": {
+          "items": [],
+          "shift": 8
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "shift": -1
+        },
+        "expected": [
+          2,
+          3,
+          4,
+          1
+        ]
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3
+          ],
+          "shift": 7
+        },
+        "expected": [
+          3,
+          1,
+          2
+        ]
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            2
+          ],
+          "shift": 0
+        },
+        "expected": [
+          1,
+          2
+        ]
+      },
+      {
+        "input": {
+          "items": [
+            "x"
+          ],
+          "shift": -7
+        },
+        "expected": [
+          "x"
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-zip-pad",
+    "title": "補齊配對 / Padded zip",
+    "difficulty": "easy",
+    "topic": "zip-pad",
+    "group": "v3-zip-pad",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {left:list,right:list,fill:JSON-value}. Return two-element pairs up to the longer list length, using fill for missing elements. Empty lists yield [].",
+    "baseline": "def solve(data):\n    a, b = data['left'], data['right']\n    out = []\n    for i in range(min(len(a), len(b))):\n        out.append([a[i] if i < len(a) else data['fill'], b[i] if i < len(b) else data['fill']])\n    return out\n",
+    "reference": "def solve(data):\n    a, b = data['left'], data['right']\n    out = []\n    for i in range(max(len(a), len(b))):\n        out.append([a[i] if i < len(a) else data['fill'], b[i] if i < len(b) else data['fill']])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "left": [
+            1,
+            2
+          ],
+          "right": [
+            "a"
+          ],
+          "fill": null
+        },
+        "expected": [
+          [
+            1,
+            "a"
+          ],
+          [
+            2,
+            null
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [],
+          "right": [],
+          "fill": 0
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "left": [],
+          "right": [
+            1
+          ],
+          "fill": "x"
+        },
+        "expected": [
+          [
+            "x",
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [
+            null
+          ],
+          "right": [
+            0,
+            false
+          ],
+          "fill": 9
+        },
+        "expected": [
+          [
+            null,
+            0
+          ],
+          [
+            9,
+            false
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [
+            1
+          ],
+          "right": [],
+          "fill": 0
+        },
+        "expected": [
+          [
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [
+            1
+          ],
+          "right": [
+            2
+          ],
+          "fill": 0
+        },
+        "expected": [
+          [
+            1,
+            2
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-ragged-transpose",
+    "title": "不等長矩陣轉置 / Ragged transpose",
+    "difficulty": "easy",
+    "topic": "ragged-transpose",
+    "group": "v3-ragged-transpose",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {rows:[lists],fill:JSON-value}. Return the transpose, padding missing entries to the longest row length with fill. Empty input or all empty rows returns []. Preserve row order.",
+    "baseline": "def solve(data):\n    rows = data['rows']\n    width = 0\n    for row in rows:\n        width = len(row)\n    out = []\n    for j in range(width):\n        line = []\n        for row in rows:\n            line.append(row[j] if j < len(row) else data['fill'])\n        out.append(line)\n    return out\n",
+    "reference": "def solve(data):\n    rows = data['rows']\n    width = 0\n    for row in rows:\n        width = max(width, len(row))\n    out = []\n    for j in range(width):\n        line = []\n        for row in rows:\n            line.append(row[j] if j < len(row) else data['fill'])\n        out.append(line)\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "rows": [
+            [
+              1,
+              2
+            ],
+            [
+              3
+            ]
+          ],
+          "fill": null
+        },
+        "expected": [
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            null
+          ]
+        ]
+      },
+      {
+        "input": {
+          "rows": [],
+          "fill": 0
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "rows": [
+            [
+              1,
+              2,
+              3
+            ],
+            []
+          ],
+          "fill": 0
+        },
+        "expected": [
+          [
+            1,
+            0
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            0
+          ]
+        ]
+      },
+      {
+        "input": {
+          "rows": [
+            [],
+            []
+          ],
+          "fill": null
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "rows": [
+            [],
+            [
+              4
+            ]
+          ],
+          "fill": 9
+        },
+        "expected": [
+          [
+            9,
+            4
+          ]
+        ]
+      },
+      {
+        "input": {
+          "rows": [
+            [
+              false
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "fill": null
+        },
+        "expected": [
+          [
+            false,
+            0
+          ],
+          [
+            null,
+            1
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-strip-prefix",
+    "title": "移除單次前綴 / Strip one prefix",
+    "difficulty": "easy",
+    "topic": "strip-prefix",
+    "group": "v3-strip-prefix",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {text:string,prefix:string}. Remove prefix only once and only if it occurs at the beginning. An empty prefix leaves text unchanged. Preserve all other characters.",
+    "baseline": "def solve(data):\n    s, p = data['text'], data['prefix']\n    return s.replace(p, \"\")\n",
+    "reference": "def solve(data):\n    s, p = data['text'], data['prefix']\n    return s[len(p):] if s.startswith(p) else s\n",
+    "visible": [
+      {
+        "input": {
+          "text": "ababx",
+          "prefix": "ab"
+        },
+        "expected": "abx"
+      },
+      {
+        "input": {
+          "text": "xabc",
+          "prefix": "ab"
+        },
+        "expected": "xabc"
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "aaaa",
+          "prefix": "a"
+        },
+        "expected": "aaa"
+      },
+      {
+        "input": {
+          "text": "abc",
+          "prefix": ""
+        },
+        "expected": "abc"
+      },
+      {
+        "input": {
+          "text": "",
+          "prefix": "a"
+        },
+        "expected": ""
+      },
+      {
+        "input": {
+          "text": "ab",
+          "prefix": "ab"
+        },
+        "expected": ""
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-nearest-multiple",
+    "title": "最近整數倍 / Nearest multiple",
+    "difficulty": "easy",
+    "topic": "nearest-multiple",
+    "group": "v3-nearest-multiple",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {value:integer,step:positive-integer}. Return the nearest multiple of step, breaking exact ties toward the smaller integer (including negatives). Nonpositive step raises ValueError.",
+    "baseline": "def solve(data):\n    x, step = data['value'], data['step']\n    if step <= 0:\n        raise ValueError\n    low = (x // step) * step\n    return low if x - low < low + step - x else low + step\n",
+    "reference": "def solve(data):\n    x, step = data['value'], data['step']\n    if step <= 0:\n        raise ValueError\n    low = (x // step) * step\n    return low if x - low <= low + step - x else low + step\n",
+    "visible": [
+      {
+        "input": {
+          "value": 7,
+          "step": 4
+        },
+        "expected": 8
+      },
+      {
+        "input": {
+          "value": 6,
+          "step": 4
+        },
+        "expected": 4
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "value": -6,
+          "step": 4
+        },
+        "expected": -8
+      },
+      {
+        "input": {
+          "value": -1,
+          "step": 4
+        },
+        "expected": 0
+      },
+      {
+        "input": {
+          "value": 0,
+          "step": 3
+        },
+        "expected": 0
+      },
+      {
+        "input": {
+          "value": 4,
+          "step": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-safe-divisions",
+    "title": "安全除法 / Safe divisions",
+    "difficulty": "easy",
+    "topic": "safe-divisions",
+    "group": "v3-safe-divisions",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is a list of [numerator,denominator] numeric pairs. Return quotients, using null when denominator is zero. Negative denominators are valid.",
+    "baseline": "def solve(data):\n    out = []\n    for a, b in data:\n        out.append(a / b if b > 0 else None)\n    return out\n",
+    "reference": "def solve(data):\n    out = []\n    for a, b in data:\n        out.append(a / b if b != 0 else None)\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          [
+            4,
+            2
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "expected": [
+          2,
+          null
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            6,
+            -3
+          ]
+        ],
+        "expected": [
+          -2
+        ]
+      },
+      {
+        "input": [
+          [
+            0,
+            -2
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "expected": [
+          0,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            -5,
+            2
+          ]
+        ],
+        "expected": [
+          -2.5
+        ]
+      },
+      {
+        "input": [
+          [
+            1,
+            4
+          ]
+        ],
+        "expected": [
+          0.25
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-toggle-ascii",
+    "title": "ASCII 大小寫切換 / ASCII case toggle",
+    "difficulty": "easy",
+    "topic": "toggle-ascii",
+    "group": "v3-toggle-ascii",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Toggle ASCII A-Z and a-z in a string. Preserve digits, punctuation and all non-ASCII characters exactly.",
+    "baseline": "def solve(data):\n    out = ''\n    for ch in data:\n        if ch in 'abcdefghijklmnopqrstuvwxyz':\n            out += ch.upper()\n        elif ch in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':\n            out += ch\n        else:\n            out += ch\n    return out\n",
+    "reference": "def solve(data):\n    out = ''\n    for ch in data:\n        if ch in 'abcdefghijklmnopqrstuvwxyz':\n            out += ch.upper()\n        elif ch in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':\n            out += ch.lower()\n        else:\n            out += ch\n    return out\n",
+    "visible": [
+      {
+        "input": "aB1",
+        "expected": "Ab1"
+      },
+      {
+        "input": "",
+        "expected": ""
+      }
+    ],
+    "hidden": [
+      {
+        "input": "XYZ",
+        "expected": "xyz"
+      },
+      {
+        "input": "éß中",
+        "expected": "éß中"
+      },
+      {
+        "input": "x-Y",
+        "expected": "X-y"
+      },
+      {
+        "input": "123",
+        "expected": "123"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-parity-partition",
+    "title": "穩定奇偶分組 / Stable parity partition",
+    "difficulty": "easy",
+    "topic": "parity-partition",
+    "group": "v3-parity-partition",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Return even integers followed by odd integers, preserving relative order inside each group. Negative integers follow normal divisibility. Do not mutate input.",
+    "baseline": "def solve(data):\n    even = []\n    odd = []\n    for x in data:\n        if x % 2 == 0:\n            even.append(x)\n        else:\n            odd.append(x)\n    return sorted(even) + sorted(odd)\n",
+    "reference": "def solve(data):\n    even = []\n    odd = []\n    for x in data:\n        if x % 2 == 0:\n            even.append(x)\n        else:\n            odd.append(x)\n    return even + odd\n",
+    "visible": [
+      {
+        "input": [
+          3,
+          4,
+          2,
+          1
+        ],
+        "expected": [
+          4,
+          2,
+          3,
+          1
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          -1,
+          -4,
+          -2,
+          3
+        ],
+        "expected": [
+          -4,
+          -2,
+          -1,
+          3
+        ]
+      },
+      {
+        "input": [
+          2,
+          0,
+          2
+        ],
+        "expected": [
+          2,
+          0,
+          2
+        ]
+      },
+      {
+        "input": [
+          5,
+          1,
+          5
+        ],
+        "expected": [
+          5,
+          1,
+          5
+        ]
+      },
+      {
+        "input": [
+          0
+        ],
+        "expected": [
+          0
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-common-prefix",
+    "title": "共同前綴 / Common prefix",
+    "difficulty": "easy",
+    "topic": "common-prefix",
+    "group": "v3-common-prefix",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Return the longest case-sensitive prefix common to all input strings. An empty list returns an empty string.",
+    "baseline": "def solve(data):\n    if not data:\n        return ''\n    prefix = data[0]\n    for s in data[1:2]:\n        while not s.startswith(prefix):\n            prefix = prefix[:-1]\n    return prefix\n",
+    "reference": "def solve(data):\n    if not data:\n        return ''\n    prefix = data[0]\n    for s in data[1:]:\n        while not s.startswith(prefix):\n            prefix = prefix[:-1]\n    return prefix\n",
+    "visible": [
+      {
+        "input": [
+          "flower",
+          "flow",
+          "flight"
+        ],
+        "expected": "fl"
+      },
+      {
+        "input": [],
+        "expected": ""
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          "abc",
+          "abd",
+          "x"
+        ],
+        "expected": ""
+      },
+      {
+        "input": [
+          "same",
+          "same"
+        ],
+        "expected": "same"
+      },
+      {
+        "input": [
+          "",
+          "abc"
+        ],
+        "expected": ""
+      },
+      {
+        "input": [
+          "中甲",
+          "中乙"
+        ],
+        "expected": "中"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-diagonal-sums",
+    "title": "矩陣對角線加總 / Diagonal sums",
+    "difficulty": "easy",
+    "topic": "diagonal-sums",
+    "group": "v3-diagonal-sums",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input is a square numeric matrix. Return [main-diagonal-sum,anti-diagonal-sum]. Count the center in each separate sum. Empty matrix returns [0,0]. Nonsquare input raises ValueError.",
+    "baseline": "def solve(data):\n    n = len(data)\n    a, b = 0, 0\n    for i in range(n):\n        if len(data[i]) != n:\n            raise ValueError\n        a += data[i][i]\n        b += data[i][i]\n    return [a, b]\n",
+    "reference": "def solve(data):\n    n = len(data)\n    a, b = 0, 0\n    for i in range(n):\n        if len(data[i]) != n:\n            raise ValueError\n        a += data[i][i]\n        b += data[i][n - i - 1]\n    return [a, b]\n",
+    "visible": [
+      {
+        "input": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "expected": [
+          5,
+          5
+        ]
+      },
+      {
+        "input": [],
+        "expected": [
+          0,
+          0
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            1,
+            0,
+            9
+          ],
+          [
+            0,
+            2,
+            0
+          ],
+          [
+            3,
+            0,
+            4
+          ]
+        ],
+        "expected": [
+          7,
+          14
+        ]
+      },
+      {
+        "input": [
+          [
+            7
+          ]
+        ],
+        "expected": [
+          7,
+          7
+        ]
+      },
+      {
+        "input": [
+          [
+            1,
+            2
+          ]
+        ],
+        "raises": "ValueError"
+      },
+      {
+        "input": [
+          [
+            0,
+            1
+          ],
+          [
+            4,
+            0
+          ]
+        ],
+        "expected": [
+          0,
+          5
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-inclusive-range",
+    "title": "含端點數列 / Inclusive range",
+    "difficulty": "easy",
+    "topic": "inclusive-range",
+    "group": "v3-inclusive-range",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {start:integer,end:integer,step:nonzero-integer}. Return values stepping from start toward end, including end only if reached exactly. A step pointing away yields []. Zero step raises ValueError.",
+    "baseline": "def solve(data):\n    a, b, step = data['start'], data['end'], data['step']\n    if step == 0:\n        raise ValueError\n    out = []\n    while (step > 0 and a <= b) or (step < 0 and a > b):\n        out.append(a)\n        a += step\n    return out\n",
+    "reference": "def solve(data):\n    a, b, step = data['start'], data['end'], data['step']\n    if step == 0:\n        raise ValueError\n    out = []\n    while (step > 0 and a <= b) or (step < 0 and a >= b):\n        out.append(a)\n        a += step\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "start": 1,
+          "end": 5,
+          "step": 2
+        },
+        "expected": [
+          1,
+          3,
+          5
+        ]
+      },
+      {
+        "input": {
+          "start": 5,
+          "end": 1,
+          "step": -2
+        },
+        "expected": [
+          5,
+          3,
+          1
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "start": 2,
+          "end": 2,
+          "step": -1
+        },
+        "expected": [
+          2
+        ]
+      },
+      {
+        "input": {
+          "start": 0,
+          "end": 3,
+          "step": 2
+        },
+        "expected": [
+          0,
+          2
+        ]
+      },
+      {
+        "input": {
+          "start": 4,
+          "end": 1,
+          "step": 1
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "start": 0,
+          "end": 1,
+          "step": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-replace-slice",
+    "title": "區段替換 / Slice replacement",
+    "difficulty": "easy",
+    "topic": "replace-slice",
+    "group": "v3-replace-slice",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {items:list,start:integer,end:integer,replacement:list}. Replace the half-open slice [start,end) with replacement and return a new list. Require 0<=start<=end<=len(items); otherwise raise ValueError.",
+    "baseline": "def solve(data):\n    a, s, t = data['items'], data['start'], data['end']\n    if s < 0 or t < s or t > len(a):\n        raise ValueError\n    return a[:s] + data['replacement'] + a[t + 1:]\n",
+    "reference": "def solve(data):\n    a, s, t = data['items'], data['start'], data['end']\n    if s < 0 or t < s or t > len(a):\n        raise ValueError\n    return a[:s] + data['replacement'] + a[t:]\n",
+    "visible": [
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3
+          ],
+          "start": 1,
+          "end": 2,
+          "replacement": [
+            8,
+            9
+          ]
+        },
+        "expected": [
+          1,
+          8,
+          9,
+          3
+        ]
+      },
+      {
+        "input": {
+          "items": [],
+          "start": 0,
+          "end": 0,
+          "replacement": [
+            1
+          ]
+        },
+        "expected": [
+          1
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "items": [
+            1,
+            2
+          ],
+          "start": 0,
+          "end": 0,
+          "replacement": [
+            0
+          ]
+        },
+        "expected": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            2
+          ],
+          "start": 0,
+          "end": 2,
+          "replacement": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "items": [
+            1
+          ],
+          "start": -1,
+          "end": 0,
+          "replacement": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "items": [
+            1
+          ],
+          "start": 1,
+          "end": 0,
+          "replacement": []
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-pick-fields",
+    "title": "欄位投影 / Field projection",
+    "difficulty": "easy",
+    "topic": "pick-fields",
+    "group": "v3-pick-fields",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {record:object,fields:[string-keys],default:JSON-value}. Return an object containing each requested key with its original value or default if absent. Existing null/false/zero values must be retained.",
+    "baseline": "def solve(data):\n    out = {}\n    for key in data['fields']:\n        out[key] = data['record'].get(key) or data['default']\n    return out\n",
+    "reference": "def solve(data):\n    out = {}\n    for key in data['fields']:\n        out[key] = data['record'].get(key, data['default'])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "record": {
+            "a": 1
+          },
+          "fields": [
+            "a",
+            "b"
+          ],
+          "default": 9
+        },
+        "expected": {
+          "a": 1,
+          "b": 9
+        }
+      },
+      {
+        "input": {
+          "record": {},
+          "fields": [],
+          "default": null
+        },
+        "expected": {}
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "record": {
+            "a": 0,
+            "b": false,
+            "c": null
+          },
+          "fields": [
+            "a",
+            "b",
+            "c"
+          ],
+          "default": 7
+        },
+        "expected": {
+          "a": 0,
+          "b": false,
+          "c": null
+        }
+      },
+      {
+        "input": {
+          "record": {
+            "x": ""
+          },
+          "fields": [
+            "x"
+          ],
+          "default": "z"
+        },
+        "expected": {
+          "x": ""
+        }
+      },
+      {
+        "input": {
+          "record": {},
+          "fields": [
+            "q"
+          ],
+          "default": null
+        },
+        "expected": {
+          "q": null
+        }
+      },
+      {
+        "input": {
+          "record": {
+            "a": 2
+          },
+          "fields": [
+            "a",
+            "a"
+          ],
+          "default": 0
+        },
+        "expected": {
+          "a": 2
+        }
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-duration",
+    "title": "時間分解 / Duration decomposition",
+    "difficulty": "easy",
+    "topic": "duration",
+    "group": "v3-duration",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input is nonnegative integer seconds. Return [days,hours,minutes,seconds] with hours<24 and minutes/seconds<60. Negative input raises ValueError.",
+    "baseline": "def solve(data):\n    if data < 0:\n        raise ValueError\n    days = data // 86400\n    hours = data // 3600\n    minutes = (data % 3600) // 60\n    return [days, hours, minutes, data % 60]\n",
+    "reference": "def solve(data):\n    if data < 0:\n        raise ValueError\n    days = data // 86400\n    hours = (data % 86400) // 3600\n    minutes = (data % 3600) // 60\n    return [days, hours, minutes, data % 60]\n",
+    "visible": [
+      {
+        "input": 3661,
+        "expected": [
+          0,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "input": 0,
+        "expected": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": 90061,
+        "expected": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "input": 86400,
+        "expected": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "input": 59,
+        "expected": [
+          0,
+          0,
+          0,
+          59
+        ]
+      },
+      {
+        "input": -1,
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-local-peaks",
+    "title": "局部峰值 / Local peaks",
+    "difficulty": "easy",
+    "topic": "local-peaks",
+    "group": "v3-local-peaks",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Return indices of values strictly greater than every existing immediate neighbor. Endpoints compare only one neighbor; a singleton is a peak. Empty input returns []. Equal adjacent values are not peaks.",
+    "baseline": "def solve(data):\n    out = []\n    for i in range(len(data)):\n        if (i == 0 or data[i] > data[i-1]) and (i + 1 == len(data) or data[i] >= data[i+1]):\n            out.append(i)\n    return out\n",
+    "reference": "def solve(data):\n    out = []\n    for i in range(len(data)):\n        if (i == 0 or data[i] > data[i-1]) and (i + 1 == len(data) or data[i] > data[i+1]):\n            out.append(i)\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          1,
+          3,
+          2
+        ],
+        "expected": [
+          1
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          2,
+          2
+        ],
+        "expected": []
+      },
+      {
+        "input": [
+          5
+        ],
+        "expected": [
+          0
+        ]
+      },
+      {
+        "input": [
+          3,
+          2,
+          1
+        ],
+        "expected": [
+          0
+        ]
+      },
+      {
+        "input": [
+          -1,
+          0,
+          -1,
+          0
+        ],
+        "expected": [
+          1,
+          3
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-half-balance",
+    "title": "前後半部平衡 / Half balance",
+    "difficulty": "easy",
+    "topic": "half-balance",
+    "group": "v3-half-balance",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "For an integer list, compare sums of the first floor(n/2) and last floor(n/2) elements, ignoring an odd middle element. Return a boolean; empty and singleton lists are balanced.",
+    "baseline": "def solve(data):\n    n = len(data) // 2\n    return sum(data[:n]) == sum(data[n:])\n",
+    "reference": "def solve(data):\n    n = len(data) // 2\n    return sum(data[:n]) == sum(data[len(data)-n:])\n",
+    "visible": [
+      {
+        "input": [
+          1,
+          2,
+          9,
+          2,
+          1
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          1,
+          2
+        ],
+        "expected": false
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          4
+        ],
+        "expected": true
+      },
+      {
+        "input": [],
+        "expected": true
+      },
+      {
+        "input": [
+          1,
+          8,
+          1
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          -2,
+          5,
+          9,
+          4,
+          -1
+        ],
+        "expected": true
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-leap-date",
+    "title": "日期合法性 / Gregorian date",
+    "difficulty": "easy",
+    "topic": "leap-date",
+    "group": "v3-leap-date",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input [year,month,day] with integer values. Return whether it is a valid Gregorian date with year>=1. Apply the century and 400-year leap rules. Invalid values return false.",
+    "baseline": "def solve(data):\n    y, m, d = data\n    if y < 1 or m < 1 or m > 12 or d < 1:\n        return False\n    days = [31,28,31,30,31,30,31,31,30,31,30,31]\n    if y % 4 == 0:\n        days[1] = 29\n    return d <= days[m-1]\n",
+    "reference": "def solve(data):\n    y, m, d = data\n    if y < 1 or m < 1 or m > 12 or d < 1:\n        return False\n    days = [31,28,31,30,31,30,31,31,30,31,30,31]\n    if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):\n        days[1] = 29\n    return d <= days[m-1]\n",
+    "visible": [
+      {
+        "input": [
+          2024,
+          2,
+          29
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          2023,
+          2,
+          29
+        ],
+        "expected": false
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          1900,
+          2,
+          29
+        ],
+        "expected": false
+      },
+      {
+        "input": [
+          2000,
+          2,
+          29
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          2024,
+          4,
+          31
+        ],
+        "expected": false
+      },
+      {
+        "input": [
+          0,
+          1,
+          1
+        ],
+        "expected": false
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-sparse-add",
+    "title": "稀疏矩陣相加 / Sparse addition",
+    "difficulty": "medium",
+    "topic": "sparse-add",
+    "group": "v3-sparse-add",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {left:[[row,column,value],...],right:same}. Coordinates are nonnegative integers. Sum repeated coordinates across both lists, remove zero totals and return [row,column,total] sorted by row then column. Negative coordinates raise ValueError.",
+    "baseline": "def solve(data):\n    totals = {}\n    for r, c, v in data['left'] + data['right']:\n        if r < 0 or c < 0:\n            raise ValueError\n        key = (r, c)\n        totals[key] = v\n    out = []\n    for r, c in sorted(totals):\n        if totals[(r, c)] != 0:\n            out.append([r, c, totals[(r, c)]])\n    return out\n",
+    "reference": "def solve(data):\n    totals = {}\n    for r, c, v in data['left'] + data['right']:\n        if r < 0 or c < 0:\n            raise ValueError\n        key = (r, c)\n        totals[key] = totals.get(key, 0) + v\n    out = []\n    for r, c in sorted(totals):\n        if totals[(r, c)] != 0:\n            out.append([r, c, totals[(r, c)]])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "left": [
+            [
+              0,
+              0,
+              2
+            ]
+          ],
+          "right": [
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              1,
+              0,
+              1
+            ]
+          ]
+        },
+        "expected": [
+          [
+            0,
+            0,
+            5
+          ],
+          [
+            1,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [],
+          "right": []
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "left": [
+            [
+              1,
+              2,
+              3
+            ],
+            [
+              1,
+              2,
+              -3
+            ]
+          ],
+          "right": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "left": [
+            [
+              2,
+              0,
+              1
+            ],
+            [
+              0,
+              3,
+              4
+            ]
+          ],
+          "right": []
+        },
+        "expected": [
+          [
+            0,
+            3,
+            4
+          ],
+          [
+            2,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "left": [
+            [
+              -1,
+              0,
+              2
+            ]
+          ],
+          "right": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "left": [],
+          "right": [
+            [
+              1,
+              1,
+              0
+            ]
+          ]
+        },
+        "expected": []
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-stable-top-k",
+    "title": "穩定前 K 名 / Stable top K",
+    "difficulty": "medium",
+    "topic": "stable-top-k",
+    "group": "v3-stable-top-k",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {records:[[string-id,numeric-score],...],k:nonnegative-integer}. Return up to k records in descending score order. Ties preserve original input order. Negative k raises ValueError. Duplicate IDs are allowed. Do not mutate input.",
+    "baseline": "def solve(data):\n    k = data['k']\n    if k < 0:\n        raise ValueError\n    out = []\n    for row in data['records']:\n        i = 0\n        while i < len(out) and out[i][1] > row[1]:\n            i += 1\n        out = out[:i] + [list(row)] + out[i:]\n    return out[:k]\n",
+    "reference": "def solve(data):\n    k = data['k']\n    if k < 0:\n        raise ValueError\n    out = []\n    for row in data['records']:\n        i = 0\n        while i < len(out) and out[i][1] >= row[1]:\n            i += 1\n        out = out[:i] + [list(row)] + out[i:]\n    return out[:k]\n",
+    "visible": [
+      {
+        "input": {
+          "records": [
+            [
+              "a",
+              2
+            ],
+            [
+              "b",
+              4
+            ],
+            [
+              "c",
+              4
+            ]
+          ],
+          "k": 2
+        },
+        "expected": [
+          [
+            "b",
+            4
+          ],
+          [
+            "c",
+            4
+          ]
+        ]
+      },
+      {
+        "input": {
+          "records": [],
+          "k": 0
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "records": [
+            [
+              "z",
+              1
+            ],
+            [
+              "a",
+              1
+            ]
+          ],
+          "k": 3
+        },
+        "expected": [
+          [
+            "z",
+            1
+          ],
+          [
+            "a",
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "records": [
+            [
+              "x",
+              -1
+            ]
+          ],
+          "k": 0
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "records": [],
+          "k": -1
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "records": [
+            [
+              "a",
+              -2
+            ],
+            [
+              "a",
+              0
+            ]
+          ],
+          "k": 1
+        },
+        "expected": [
+          [
+            "a",
+            0
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-expand-ranges",
+    "title": "範圍展開 / Range expansion",
+    "difficulty": "medium",
+    "topic": "expand-ranges",
+    "group": "v3-expand-ranges",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input is a list of [start,end] integer inclusive ranges. Return a sorted list of all distinct integers covered. start>end raises ValueError. Inputs are small; preserve input.",
+    "baseline": "def solve(data):\n    seen = set()\n    for a, b in data:\n        if a > b:\n            raise ValueError\n        for x in range(a, b):\n            seen.add(x)\n    return sorted(seen)\n",
+    "reference": "def solve(data):\n    seen = set()\n    for a, b in data:\n        if a > b:\n            raise ValueError\n        for x in range(a, b + 1):\n            seen.add(x)\n    return sorted(seen)\n",
+    "visible": [
+      {
+        "input": [
+          [
+            1,
+            3
+          ],
+          [
+            3,
+            5
+          ]
+        ],
+        "expected": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            2,
+            2
+          ]
+        ],
+        "expected": [
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            -2,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "expected": [
+          -2,
+          -1,
+          0,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            3,
+            1
+          ]
+        ],
+        "raises": "ValueError"
+      },
+      {
+        "input": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "expected": [
+          0
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-simplify-path",
+    "title": "路徑正規化 / Path normalization",
+    "difficulty": "medium",
+    "topic": "simplify-path",
+    "group": "v3-simplify-path",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Normalize an absolute POSIX path string: ignore empty and . components, resolve .. without moving above root, and return a single leading slash without trailing slash except root. Paths not starting with / raise ValueError. Names other than exact . and .. are literal.",
+    "baseline": "def solve(data):\n    if not data.startswith('/'):\n        raise ValueError\n    stack = []\n    for part in data.split('/'):\n        if part == '' or part == '.':\n            continue\n        if part.startswith('..'):\n            if stack:\n                stack.pop()\n        else:\n            stack.append(part)\n    return '/' + '/'.join(stack)\n",
+    "reference": "def solve(data):\n    if not data.startswith('/'):\n        raise ValueError\n    stack = []\n    for part in data.split('/'):\n        if part == '' or part == '.':\n            continue\n        if part == '..':\n            if stack:\n                stack.pop()\n        else:\n            stack.append(part)\n    return '/' + '/'.join(stack)\n",
+    "visible": [
+      {
+        "input": "/a//b/../c/",
+        "expected": "/a/c"
+      },
+      {
+        "input": "/",
+        "expected": "/"
+      }
+    ],
+    "hidden": [
+      {
+        "input": "/.../x",
+        "expected": "/.../x"
+      },
+      {
+        "input": "/../../a",
+        "expected": "/a"
+      },
+      {
+        "input": "/a/./",
+        "expected": "/a"
+      },
+      {
+        "input": "relative",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-edit-distance",
+    "title": "編輯距離 / Edit distance",
+    "difficulty": "medium",
+    "topic": "edit-distance",
+    "group": "v3-edit-distance",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input [first-string,second-string]. Return minimum single-character insertions, deletions and substitutions to transform first into second. All operations cost 1; matching characters cost 0.",
+    "baseline": "def solve(data):\n    a, b = data\n    prev = list(range(len(b)+1))\n    for i in range(1,len(a)+1):\n        cur = [i]\n        for j in range(1,len(b)+1):\n            cur.append(min(prev[j]+1,cur[j-1]+1,prev[j-1]+1))\n        prev = cur\n    return prev[-1]\n",
+    "reference": "def solve(data):\n    a, b = data\n    prev = list(range(len(b)+1))\n    for i in range(1,len(a)+1):\n        cur = [i]\n        for j in range(1,len(b)+1):\n            cur.append(min(prev[j]+1,cur[j-1]+1,prev[j-1]+(0 if a[i-1]==b[j-1] else 1)))\n        prev = cur\n    return prev[-1]\n",
+    "visible": [
+      {
+        "input": [
+          "kitten",
+          "sitting"
+        ],
+        "expected": 3
+      },
+      {
+        "input": [
+          "",
+          "abc"
+        ],
+        "expected": 3
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          "same",
+          "same"
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          "a",
+          "a"
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          "ab",
+          "ba"
+        ],
+        "expected": 2
+      },
+      {
+        "input": [
+          "",
+          ""
+        ],
+        "expected": 0
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-polynomial-add",
+    "title": "多項式合併 / Polynomial addition",
+    "difficulty": "medium",
+    "topic": "polynomial-add",
+    "group": "v3-sparse-add",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is a list of [integer-coefficient,nonnegative-integer-exponent] terms. Combine like exponents, omit zero coefficients and return terms ordered by descending exponent. Negative exponents raise ValueError.",
+    "baseline": "def solve(data):\n    terms = {}\n    for coeff, power in data:\n        if power < 0:\n            raise ValueError\n        terms[power] = coeff\n    out = []\n    for power in sorted(terms,reverse=True):\n        if terms[power] != 0:\n            out.append([terms[power],power])\n    return out\n",
+    "reference": "def solve(data):\n    terms = {}\n    for coeff, power in data:\n        if power < 0:\n            raise ValueError\n        terms[power] = terms.get(power,0) + coeff\n    out = []\n    for power in sorted(terms,reverse=True):\n        if terms[power] != 0:\n            out.append([terms[power],power])\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            2
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "expected": [
+          [
+            5,
+            2
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            2,
+            1
+          ],
+          [
+            -2,
+            1
+          ]
+        ],
+        "expected": []
+      },
+      {
+        "input": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            3
+          ]
+        ],
+        "expected": [
+          [
+            1,
+            3
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "input": [
+          [
+            1,
+            -1
+          ]
+        ],
+        "raises": "ValueError"
+      },
+      {
+        "input": [
+          [
+            0,
+            5
+          ]
+        ],
+        "expected": []
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-next-greater",
+    "title": "右側下一個較大值 / Next greater",
+    "difficulty": "medium",
+    "topic": "next-greater",
+    "group": "v3-next-greater",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "For each number in the input list return the index of the nearest strictly greater number to its right, or -1 when absent. Equal values do not qualify.",
+    "baseline": "def solve(data):\n    out = [-1]*len(data)\n    stack = []\n    for i in range(len(data)):\n        while stack and data[i] >= data[stack[-1]]:\n            out[stack.pop()] = i\n        stack.append(i)\n    return out\n",
+    "reference": "def solve(data):\n    out = [-1]*len(data)\n    stack = []\n    for i in range(len(data)):\n        while stack and data[i] > data[stack[-1]]:\n            out[stack.pop()] = i\n        stack.append(i)\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          2,
+          1,
+          3
+        ],
+        "expected": [
+          2,
+          2,
+          -1
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          2,
+          2,
+          3
+        ],
+        "expected": [
+          2,
+          2,
+          -1
+        ]
+      },
+      {
+        "input": [
+          3,
+          2,
+          1
+        ],
+        "expected": [
+          -1,
+          -1,
+          -1
+        ]
+      },
+      {
+        "input": [
+          -2,
+          -1,
+          -1
+        ],
+        "expected": [
+          1,
+          -1,
+          -1
+        ]
+      },
+      {
+        "input": [
+          1
+        ],
+        "expected": [
+          -1
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-window-spread",
+    "title": "滑動視窗全距 / Window spread",
+    "difficulty": "medium",
+    "topic": "window-spread",
+    "group": "v3-window-spread",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {values:[numbers],size:positive-integer}. Return max-minus-min for every contiguous full window of size. Size greater than length gives []; nonpositive size raises ValueError.",
+    "baseline": "def solve(data):\n    a, k = data['values'],data['size']\n    if k <= 0:\n        raise ValueError\n    out = []\n    for i in range(len(a)-k):\n        window = a[i:i+k]\n        out.append(max(window)-min(window))\n    return out\n",
+    "reference": "def solve(data):\n    a, k = data['values'],data['size']\n    if k <= 0:\n        raise ValueError\n    out = []\n    for i in range(len(a)-k+1):\n        window = a[i:i+k]\n        out.append(max(window)-min(window))\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "values": [
+            1,
+            3,
+            2,
+            5
+          ],
+          "size": 2
+        },
+        "expected": [
+          2,
+          1,
+          3
+        ]
+      },
+      {
+        "input": {
+          "values": [],
+          "size": 1
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "values": [
+            4,
+            4
+          ],
+          "size": 2
+        },
+        "expected": [
+          0
+        ]
+      },
+      {
+        "input": {
+          "values": [
+            -3,
+            1
+          ],
+          "size": 1
+        },
+        "expected": [
+          0,
+          0
+        ]
+      },
+      {
+        "input": {
+          "values": [
+            2
+          ],
+          "size": 3
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "values": [],
+          "size": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-weighted-round-robin",
+    "title": "加權輪詢 / Weighted round robin",
+    "difficulty": "medium",
+    "topic": "weighted-round-robin",
+    "group": "v3-weighted-round-robin",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {queues:[lists],weights:[positive-integers]} of equal length. Visit queues in index order repeatedly, consuming up to its weight each visit; skip exhausted queues. Return emitted values in order without mutating queues. Invalid lengths or nonpositive weights raise ValueError.",
+    "baseline": "def solve(data):\n    qs, weights = data['queues'],data['weights']\n    if len(qs)!=len(weights):\n        raise ValueError\n    for w in weights:\n        if w<=0:\n            raise ValueError\n    pos = [0]*len(qs)\n    out = []\n    while True:\n        moved = False\n        for i in range(len(qs)):\n            for n in range(1):\n                if pos[i] < len(qs[i]):\n                    out.append(qs[i][pos[i]])\n                    pos[i] += 1\n                    moved = True\n        if not moved:\n            return out\n",
+    "reference": "def solve(data):\n    qs, weights = data['queues'],data['weights']\n    if len(qs)!=len(weights):\n        raise ValueError\n    for w in weights:\n        if w<=0:\n            raise ValueError\n    pos = [0]*len(qs)\n    out = []\n    while True:\n        moved = False\n        for i in range(len(qs)):\n            for n in range(weights[i]):\n                if pos[i] < len(qs[i]):\n                    out.append(qs[i][pos[i]])\n                    pos[i] += 1\n                    moved = True\n        if not moved:\n            return out\n",
+    "visible": [
+      {
+        "input": {
+          "queues": [
+            [
+              1,
+              2,
+              3
+            ],
+            [
+              "a",
+              "b"
+            ]
+          ],
+          "weights": [
+            2,
+            1
+          ]
+        },
+        "expected": [
+          1,
+          2,
+          "a",
+          3,
+          "b"
+        ]
+      },
+      {
+        "input": {
+          "queues": [],
+          "weights": []
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "queues": [
+            [
+              1,
+              2
+            ],
+            [
+              "x",
+              "y",
+              "z"
+            ]
+          ],
+          "weights": [
+            1,
+            2
+          ]
+        },
+        "expected": [
+          1,
+          "x",
+          "y",
+          2,
+          "z"
+        ]
+      },
+      {
+        "input": {
+          "queues": [
+            [],
+            [
+              4
+            ]
+          ],
+          "weights": [
+            2,
+            3
+          ]
+        },
+        "expected": [
+          4
+        ]
+      },
+      {
+        "input": {
+          "queues": [
+            []
+          ],
+          "weights": [
+            0
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "queues": [],
+          "weights": [
+            1
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-rational-sum",
+    "title": "分數加總 / Rational sum",
+    "difficulty": "medium",
+    "topic": "rational-sum",
+    "group": "v3-rational-sum",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input is a list of [integer-numerator,nonzero-integer-denominator]. Return a reduced [numerator,positive-denominator]; zero uses [0,1]. Empty input returns [0,1]. Zero denominators raise ValueError.",
+    "baseline": "def solve(data):\n    n,d = 0,1\n    for a,b in data:\n        if b==0:\n            raise ValueError\n        n,d = n+a,d*b\n        x,y = abs(n),abs(d)\n        while y:\n            x,y = y,x%y\n        n,d = n//x,d//x\n        if d<0:\n            n,d = -n,-d\n    return [n,d]\n",
+    "reference": "def solve(data):\n    n,d = 0,1\n    for a,b in data:\n        if b==0:\n            raise ValueError\n        n,d = n*b+a*d,d*b\n        x,y = abs(n),abs(d)\n        while y:\n            x,y = y,x%y\n        n,d = n//x,d//x\n        if d<0:\n            n,d = -n,-d\n    return [n,d]\n",
+    "visible": [
+      {
+        "input": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ]
+        ],
+        "expected": [
+          5,
+          6
+        ]
+      },
+      {
+        "input": [],
+        "expected": [
+          0,
+          1
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            1,
+            -2
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "expected": [
+          0,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            2,
+            4
+          ]
+        ],
+        "expected": [
+          1,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            1,
+            0
+          ]
+        ],
+        "raises": "ValueError"
+      },
+      {
+        "input": [
+          [
+            -1,
+            -3
+          ],
+          [
+            1,
+            6
+          ]
+        ],
+        "expected": [
+          1,
+          2
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-tab-expand",
+    "title": "定位點展開 / Tab expansion",
+    "difficulty": "medium",
+    "topic": "tab-expand",
+    "group": "v3-tab-expand",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {text:string,width:positive-integer}. Replace each tab with enough spaces to reach the next width-aligned column. Newline resets column to zero; every other character occupies one column. Nonpositive width raises ValueError.",
+    "baseline": "def solve(data):\n    width = data['width']\n    if width<=0:\n        raise ValueError\n    out = ''\n    col = 0\n    for ch in data['text']:\n        if ch == '\\t':\n            n = width\n            out += ' '*n\n            col += n\n        else:\n            out += ch\n            col = 0 if ch=='\\n' else col+1\n    return out\n",
+    "reference": "def solve(data):\n    width = data['width']\n    if width<=0:\n        raise ValueError\n    out = ''\n    col = 0\n    for ch in data['text']:\n        if ch == '\\t':\n            n = width-col%width\n            out += ' '*n\n            col += n\n        else:\n            out += ch\n            col = 0 if ch=='\\n' else col+1\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "text": "a\tb",
+          "width": 4
+        },
+        "expected": "a   b"
+      },
+      {
+        "input": {
+          "text": "",
+          "width": 2
+        },
+        "expected": ""
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "abcd\tx",
+          "width": 4
+        },
+        "expected": "abcd    x"
+      },
+      {
+        "input": {
+          "text": "x\n\ty",
+          "width": 2
+        },
+        "expected": "x\n  y"
+      },
+      {
+        "input": {
+          "text": "中\t",
+          "width": 3
+        },
+        "expected": "中  "
+      },
+      {
+        "input": {
+          "text": "",
+          "width": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-competition-rank",
+    "title": "同分競賽排名 / Competition ranks",
+    "difficulty": "medium",
+    "topic": "competition-rank",
+    "group": "v3-competition-rank",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Return competition ranks in original order for a numeric score list. Higher scores rank first; ties share rank and later ranks skip occupied positions (scores [9,9,5] => [1,1,3]).",
+    "baseline": "def solve(data):\n    ordered = sorted(data,reverse=True)\n    ranks = {}\n    for i in range(len(ordered)):\n        if True:\n            ranks[ordered[i]] = i+1\n    out = []\n    for score in data:\n        out.append(ranks[score])\n    return out\n",
+    "reference": "def solve(data):\n    ordered = sorted(data,reverse=True)\n    ranks = {}\n    for i in range(len(ordered)):\n        if ordered[i] not in ranks:\n            ranks[ordered[i]] = i+1\n    out = []\n    for score in data:\n        out.append(ranks[score])\n    return out\n",
+    "visible": [
+      {
+        "input": [
+          9,
+          9,
+          5
+        ],
+        "expected": [
+          1,
+          1,
+          3
+        ]
+      },
+      {
+        "input": [],
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          1,
+          3,
+          2,
+          3
+        ],
+        "expected": [
+          4,
+          1,
+          3,
+          1
+        ]
+      },
+      {
+        "input": [
+          0,
+          0
+        ],
+        "expected": [
+          1,
+          1
+        ]
+      },
+      {
+        "input": [
+          -2,
+          -1
+        ],
+        "expected": [
+          2,
+          1
+        ]
+      },
+      {
+        "input": [
+          7
+        ],
+        "expected": [
+          1
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-reflected-walk",
+    "title": "邊界反射步行 / Reflected walk",
+    "difficulty": "medium",
+    "topic": "reflected-walk",
+    "group": "v3-reflected-walk",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {length:positive-integer,start:valid-index,steps:[nonnegative-integers]}. A walker initially faces right on indices 0..length-1. For each entry advance that many unit steps, reflecting at endpoints before moving beyond them. Return position after each entry. A one-cell track stays at 0. Invalid length/start or negative steps raises ValueError.",
+    "baseline": "def solve(data):\n    n,p = data['length'],data['start']\n    if n<1 or p<0 or p>=n:\n        raise ValueError\n    direction = 1\n    out = []\n    for count in data['steps']:\n        direction = 1\n        if count<0:\n            raise ValueError\n        for k in range(count):\n            if n==1:\n                continue\n            if p+direction<0 or p+direction>=n:\n                direction = -direction\n            p += direction\n        out.append(p)\n    return out\n",
+    "reference": "def solve(data):\n    n,p = data['length'],data['start']\n    if n<1 or p<0 or p>=n:\n        raise ValueError\n    direction = 1\n    out = []\n    for count in data['steps']:\n        if count<0:\n            raise ValueError\n        for k in range(count):\n            if n==1:\n                continue\n            if p+direction<0 or p+direction>=n:\n                direction = -direction\n            p += direction\n        out.append(p)\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "length": 4,
+          "start": 0,
+          "steps": [
+            3,
+            1,
+            1
+          ]
+        },
+        "expected": [
+          3,
+          2,
+          1
+        ]
+      },
+      {
+        "input": {
+          "length": 1,
+          "start": 0,
+          "steps": [
+            8,
+            0
+          ]
+        },
+        "expected": [
+          0,
+          0
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "length": 3,
+          "start": 1,
+          "steps": [
+            2,
+            1,
+            1
+          ]
+        },
+        "expected": [
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "input": {
+          "length": 2,
+          "start": 0,
+          "steps": [
+            0,
+            2
+          ]
+        },
+        "expected": [
+          0,
+          0
+        ]
+      },
+      {
+        "input": {
+          "length": 0,
+          "start": 0,
+          "steps": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "length": 2,
+          "start": 0,
+          "steps": [
+            -1
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-reservoir-transfer",
+    "title": "儲槽轉移 / Reservoir transfer",
+    "difficulty": "medium",
+    "topic": "reservoir-transfer",
+    "group": "v3-reservoir-transfer",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {amounts:[nonnegative-numbers],capacities:[numbers],moves:[[source-index,destination-index,requested-nonnegative-amount],...]}. Amounts must not exceed capacities and lengths must match. Move min(request,available,free-space) sequentially. Self transfers do nothing. Return {amounts:final-list,moved:[actual-transfer,...]}. Invalid bounds, quantities or indices raise ValueError; do not mutate input.",
+    "baseline": "def solve(data):\n    a, caps = list(data['amounts']),data['capacities']\n    if len(a)!=len(caps):\n        raise ValueError\n    for i in range(len(a)):\n        if a[i]<0 or a[i]>caps[i]:\n            raise ValueError\n    moved = []\n    for s,t,want in data['moves']:\n        if min(s,t)<0 or max(s,t)>=len(a) or want<0:\n            raise ValueError\n        n = 0 if s==t else min(want,a[s])\n        a[s] -= n\n        a[t] += n\n        moved.append(n)\n    return {'amounts':a,'moved':moved}\n",
+    "reference": "def solve(data):\n    a, caps = list(data['amounts']),data['capacities']\n    if len(a)!=len(caps):\n        raise ValueError\n    for i in range(len(a)):\n        if a[i]<0 or a[i]>caps[i]:\n            raise ValueError\n    moved = []\n    for s,t,want in data['moves']:\n        if min(s,t)<0 or max(s,t)>=len(a) or want<0:\n            raise ValueError\n        n = 0 if s==t else min(want,a[s],caps[t]-a[t])\n        a[s] -= n\n        a[t] += n\n        moved.append(n)\n    return {'amounts':a,'moved':moved}\n",
+    "visible": [
+      {
+        "input": {
+          "amounts": [
+            5,
+            1
+          ],
+          "capacities": [
+            5,
+            3
+          ],
+          "moves": [
+            [
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        "expected": {
+          "amounts": [
+            3,
+            3
+          ],
+          "moved": [
+            2
+          ]
+        }
+      },
+      {
+        "input": {
+          "amounts": [],
+          "capacities": [],
+          "moves": []
+        },
+        "expected": {
+          "amounts": [],
+          "moved": []
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "amounts": [
+            2,
+            0
+          ],
+          "capacities": [
+            2,
+            1
+          ],
+          "moves": [
+            [
+              0,
+              1,
+              8
+            ],
+            [
+              1,
+              0,
+              3
+            ]
+          ]
+        },
+        "expected": {
+          "amounts": [
+            2,
+            0
+          ],
+          "moved": [
+            1,
+            1
+          ]
+        }
+      },
+      {
+        "input": {
+          "amounts": [
+            2
+          ],
+          "capacities": [
+            3
+          ],
+          "moves": [
+            [
+              0,
+              0,
+              5
+            ]
+          ]
+        },
+        "expected": {
+          "amounts": [
+            2
+          ],
+          "moved": [
+            0
+          ]
+        }
+      },
+      {
+        "input": {
+          "amounts": [
+            4
+          ],
+          "capacities": [
+            3
+          ],
+          "moves": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "amounts": [
+            1
+          ],
+          "capacities": [
+            3
+          ],
+          "moves": [
+            [
+              0,
+              1,
+              1
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-strong-components",
+    "title": "強連通分量 / Strong components",
+    "difficulty": "hard",
+    "topic": "strong-components",
+    "group": "v2-dependency-layers",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {n:nonnegative-integer,edges:[[from,to],...]}. Nodes are 0..n-1. Return strongly connected components, nodes sorted within each component and components ordered by smallest node. Self and duplicate edges are allowed. Out-of-bounds nodes or negative n raise ValueError. Do not recurse.",
+    "baseline": "def solve(data):\n    n = data['n']\n    if n<0:\n        raise ValueError\n    reach = []\n    for i in range(n):\n        row = [False]*n\n        row[i] = True\n        reach.append(row)\n    for a,b in data['edges']:\n        if min(a,b)<0 or max(a,b)>=n:\n            raise ValueError\n        reach[a][b] = True\n    for k in range(n):\n        for i in range(n):\n            for j in range(n):\n                reach[i][j] = reach[i][j] or (reach[i][k] and reach[k][j])\n    used = set()\n    out = []\n    for i in range(n):\n        if i in used:\n            continue\n        group = []\n        for j in range(n):\n            if reach[i][j] or reach[j][i]:\n                group.append(j)\n                used.add(j)\n        out.append(group)\n    return out\n",
+    "reference": "def solve(data):\n    n = data['n']\n    if n<0:\n        raise ValueError\n    reach = []\n    for i in range(n):\n        row = [False]*n\n        row[i] = True\n        reach.append(row)\n    for a,b in data['edges']:\n        if min(a,b)<0 or max(a,b)>=n:\n            raise ValueError\n        reach[a][b] = True\n    for k in range(n):\n        for i in range(n):\n            for j in range(n):\n                reach[i][j] = reach[i][j] or (reach[i][k] and reach[k][j])\n    used = set()\n    out = []\n    for i in range(n):\n        if i in used:\n            continue\n        group = []\n        for j in range(n):\n            if reach[i][j] and reach[j][i]:\n                group.append(j)\n                used.add(j)\n        out.append(group)\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "n": 3,
+          "edges": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "expected": [
+          [
+            0,
+            1
+          ],
+          [
+            2
+          ]
+        ]
+      },
+      {
+        "input": {
+          "n": 0,
+          "edges": []
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "n": 3,
+          "edges": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "expected": [
+          [
+            0
+          ],
+          [
+            1
+          ],
+          [
+            2
+          ]
+        ]
+      },
+      {
+        "input": {
+          "n": 2,
+          "edges": [
+            [
+              1,
+              1
+            ]
+          ]
+        },
+        "expected": [
+          [
+            0
+          ],
+          [
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "n": 3,
+          "edges": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              0
+            ]
+          ]
+        },
+        "expected": [
+          [
+            0,
+            1,
+            2
+          ]
+        ]
+      },
+      {
+        "input": {
+          "n": 2,
+          "edges": [
+            [
+              0,
+              2
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-knapsack",
+    "title": "零一背包 / Zero-one knapsack",
+    "difficulty": "hard",
+    "topic": "knapsack",
+    "group": "v2-bounded-change",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {capacity:nonnegative-integer,items:[[positive-integer-weight,nonnegative-integer-value],...]}. Each listed item may be used once. Return {value:maximum-total-value,weight:minimum-weight-achieving-that-value}. Empty selection is valid. Invalid capacity, weights or values raise ValueError.",
+    "baseline": "def solve(data):\n    cap = data['capacity']\n    if cap<0:\n        raise ValueError\n    dp = [-1]*(cap+1)\n    dp[0] = 0\n    for w,v in data['items']:\n        if w<=0 or v<0:\n            raise ValueError\n        for x in range(w,cap+1):\n            if dp[x-w]>=0:\n                dp[x] = max(dp[x],dp[x-w]+v)\n    value = max(dp)\n    return {'value':value,'weight':dp.index(value)}\n",
+    "reference": "def solve(data):\n    cap = data['capacity']\n    if cap<0:\n        raise ValueError\n    dp = [-1]*(cap+1)\n    dp[0] = 0\n    for w,v in data['items']:\n        if w<=0 or v<0:\n            raise ValueError\n        for x in range(cap,w-1,-1):\n            if dp[x-w]>=0:\n                dp[x] = max(dp[x],dp[x-w]+v)\n    value = max(dp)\n    return {'value':value,'weight':dp.index(value)}\n",
+    "visible": [
+      {
+        "input": {
+          "capacity": 4,
+          "items": [
+            [
+              2,
+              3
+            ],
+            [
+              3,
+              4
+            ]
+          ]
+        },
+        "expected": {
+          "value": 4,
+          "weight": 3
+        }
+      },
+      {
+        "input": {
+          "capacity": 0,
+          "items": []
+        },
+        "expected": {
+          "value": 0,
+          "weight": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "capacity": 6,
+          "items": [
+            [
+              2,
+              3
+            ]
+          ]
+        },
+        "expected": {
+          "value": 3,
+          "weight": 2
+        }
+      },
+      {
+        "input": {
+          "capacity": 4,
+          "items": [
+            [
+              2,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ]
+        },
+        "expected": {
+          "value": 4,
+          "weight": 2
+        }
+      },
+      {
+        "input": {
+          "capacity": 2,
+          "items": [
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "items": [
+            [
+              2,
+              9
+            ]
+          ]
+        },
+        "expected": {
+          "value": 0,
+          "weight": 0
+        }
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-kth-permutation",
+    "title": "第 K 個排列 / K-th permutation",
+    "difficulty": "hard",
+    "topic": "kth-permutation",
+    "group": "v3-kth-permutation",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {items:[distinct integers],k:zero-based-index}. Return the k-th permutation in lexicographic ascending order, regardless of initial item order. k outside 0..n!-1 or repeated items raises ValueError. n<=7; the empty list has one permutation []. Do not mutate input.",
+    "baseline": "def solve(data):\n    a = list(data['items'])\n    if len(set(a))!=len(a):\n        raise ValueError\n    factorial = [1]\n    for i in range(1,len(a)+1):\n        factorial.append(factorial[-1]*i)\n    k = data['k']\n    if k<0 or k>=factorial[-1]:\n        raise ValueError\n    out = []\n    while a:\n        block = factorial[len(a)-1]\n        index = k//block\n        k %= block\n        out.append(a.pop(index))\n    return out\n",
+    "reference": "def solve(data):\n    a = sorted(data['items'])\n    if len(set(a))!=len(a):\n        raise ValueError\n    factorial = [1]\n    for i in range(1,len(a)+1):\n        factorial.append(factorial[-1]*i)\n    k = data['k']\n    if k<0 or k>=factorial[-1]:\n        raise ValueError\n    out = []\n    while a:\n        block = factorial[len(a)-1]\n        index = k//block\n        k %= block\n        out.append(a.pop(index))\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "items": [
+            3,
+            1,
+            2
+          ],
+          "k": 0
+        },
+        "expected": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            2,
+            3
+          ],
+          "k": 5
+        },
+        "expected": [
+          3,
+          2,
+          1
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "items": [
+            2,
+            1,
+            0
+          ],
+          "k": 3
+        },
+        "expected": [
+          1,
+          2,
+          0
+        ]
+      },
+      {
+        "input": {
+          "items": [],
+          "k": 0
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "items": [
+            1,
+            1
+          ],
+          "k": 0
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "items": [
+            1
+          ],
+          "k": 1
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-decode-count",
+    "title": "編碼解讀計數 / Decode count",
+    "difficulty": "hard",
+    "topic": "decode-count",
+    "group": "v3-decode-count",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is an ASCII digit string encoded with 1=A through 26=Z. Return the number of ways to split it into valid codes. Leading zeros cannot form codes; 10 and 20 are valid. Empty string returns 0; nondigits raise ValueError. Counts are bounded.",
+    "baseline": "def solve(data):\n    for ch in data:\n        if ch not in '0123456789':\n            raise ValueError\n    if not data:\n        return 0\n    dp = [0]*(len(data)+1)\n    dp[0] = 1\n    for i in range(1,len(data)+1):\n        if data[i-1]!='0':\n            dp[i] += dp[i-1]\n        if i>=2 and 0<=int(data[i-2:i])<=26:\n            dp[i] += dp[i-2]\n    return dp[-1]\n",
+    "reference": "def solve(data):\n    for ch in data:\n        if ch not in '0123456789':\n            raise ValueError\n    if not data:\n        return 0\n    dp = [0]*(len(data)+1)\n    dp[0] = 1\n    for i in range(1,len(data)+1):\n        if data[i-1]!='0':\n            dp[i] += dp[i-1]\n        if i>=2 and data[i-2]!='0' and 10<=int(data[i-2:i])<=26:\n            dp[i] += dp[i-2]\n    return dp[-1]\n",
+    "visible": [
+      {
+        "input": "12",
+        "expected": 2
+      },
+      {
+        "input": "226",
+        "expected": 3
+      }
+    ],
+    "hidden": [
+      {
+        "input": "06",
+        "expected": 0
+      },
+      {
+        "input": "100",
+        "expected": 0
+      },
+      {
+        "input": "10",
+        "expected": 1
+      },
+      {
+        "input": "1a",
+        "raises": "ValueError"
+      },
+      {
+        "input": "",
+        "expected": 0
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-water-fill",
+    "title": "最低水位分配 / Minimum-level allocation",
+    "difficulty": "hard",
+    "topic": "water-fill",
+    "group": "v3-water-fill",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {levels:[nonnegative-integers],units:nonnegative-integer}. Repeatedly add one unit to the currently smallest level; ties choose the smaller original index. Return final levels in original order without mutating input. Empty levels with positive units or any negative quantity raises ValueError. Inputs are small.",
+    "baseline": "def solve(data):\n    out = list(data['levels'])\n    units = data['units']\n    if units<0 or (not out and units>0):\n        raise ValueError\n    for value in out:\n        if value<0:\n            raise ValueError\n    for k in range(units):\n        at = 0\n        for i in range(1,len(out)):\n            if out[i]<=out[at]:\n                at = i\n        out[at] += 1\n    return out\n",
+    "reference": "def solve(data):\n    out = list(data['levels'])\n    units = data['units']\n    if units<0 or (not out and units>0):\n        raise ValueError\n    for value in out:\n        if value<0:\n            raise ValueError\n    for k in range(units):\n        at = 0\n        for i in range(1,len(out)):\n            if out[i]<out[at]:\n                at = i\n        out[at] += 1\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "levels": [
+            0,
+            0,
+            2
+          ],
+          "units": 3
+        },
+        "expected": [
+          2,
+          1,
+          2
+        ]
+      },
+      {
+        "input": {
+          "levels": [],
+          "units": 0
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "levels": [
+            1,
+            1
+          ],
+          "units": 1
+        },
+        "expected": [
+          2,
+          1
+        ]
+      },
+      {
+        "input": {
+          "levels": [
+            3,
+            0
+          ],
+          "units": 2
+        },
+        "expected": [
+          3,
+          2
+        ]
+      },
+      {
+        "input": {
+          "levels": [],
+          "units": 1
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "levels": [
+            -1
+          ],
+          "units": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-regex-match",
+    "title": "受限正規表示式 / Restricted regex",
+    "difficulty": "hard",
+    "topic": "regex-match",
+    "group": "v2-glob",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {text:string,pattern:string}. Match the entire text. Dot matches any one character. Star repeats its preceding atom zero or more times. All other characters are literal; no escapes are supported. A leading star or repeated star raises ValueError. Return a boolean.",
+    "baseline": "def solve(data):\n    tokens = []\n    for ch in data['pattern']:\n        if ch=='*':\n            if not tokens or tokens[-1][1]:\n                raise ValueError\n            tokens[-1][1] = True\n        else:\n            tokens.append([ch,False])\n    text = data['text']\n    prev = [True]+[False]*len(text)\n    for atom,star in tokens:\n        cur = [False]*(len(text)+1)\n        if star:\n            cur[0] = prev[0]\n        for j in range(1,len(text)+1):\n            match = atom=='.' or atom==text[j-1]\n            cur[j] = (match and cur[j-1]) if star else (match and prev[j-1])\n        prev = cur\n    return prev[-1]\n",
+    "reference": "def solve(data):\n    tokens = []\n    for ch in data['pattern']:\n        if ch=='*':\n            if not tokens or tokens[-1][1]:\n                raise ValueError\n            tokens[-1][1] = True\n        else:\n            tokens.append([ch,False])\n    text = data['text']\n    prev = [True]+[False]*len(text)\n    for atom,star in tokens:\n        cur = [False]*(len(text)+1)\n        if star:\n            cur[0] = prev[0]\n        for j in range(1,len(text)+1):\n            match = atom=='.' or atom==text[j-1]\n            cur[j] = (prev[j] or (match and cur[j-1])) if star else (match and prev[j-1])\n        prev = cur\n    return prev[-1]\n",
+    "visible": [
+      {
+        "input": {
+          "text": "aab",
+          "pattern": "c*a*b"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ab",
+          "pattern": ".*"
+        },
+        "expected": true
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "",
+          "pattern": "a*"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "b",
+          "pattern": "a*b"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "a",
+          "pattern": "ab*"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ab",
+          "pattern": "."
+        },
+        "expected": false
+      },
+      {
+        "input": {
+          "text": "",
+          "pattern": "*a"
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "text": "",
+          "pattern": "a**"
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-sheet-evaluation",
+    "title": "儲存格相依求值 / Cell evaluation",
+    "difficulty": "hard",
+    "topic": "sheet-evaluation",
+    "group": "v2-dependency-layers",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is an object mapping cell names to {base:integer,refs:[cell-names]}. A cell value is its base plus values of all listed references; repeated references count repeatedly. Return an object of all computed values. Unknown references or cycles raise ValueError. Empty input returns {}. Use iterative evaluation without recursion.",
+    "baseline": "def solve(data):\n    values = {}\n    while len(values)<len(data):\n        changed = False\n        for name,cell in data.items():\n            if name in values:\n                continue\n            ready = True\n            total = cell['base']\n            for ref in set(cell['refs']):\n                if ref not in data:\n                    raise ValueError\n                if ref not in values:\n                    ready = False\n                else:\n                    total += values[ref]\n            if ready:\n                values[name] = total\n                changed = True\n        if not changed:\n            raise ValueError\n    return values\n",
+    "reference": "def solve(data):\n    values = {}\n    while len(values)<len(data):\n        changed = False\n        for name,cell in data.items():\n            if name in values:\n                continue\n            ready = True\n            total = cell['base']\n            for ref in cell['refs']:\n                if ref not in data:\n                    raise ValueError\n                if ref not in values:\n                    ready = False\n                else:\n                    total += values[ref]\n            if ready:\n                values[name] = total\n                changed = True\n        if not changed:\n            raise ValueError\n    return values\n",
+    "visible": [
+      {
+        "input": {
+          "a": {
+            "base": 1,
+            "refs": []
+          },
+          "b": {
+            "base": 2,
+            "refs": [
+              "a"
+            ]
+          }
+        },
+        "expected": {
+          "a": 1,
+          "b": 3
+        }
+      },
+      {
+        "input": {},
+        "expected": {}
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "b": {
+            "base": 0,
+            "refs": [
+              "a",
+              "a"
+            ]
+          },
+          "a": {
+            "base": 2,
+            "refs": []
+          }
+        },
+        "expected": {
+          "a": 2,
+          "b": 4
+        }
+      },
+      {
+        "input": {
+          "a": {
+            "base": 0,
+            "refs": [
+              "a"
+            ]
+          }
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "a": {
+            "base": 0,
+            "refs": [
+              "x"
+            ]
+          }
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "a": {
+            "base": -2,
+            "refs": []
+          }
+        },
+        "expected": {
+          "a": -2
+        }
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-max-rectangle",
+    "title": "最大子矩形和 / Maximum rectangle",
+    "difficulty": "hard",
+    "topic": "max-rectangle",
+    "group": "v3-max-rectangle",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is a nonempty rectangular numeric matrix. Return the maximum sum of a nonempty axis-aligned contiguous subrectangle. Empty or ragged matrices raise ValueError. All-negative matrices must return the best negative sum.",
+    "baseline": "def solve(data):\n    if not data or not data[0]:\n        raise ValueError\n    width = len(data[0])\n    for row in data:\n        if len(row)!=width:\n            raise ValueError\n    best = 0\n    for top in range(len(data)):\n        sums = [0]*width\n        for bottom in range(top,len(data)):\n            for j in range(width):\n                sums[j] += data[bottom][j]\n            ending = sums[0]\n            best = max(best,ending)\n            for value in sums[1:]:\n                ending = max(value,ending+value)\n                best = max(best,ending)\n    return best\n",
+    "reference": "def solve(data):\n    if not data or not data[0]:\n        raise ValueError\n    width = len(data[0])\n    for row in data:\n        if len(row)!=width:\n            raise ValueError\n    best = data[0][0]\n    for top in range(len(data)):\n        sums = [0]*width\n        for bottom in range(top,len(data)):\n            for j in range(width):\n                sums[j] += data[bottom][j]\n            ending = sums[0]\n            best = max(best,ending)\n            for value in sums[1:]:\n                ending = max(value,ending+value)\n                best = max(best,ending)\n    return best\n",
+    "visible": [
+      {
+        "input": [
+          [
+            1,
+            -2
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "expected": 7
+      },
+      {
+        "input": [
+          [
+            -3
+          ]
+        ],
+        "expected": -3
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          [
+            -5,
+            -2
+          ],
+          [
+            -4,
+            -8
+          ]
+        ],
+        "expected": -2
+      },
+      {
+        "input": [
+          [
+            1,
+            2,
+            3
+          ]
+        ],
+        "expected": 6
+      },
+      {
+        "input": [],
+        "raises": "ValueError"
+      },
+      {
+        "input": [
+          [
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-parenthesized-arithmetic",
+    "title": "括號運算式 / Parenthesized arithmetic",
+    "difficulty": "hard",
+    "topic": "parenthesized-arithmetic",
+    "group": "v2-expression",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Evaluate unsigned decimal integers with binary +, - and *, parentheses and optional ASCII spaces. Multiplication has higher precedence; equal precedence is left associative. No unary operators, implicit multiplication, empty parentheses or other characters. Invalid expressions raise ValueError. Intermediate values are bounded.",
+    "baseline": "def solve(data):\n    values = []\n    ops = ['(']\n    priority = {'+':1,'-':1,'*':1}\n    text = data+')'\n    i = 0\n    expect = True\n    while i<len(text):\n        ch = text[i]\n        if ch==' ':\n            i += 1\n            continue\n        if ch in '0123456789':\n            if not expect:\n                raise ValueError\n            start = i\n            while i<len(text) and text[i] in '0123456789':\n                i += 1\n            values.append(int(text[start:i]))\n            expect = False\n            continue\n        if ch=='(':\n            if not expect:\n                raise ValueError\n            ops.append(ch)\n        elif ch in '+-*)':\n            if expect:\n                raise ValueError\n            while ops and ops[-1]!='(' and (ch==')' or priority[ops[-1]]>=priority[ch]):\n                op = ops.pop()\n                b,a = values.pop(),values.pop()\n                values.append(a+b if op=='+' else a-b if op=='-' else a*b)\n            if ch==')':\n                if not ops:\n                    raise ValueError\n                ops.pop()\n                if not ops and i!=len(text)-1:\n                    raise ValueError\n            else:\n                ops.append(ch)\n                expect = True\n        else:\n            raise ValueError\n        i += 1\n    if ops or expect or len(values)!=1:\n        raise ValueError\n    return values[0]\n",
+    "reference": "def solve(data):\n    values = []\n    ops = ['(']\n    priority = {'+':1,'-':1,'*':2}\n    text = data+')'\n    i = 0\n    expect = True\n    while i<len(text):\n        ch = text[i]\n        if ch==' ':\n            i += 1\n            continue\n        if ch in '0123456789':\n            if not expect:\n                raise ValueError\n            start = i\n            while i<len(text) and text[i] in '0123456789':\n                i += 1\n            values.append(int(text[start:i]))\n            expect = False\n            continue\n        if ch=='(':\n            if not expect:\n                raise ValueError\n            ops.append(ch)\n        elif ch in '+-*)':\n            if expect:\n                raise ValueError\n            while ops and ops[-1]!='(' and (ch==')' or priority[ops[-1]]>=priority[ch]):\n                op = ops.pop()\n                b,a = values.pop(),values.pop()\n                values.append(a+b if op=='+' else a-b if op=='-' else a*b)\n            if ch==')':\n                if not ops:\n                    raise ValueError\n                ops.pop()\n                if not ops and i!=len(text)-1:\n                    raise ValueError\n            else:\n                ops.append(ch)\n                expect = True\n        else:\n            raise ValueError\n        i += 1\n    if ops or expect or len(values)!=1:\n        raise ValueError\n    return values[0]\n",
+    "visible": [
+      {
+        "input": "2+3*4",
+        "expected": 14
+      },
+      {
+        "input": "(2+3)*4",
+        "expected": 20
+      }
+    ],
+    "hidden": [
+      {
+        "input": "9-(2+1)*2",
+        "expected": 3
+      },
+      {
+        "input": "1+2*(3+4*2)",
+        "expected": 23
+      },
+      {
+        "input": "()",
+        "raises": "ValueError"
+      },
+      {
+        "input": "2(3)",
+        "raises": "ValueError"
+      },
+      {
+        "input": "(1+2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-priority-toposort",
+    "title": "字典序拓樸排序 / Priority topological order",
+    "difficulty": "hard",
+    "topic": "priority-toposort",
+    "group": "v2-dependency-layers",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {nodes:[distinct strings],edges:[[prerequisite,dependent],...]}. Return a valid topological order choosing the lexicographically smallest currently eligible node at every step. Duplicate edges count once. Cycles, repeated nodes or unknown IDs raise ValueError. Node list order is not priority.",
+    "baseline": "def solve(data):\n    nodes = list(data['nodes'])\n    if len(set(nodes))!=len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a,b in data['edges']:\n        if a not in needs or b not in needs:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    out = []\n    while len(done)<len(nodes):\n        chosen = None\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                chosen = n\n                break\n        if chosen is None:\n            raise ValueError\n        done.add(chosen)\n        out.append(chosen)\n    return out\n",
+    "reference": "def solve(data):\n    nodes = sorted(data['nodes'])\n    if len(set(nodes))!=len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a,b in data['edges']:\n        if a not in needs or b not in needs:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    out = []\n    while len(done)<len(nodes):\n        chosen = None\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                chosen = n\n                break\n        if chosen is None:\n            raise ValueError\n        done.add(chosen)\n        out.append(chosen)\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "nodes": [
+            "c",
+            "b",
+            "a"
+          ],
+          "edges": [
+            [
+              "a",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      {
+        "input": {
+          "nodes": [],
+          "edges": []
+        },
+        "expected": []
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "nodes": [
+            "z",
+            "a",
+            "b"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ]
+          ]
+        },
+        "expected": [
+          "a",
+          "b",
+          "z"
+        ]
+      },
+      {
+        "input": {
+          "nodes": [
+            "a"
+          ],
+          "edges": [
+            [
+              "a",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a"
+          ],
+          "edges": [
+            [
+              "b",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "b",
+            "a"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "a",
+              "b"
+            ]
+          ]
+        },
+        "expected": [
+          "a",
+          "b"
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-minimum-cover",
+    "title": "最短涵蓋子字串 / Minimum cover",
+    "difficulty": "hard",
+    "topic": "minimum-cover",
+    "group": "v3-minimum-cover",
+    "split": "validation",
+    "enabled": false,
+    "prompt": "Input {text:string,need:string}. Return the shortest contiguous substring of text containing every character of need with its multiplicity. Break equal-length ties by earliest start. Empty need or no solution returns an empty string. Case-sensitive.",
+    "baseline": "def solve(data):\n    need = {}\n    for ch in data['need']:\n        need[ch] = need.get(ch,0)+1\n    if not need:\n        return ''\n    best = None\n    text = data['text']\n    for start in range(len(text)):\n        counts = {}\n        for end in range(start,len(text)):\n            ch = text[end]\n            counts[ch] = counts.get(ch,0)+1\n            ok = True\n            for key,n in need.items():\n                if counts.get(key,0)<n:\n                    ok = False\n            if ok:\n                part = text[start:end+1]\n                if best is None or len(part)<=len(best):\n                    best = part\n                break\n    return best if best is not None else ''\n",
+    "reference": "def solve(data):\n    need = {}\n    for ch in data['need']:\n        need[ch] = need.get(ch,0)+1\n    if not need:\n        return ''\n    best = None\n    text = data['text']\n    for start in range(len(text)):\n        counts = {}\n        for end in range(start,len(text)):\n            ch = text[end]\n            counts[ch] = counts.get(ch,0)+1\n            ok = True\n            for key,n in need.items():\n                if counts.get(key,0)<n:\n                    ok = False\n            if ok:\n                part = text[start:end+1]\n                if best is None or len(part)<len(best):\n                    best = part\n                break\n    return best if best is not None else ''\n",
+    "visible": [
+      {
+        "input": {
+          "text": "ADOBECODEBANC",
+          "need": "ABC"
+        },
+        "expected": "BANC"
+      },
+      {
+        "input": {
+          "text": "a",
+          "need": "aa"
+        },
+        "expected": ""
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "abxba",
+          "need": "ab"
+        },
+        "expected": "ab"
+      },
+      {
+        "input": {
+          "text": "abac",
+          "need": "aa"
+        },
+        "expected": "aba"
+      },
+      {
+        "input": {
+          "text": "",
+          "need": ""
+        },
+        "expected": ""
+      },
+      {
+        "input": {
+          "text": "Aab",
+          "need": "ab"
+        },
+        "expected": "ab"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-max-flow",
+    "title": "整數最大流 / Integer max flow",
+    "difficulty": "hard",
+    "topic": "max-flow",
+    "group": "v3-max-flow",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input {n:positive-integer,source:node,sink:different-node,edges:[[from,to,nonnegative-integer-capacity],...]}. Nodes are 0..n-1. Parallel capacities add; self edges are ignored. Return the maximum integral flow. Invalid indices, capacities or identical source/sink raise ValueError. Use no imports or recursion.",
+    "baseline": "def solve(data):\n    n,s,t = data['n'],data['source'],data['sink']\n    if n<1 or min(s,t)<0 or max(s,t)>=n or s==t:\n        raise ValueError\n    caps = []\n    for i in range(n):\n        caps.append([0]*n)\n    for a,b,w in data['edges']:\n        if min(a,b)<0 or max(a,b)>=n or w<0:\n            raise ValueError\n        if a!=b:\n            caps[a][b] = w\n    total = 0\n    while True:\n        parent = [-1]*n\n        parent[s] = s\n        queue = [s]\n        pos = 0\n        while pos<len(queue) and parent[t]==-1:\n            a = queue[pos]\n            pos += 1\n            for b in range(n):\n                if parent[b]==-1 and caps[a][b]>0:\n                    parent[b] = a\n                    queue.append(b)\n        if parent[t]==-1:\n            return total\n        path = []\n        b = t\n        while b!=s:\n            a = parent[b]\n            path.append([a,b])\n            b = a\n        flow = caps[path[0][0]][path[0][1]]\n        for a,b in path:\n            flow = min(flow,caps[a][b])\n        for a,b in path:\n            caps[a][b] -= flow\n            caps[b][a] += flow\n        total += flow\n",
+    "reference": "def solve(data):\n    n,s,t = data['n'],data['source'],data['sink']\n    if n<1 or min(s,t)<0 or max(s,t)>=n or s==t:\n        raise ValueError\n    caps = []\n    for i in range(n):\n        caps.append([0]*n)\n    for a,b,w in data['edges']:\n        if min(a,b)<0 or max(a,b)>=n or w<0:\n            raise ValueError\n        if a!=b:\n            caps[a][b] += w\n    total = 0\n    while True:\n        parent = [-1]*n\n        parent[s] = s\n        queue = [s]\n        pos = 0\n        while pos<len(queue) and parent[t]==-1:\n            a = queue[pos]\n            pos += 1\n            for b in range(n):\n                if parent[b]==-1 and caps[a][b]>0:\n                    parent[b] = a\n                    queue.append(b)\n        if parent[t]==-1:\n            return total\n        path = []\n        b = t\n        while b!=s:\n            a = parent[b]\n            path.append([a,b])\n            b = a\n        flow = caps[path[0][0]][path[0][1]]\n        for a,b in path:\n            flow = min(flow,caps[a][b])\n        for a,b in path:\n            caps[a][b] -= flow\n            caps[b][a] += flow\n        total += flow\n",
+    "visible": [
+      {
+        "input": {
+          "n": 3,
+          "source": 0,
+          "sink": 2,
+          "edges": [
+            [
+              0,
+              1,
+              3
+            ],
+            [
+              1,
+              2,
+              2
+            ],
+            [
+              0,
+              2,
+              1
+            ]
+          ]
+        },
+        "expected": 3
+      },
+      {
+        "input": {
+          "n": 2,
+          "source": 0,
+          "sink": 1,
+          "edges": []
+        },
+        "expected": 0
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "n": 2,
+          "source": 0,
+          "sink": 1,
+          "edges": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              3
+            ]
+          ]
+        },
+        "expected": 5
+      },
+      {
+        "input": {
+          "n": 4,
+          "source": 0,
+          "sink": 3,
+          "edges": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              2,
+              2
+            ],
+            [
+              1,
+              2,
+              1
+            ],
+            [
+              1,
+              3,
+              1
+            ],
+            [
+              2,
+              3,
+              3
+            ]
+          ]
+        },
+        "expected": 4
+      },
+      {
+        "input": {
+          "n": 1,
+          "source": 0,
+          "sink": 0,
+          "edges": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "n": 2,
+          "source": 0,
+          "sink": 1,
+          "edges": [
+            [
+              0,
+              1,
+              -1
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-huffman-cost",
+    "title": "最佳合併成本 / Huffman merge cost",
+    "difficulty": "hard",
+    "topic": "huffman-cost",
+    "group": "v3-huffman-cost",
+    "split": "train",
+    "enabled": false,
+    "prompt": "Input is a list of nonnegative integer weights. Repeatedly merge two smallest weights, paying their sum, until at most one remains. Return the minimum total merge cost. Zero weights are real entries and must not be discarded. Empty or singleton input costs 0; negative weights raise ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    a = sorted(data)\n    for w in a:\n        if w<0:\n            raise ValueError\n    total = 0\n    while len(a)>1:\n        x = a.pop(0)+a.pop(0)\n        total += x\n        a.append(x)\n        pass\n    return total\n",
+    "reference": "def solve(data):\n    a = sorted(data)\n    for w in a:\n        if w<0:\n            raise ValueError\n    total = 0\n    while len(a)>1:\n        x = a.pop(0)+a.pop(0)\n        total += x\n        a.append(x)\n        a.sort()\n    return total\n",
+    "visible": [
+      {
+        "input": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "expected": 19
+      },
+      {
+        "input": [],
+        "expected": 0
+      }
+    ],
+    "hidden": [
+      {
+        "input": [
+          1,
+          1,
+          1,
+          10
+        ],
+        "expected": 18
+      },
+      {
+        "input": [
+          0,
+          0,
+          5
+        ],
+        "expected": 5
+      },
+      {
+        "input": [
+          8
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          -1,
+          2
+        ],
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  },
+  {
+    "id": "CH-v3-optimal-wrap",
+    "title": "最佳文字換行 / Optimal wrapping",
+    "difficulty": "hard",
+    "topic": "optimal-wrap",
+    "group": "v3-optimal-wrap",
+    "split": "heldout",
+    "enabled": false,
+    "prompt": "Input {words:[nonempty-strings-without-spaces],width:positive-integer}. Join words with single spaces into lines of length<=width. Minimize sum of squared unused columns on all lines except the last, which costs zero. On equal cost choose the earliest first line break, then apply the same rule to the remainder. Return {lines:[strings],cost:integer}. Empty words gives {lines:[],cost:0}. Nonpositive width or a word wider than width raises ValueError.",
+    "baseline": "def solve(data):\n    words,w = data['words'],data['width']\n    if w<=0:\n        raise ValueError\n    for word in words:\n        if len(word)>w:\n            raise ValueError\n    n = len(words)\n    cost = [0]*(n+1)\n    nxt = [n]*(n+1)\n    for i in range(n-1,-1,-1):\n        best = None\n        length = 0\n        for j in range(i,n):\n            length += len(words[j])+(1 if j>i else 0)\n            if length>w:\n                break\n            slack = w-length\n            value = cost[j+1]+slack*slack\n            if best is None or value<best:\n                best = value\n                nxt[i] = j+1\n        cost[i] = best\n    lines = []\n    i = 0\n    while i<n:\n        lines.append(' '.join(words[i:nxt[i]]))\n        i = nxt[i]\n    return {'lines':lines,'cost':cost[0]}\n",
+    "reference": "def solve(data):\n    words,w = data['words'],data['width']\n    if w<=0:\n        raise ValueError\n    for word in words:\n        if len(word)>w:\n            raise ValueError\n    n = len(words)\n    cost = [0]*(n+1)\n    nxt = [n]*(n+1)\n    for i in range(n-1,-1,-1):\n        best = None\n        length = 0\n        for j in range(i,n):\n            length += len(words[j])+(1 if j>i else 0)\n            if length>w:\n                break\n            slack = w-length\n            value = cost[j+1]+(slack*slack if j+1<n else 0)\n            if best is None or value<best:\n                best = value\n                nxt[i] = j+1\n        cost[i] = best\n    lines = []\n    i = 0\n    while i<n:\n        lines.append(' '.join(words[i:nxt[i]]))\n        i = nxt[i]\n    return {'lines':lines,'cost':cost[0]}\n",
+    "visible": [
+      {
+        "input": {
+          "words": [
+            "aaa",
+            "bb",
+            "cc",
+            "ddddd"
+          ],
+          "width": 6
+        },
+        "expected": {
+          "lines": [
+            "aaa",
+            "bb cc",
+            "ddddd"
+          ],
+          "cost": 10
+        }
+      },
+      {
+        "input": {
+          "words": [],
+          "width": 4
+        },
+        "expected": {
+          "lines": [],
+          "cost": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "words": [
+            "a"
+          ],
+          "width": 5
+        },
+        "expected": {
+          "lines": [
+            "a"
+          ],
+          "cost": 0
+        }
+      },
+      {
+        "input": {
+          "words": [
+            "aa",
+            "bb",
+            "cc"
+          ],
+          "width": 5
+        },
+        "expected": {
+          "lines": [
+            "aa bb",
+            "cc"
+          ],
+          "cost": 0
+        }
+      },
+      {
+        "input": {
+          "words": [
+            "long"
+          ],
+          "width": 3
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "words": [],
+          "width": 0
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original repair task; difficulty is an author estimate, not target-model calibration. Expected cases are independently authored."
+  }
+]
