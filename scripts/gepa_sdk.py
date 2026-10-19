@@ -91,13 +91,19 @@ class Adapter:
         if not eval_batch.trajectories or any(t['taskId'] not in train_ids for t in eval_batch.trajectories):raise ValueError('Only training traces may be reflected')
         return {'skill_body':eval_batch.trajectories}
     def propose_new_texts(self,candidate,reflective_dataset,components_to_update):
+        # The pinned SDK retries a failed batch inside the same iteration,
+        # before stop_callbacks run. Never enter an already failed attempt.
+        if self.session.fatal is not None:return {}
         try:return self._propose(candidate,reflective_dataset,components_to_update)
         except Exception as exc:
-            # GEPA catches individual proposal errors internally. Latch the
-            # failure so its next stop check cannot retry or enter final data.
-            self.session.fatal=str(exc);write(self.session.directory/'gepa-failure.json',{'error':str(exc)})
-            DebugLog(self.session.cfg['logRoot']).append('gepa','ERROR','Proposal failed: '+str(exc),self.session.directory.name)
-            raise
+            # Returning native empty updates bypasses GEPA's internal retry;
+            # the fatal latch still fails search before selection/final data.
+            # Preserve the first failure and its original attempt artifacts.
+            if self.session.fatal is None:
+                self.session.fatal=str(exc)
+                write(self.session.directory/'gepa-failure.json',{'error':str(exc),'errorType':type(exc).__name__})
+                DebugLog(self.session.cfg['logRoot']).append('gepa','ERROR','Proposal failed: '+str(exc),self.session.directory.name)
+            return {}
     @traced('gepa','proposal')
     def _propose(self,candidate,reflective_dataset,components_to_update):
         session=self.session

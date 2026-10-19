@@ -29,6 +29,23 @@ from serve_gui import GuiHandler, DIST
 
 
 class ExplorationTests(unittest.TestCase):
+    def test_failed_proposal_latches_original_error_and_reentry_has_no_side_effects(self):
+        from gepa_sdk import Adapter
+        for error in (json.JSONDecodeError('Invalid JSON','',0),ValueError('Invalid Skill'),
+                      RuntimeError('Reflection transport failed'),OSError('Evidence write failed')):
+            with self.subTest(error=type(error).__name__),tempfile.TemporaryDirectory() as root:
+                directory=Path(root)
+                session=SimpleNamespace(cfg={'profile':'smoke','logRoot':root},directory=directory,fatal=None)
+                adapter=Adapter(session)
+                with patch.object(adapter,'_propose',side_effect=error) as propose:
+                    self.assertEqual(adapter.propose_new_texts({}, {}, []),{})
+                    original=(directory/'gepa-failure.json').read_bytes()
+                    self.assertEqual(adapter.propose_new_texts({}, {}, []),{})
+                    propose.assert_called_once()
+                self.assertEqual(session.fatal,str(error))
+                self.assertEqual((directory/'gepa-failure.json').read_bytes(),original)
+                self.assertEqual(json.loads(original)['errorType'],type(error).__name__)
+
     def test_failure_memory_survives_perfect_batch_and_duplicate_temperature_changes_only_reflection(self):
         cfg={'searchMode':'explore','explorationPolicy':POLICY,'baseline':{'skill':{'body':'baseline'}}}
         failed={'taskId':'TRAIN-failed','rolloutId':'R0001','score':0,'taskOutcome':'call-limit',

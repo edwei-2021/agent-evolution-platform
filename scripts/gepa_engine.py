@@ -15,7 +15,7 @@ from skill_engine import write
 ENGINE='gepa-nanobot-repair-v1'
 TASKS={'coordinator':'Freeze grouped benchmark and search budgets','worker':'Run real GEPA with fresh nanobot rollouts',
        'reflector':'Freeze the validation-selected Skill','evaluator':'Evaluate frozen baseline/selected Skills on final data','reviewer':'Replay trusted evidence and review release gates'}
-REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the supplied training trajectories. Do not output solution code or modify Skill name/description. Return exactly a JSON object with one string field: skill_body. Keep instructions general; do not embed task IDs or test answers.'
+REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the supplied training trajectories. Do not output solution code or modify Skill name/description. Return exactly a JSON object with one string field: skill_body. Use valid JSON escaping for newlines, quotes and backslashes inside the string; no Markdown fences or surrounding commentary. Keep the body concise enough to finish within the output budget. Keep instructions general; do not embed task IDs or test answers.'
 
 def provenance(profile,frozen=None):
     return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),

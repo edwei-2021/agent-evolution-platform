@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from functools import partial
 import faulthandler
 import importlib.metadata
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ import threading
 import time
 import unittest
 import uuid
+import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_dataset import dataset, GROUPS, skill
 from skill_archive import snapshot as skill_snapshot
@@ -26,6 +28,7 @@ from repair_engine import trusted_test, trusted_test_batch
 from runtime_service import RuntimeService, ROLES
 from ollama_bridge import DEFAULTS
 from serve_gui import GuiHandler, DIST
+from export_diagnostics import build_bundle
 try:SDK=importlib.metadata.version('nanobot-ai')=='0.3.5' and importlib.metadata.version('gepa')=='0.1.4'
 except importlib.metadata.PackageNotFoundError:SDK=False
 
@@ -99,6 +102,8 @@ class Model(BaseHTTPRequestHandler):
         if body['messages'][0].get('content')==REFLECTION_SYSTEM:
             value={'skill_body':IMPROVED} if self.mode!='bad-proposal' else {'name':'mutated','skill_body':IMPROVED}
             message['content']=json.dumps(value)
+            if self.mode=='malformed-second-proposal' and sum(c['messages'][0].get('content')==REFLECTION_SYSTEM for c in self.calls)==2:
+                message['content']='{"skill_body":"invalid "unescaped" quote"}'
         elif self.should_repair(messages):
             identifier=re.search(r'Task ID: (PY-[a-z-]+-\d+)',str(messages))[1]
             task=next(t for rows in dataset('smoke').values() for t in rows if t['id']==identifier)
@@ -279,6 +284,37 @@ class GepaWorkflowTests(unittest.TestCase):
         Model.mode='bad-proposal';done=self.finish(self.start()['id']);self.assertEqual(done['status'],'failed',done)
         directory=self.service.local/'runs'/done['id'];ledger=json.loads((directory/'gepa-rollouts.json').read_text());self.assertTrue(all(r['stage']=='search' for r in ledger))
         self.assertFalse((directory/'gepa-selection.json').exists());self.assertEqual(self.service.gepa.snapshot()['revision'],1)
+    def test_malformed_second_proposal_preserves_first_error_without_sdk_retry_or_final_tasks(self):
+        Model.mode='malformed-second-proposal'
+        done=self.finish(self.start(searchMode='explore',metricBudget=10)['id'])
+        self.assertEqual(done['status'],'failed',done.get('error'))
+        self.assertIn("Expecting ',' delimiter",done['error']);self.assertNotIn('File exists',done['error'])
+        directory=self.service.local/'runs'/done['id']
+        failure=json.loads((directory/'gepa-failure.json').read_text())
+        self.assertEqual(failure['errorType'],'JSONDecodeError')
+        self.assertIn(failure['error'],done['error'])
+        self.assertEqual(len([c for c in Model.calls if c['messages'][0].get('content')==REFLECTION_SYSTEM]),2)
+        self.assertEqual(len(json.loads((directory/'gepa-proposals.json').read_text())),1)
+        ledger=json.loads((directory/'gepa-rollouts.json').read_text())
+        self.assertEqual(len(ledger),7);self.assertTrue(all(r['stage']=='search' for r in ledger))
+        self.assertEqual(sorted(p.name for p in (directory/'reflections').iterdir()),['P001','P002'])
+        attempt=json.loads((directory/'skill-audit/P002.json').read_text())
+        self.assertEqual(attempt['status'],'failed');self.assertEqual(attempt['errorType'],'JSONDecodeError')
+        self.assertNotIn('retrying per task',(directory/'worker.log').read_text())
+        for name in ('gepa-selection.json','gepa-search.json'):
+            self.assertFalse((directory/name).exists())
+        self.assertNotIn('gepaResult',done);self.assertFalse(self.service.ollama.operation.locked())
+        self.assertLessEqual(len(Model.calls),self.budget['modelRequests'])
+        self.assertLessEqual(len(ledger),self.budget['maximumRollouts'])
+        # Exercise the actual read-only/redacted consumer, not just local audit.
+        with zipfile.ZipFile(io.BytesIO(build_bundle(self.service.root,done['id']))) as bundle:
+            archive=json.loads(bundle.read('skills/'+done['id']+'.json'))
+            self.assertEqual([(r['id'],r['status']) for r in archive['records']],
+                             [('P001','generated'),('P002','failed')])
+            self.assertEqual(archive['records'][1]['errorType'],'JSONDecodeError')
+            self.assertIsNone(archive['outcome']);self.assertEqual(archive['approvedVersions'],[])
+        print('GEPA_FAILED_PROPOSAL_WORKLOAD '+json.dumps({'rollouts':len(ledger),
+              'modelRequests':len(Model.calls),'reflectionRequests':2,'finalRollouts':0}),flush=True)
     def test_per_task_iteration_limit_prevents_extra_model_calls(self):
         Model.mode='perfect';done=self.finish(self.start(taskCallBudget=2)['id']);self.assertEqual(done['status'],'failed');self.assertEqual(len(Model.calls),2)
         self.assertFalse(self.service.ollama.operation.locked())

@@ -57,8 +57,10 @@ class GepaBudgetTests(unittest.TestCase):
 
     def test_full_module_is_split_before_parent_cap_and_rejects_unsafe_aggregate(self):
         expanded = expand_plan([('python-gepa_test', ['python', 'runner', 'gepa_test.py'])], ROOT)
-        self.assertEqual(len(expanded), 13)
-        self.assertEqual(len({name for name, _ in expanded}), 13)
+        self.assertEqual(len(expanded), 14)
+        self.assertEqual(len({name for name, _ in expanded}), 14)
+        self.assertIn('gepa_test.GepaWorkflowTests.test_malformed_second_proposal_preserves_first_error_without_sdk_retry_or_final_tasks',
+                      [command[-1] for _,command in expanded])
         for name, _ in expanded:
             self.assertFalse(set(name) & set('<>:"/\\|?*'))
             self.assertLess(len(name + '.log'), 255)
@@ -107,7 +109,7 @@ class GepaBudgetTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT))
         from platform_m.gates import release_step_count
         modules = [('python-' + path.stem, []) for path in sorted((ROOT/'tests').glob('*_test.py'))]
-        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 12)
+        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 13)
         self.assertEqual(release_step_count(ROOT), 2 + len(expand_plan(modules, ROOT)))
 
     def test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch(self):
