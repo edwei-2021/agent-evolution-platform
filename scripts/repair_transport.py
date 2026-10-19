@@ -1,6 +1,29 @@
 """OpenAI SSE function-call deltas with bounded, independently replayable evidence."""
 from llm_transport import StreamAccumulator
 
+
+def response_metadata(reply):
+    """Bounded body-free fields, including rejected but received completions."""
+    choices=reply.get('choices') if isinstance(reply,dict) else None
+    choice=choices[0] if isinstance(choices,list) and choices and isinstance(choices[0],dict) else {}
+    message=choice.get('message')
+    if not isinstance(message,dict):message={}
+    tools=message.get('tool_calls',[])
+    reason=choice.get('finish_reason')
+    names=[]
+    if isinstance(tools,list):
+        for tool in tools[:8]:
+            fn=tool.get('function') if isinstance(tool,dict) else None
+            name=fn.get('name') if isinstance(fn,dict) else None
+            names.append(name if name in ('read_solution','write_solution','run_tests') else 'other')
+    usage=reply.get('usage') if isinstance(reply,dict) else None
+    tokens=usage.get('completion_tokens') if isinstance(usage,dict) else None
+    return {'hasResponse':bool(choice),'finishReason':reason if reason in ('stop','length','tool_calls','content_filter','cancel',None) else 'other',
+            'requestedTools':names,'toolCallCount':len(tools) if isinstance(tools,list) else None,
+            'hasContent':isinstance(message.get('content'),str) and bool(message['content'].strip()),
+            'completionCount':tokens if type(tokens) is int and 0<=tokens<=1000000 else None}
+
+
 class ToolAccumulator(StreamAccumulator):
     def __init__(self):super().__init__();self.tools={}
     def add(self,event):

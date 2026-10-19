@@ -17,6 +17,7 @@ from repair_engine import RepairRunner, summary_ready, source_hash, verify, SUMM
 from repair_fixture import BASELINE
 from repair_fixture import TOOLS
 from export_diagnostics import repair_summary, build_bundle
+from repair_transport import response_metadata
 
 class RepeatingModel(BaseHTTPRequestHandler):
     calls=[];mode='ok'
@@ -40,6 +41,33 @@ class RepeatingModel(BaseHTTPRequestHandler):
         raw=json.dumps(reply).encode();self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
 
 class CompletionUnitTests(unittest.TestCase):
+    def test_rejected_summary_keeps_actual_stop_reason_and_safe_tool_metadata(self):
+        for reason,tools in [('length',[]),('tool_calls',[{'type':'function','id':'c1','function':{'name':'run_tests','arguments':'{}'}}])]:
+            with self.subTest(reason=reason),tempfile.TemporaryDirectory() as root:
+                directory=Path(root)/'run';path=directory/'task-workspace/solution.py';path.parent.mkdir(parents=True);path.write_text(repair_test.GOOD)
+                cfg={'logRoot':root,'callBudget':8,'callTimeoutSeconds':10,'deadlineEpoch':time.time()+60,
+                     'provider':{'endpoint':'http://127.0.0.1:1','config':{'model':'fixture','maxTokens':1024,'inferenceTimeout':10}}}
+                runner=RepairRunner(directory,cfg);runner.tool('run_tests',{})
+                response={'choices':[{'finish_reason':reason,'message':{'content':'PRIVATE_MODEL_BODY','tool_calls':tools}}],
+                          'usage':{'completion_tokens':1024}}
+                with patch('repair_engine.stream_chat',return_value=(response,None)):
+                    with self.assertRaisesRegex(ValueError,'finish_reason='+reason):runner.call([], [{'function':{'name':name}} for name in TOOLS])
+                self.assertEqual(runner.calls[0]['status'],'failed')
+                event=runner.logs.list(query='Model call #1 failed')['records'][0]
+                self.assertEqual(event['details']['finishReason'],reason)
+                self.assertEqual(event['details']['toolCallCount'],len(tools))
+                self.assertNotIn('PRIVATE_MODEL_BODY',json.dumps(event))
+                saved=repair_summary(directory)['calls'][0]
+                self.assertEqual(saved['finishReason'],reason);self.assertEqual(saved['completionCount'],1024)
+                self.assertEqual(saved['outputLimit'],1024)
+
+    def test_response_metadata_handles_malformed_replies_without_masking_original_error(self):
+        for value in (None,[],{'choices':None},{'choices':[None]},{'choices':[{'message':None}]}):
+            self.assertIsNone(response_metadata(value)['finishReason'])
+        row=response_metadata({'choices':[{'finish_reason':'PRIVATE_REASON','message':{'tool_calls':[{'function':{'name':'PRIVATE_TOOL'}}]}}]})
+        self.assertEqual(row['finishReason'],'other');self.assertEqual(row['requestedTools'],['other'])
+        self.assertNotIn('PRIVATE',json.dumps(row))
+
     def test_only_passing_tests_of_the_current_source_authorize_summary(self):
         def event(passed,total=6,body=repair_test.GOOD):
             return {'name':'run_tests','status':'completed','sourceHash':source_hash(body),'result':json.dumps({'split':'visible','passed':passed,'total':total})}

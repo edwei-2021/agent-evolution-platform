@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
 from debug_log import safe_details, redact
 from diagnostic_log import CATEGORIES, MAX_BYTES, bodyless
+from repair_transport import response_metadata
 
 MAX_EXPORT = 32 * 1024 * 1024
 
@@ -52,21 +53,40 @@ def repair_summary(directory):
             else:
                 rows=[]
                 for c in value[:12]:
-                    reason=((c.get('response') or {}).get('choices') or [{}])[0].get('finish_reason')
+                    output=c.get('request',{}).get('max_tokens')
                     rows.append({'id':c.get('id') if type(c.get('id')) is int else None,
                         'status':c.get('status') if c.get('status') in ('running','completed','failed') else 'other',
                         'finalSummary':c.get('finalSummary') if type(c.get('finalSummary')) is bool else None,
-                        'finishReason':reason if reason in ('stop','tool_calls','length','content_filter') else 'other'})
+                        **response_metadata(c.get('response')),
+                        'outputLimit':output if type(output) is int and 1<=output<=8192 else None})
                 summary['calls']=rows
         except (OSError,ValueError,TypeError,KeyError,AttributeError):
             summary[name]={'omitted':'unreadable_or_incomplete'}
     return summary
 
 
+def gepa_repair_summary(directory):
+    """Read only the last recorded active rollout, including historical failures."""
+    path=directory/'gepa-progress.json'
+    try:
+        if not path.is_file() or path.is_symlink() or path.stat().st_size>65536:return {}
+        with path.open('rb') as stream:raw=stream.read(65537)
+        if len(raw)>65536:return {}
+        state=json.loads(raw);identifier=state.get('activeRollout')
+        if not isinstance(identifier,str) or not re.fullmatch(r'R\d{4}',identifier):return {}
+        parent=directory/'rollouts';child=parent/identifier
+        if parent.is_symlink() or child.is_symlink() or not child.is_dir():return {}
+        result={'rolloutId':identifier,**repair_summary(child)}
+        task=state.get('activeTask')
+        if isinstance(task,str) and re.fullmatch(r'(CH|PY)-[A-Za-z0-9-]{1,120}',task):result['taskId']=task
+        return result
+    except (OSError,ValueError,TypeError,AttributeError):return {}
+
+
 def status_snapshot(root):
     root = Path(root)
     status = {'observedAt': datetime.now(timezone.utc).isoformat(), 'runs': []}
-    repair_traces={}
+    repair_traces={};gepa_traces={}
     database = root/'.local/runtime.sqlite3'
     if database.is_file() and not database.is_symlink():
         try:
@@ -80,10 +100,14 @@ def status_snapshot(root):
                     summary['limits']={k:config.get(k) for k in ('callBudget','maxSeconds','callTimeoutSeconds')}
                     output_limit=config.get('provider',{}).get('config',{}).get('maxTokens')
                     if type(output_limit) is int and 1<=output_limit<=8192:summary['limits']['outputLimit']=output_limit
-                    summary['completionPolicy']=config.get('provenance',{}).get('completionPolicy')
+                    provenance=config.get('provenance',{})
+                    summary['completionPolicy']=provenance.get('completionPolicy',provenance.get('repair',{}).get('completionPolicy'))
                     if run.get('task')=='nanobot-repair' and re.fullmatch(r'RUN-[A-Za-z0-9-]+',run['id']):
                         directory=root/'.local/runs'/run['id']
                         if not directory.is_symlink():repair_traces[run['id']]=repair_summary(directory)
+                    if run.get('task')=='gepa-evolution' and re.fullmatch(r'RUN-[A-Za-z0-9-]+',run['id']):
+                        directory=root/'.local/runs'/run['id']
+                        if not directory.is_symlink():gepa_traces[run['id']]=gepa_repair_summary(directory)
                     status['runs'].append(summary)
         except (OSError,sqlite3.Error,ValueError) as exc:
             status['runtimeReadError'] = str(exc)
@@ -104,6 +128,8 @@ def status_snapshot(root):
             # Sanitize this bounded projection independently so the outer
             # status nesting does not erase all tool fields at the depth cap.
             run['repairTrace']=bodyless(safe_details(repair_traces[run['id']]))
+        if run.get('id') in gepa_traces:
+            run['gepaRepairTrace']=bodyless(safe_details(gepa_traces[run['id']]))
     return cleaned
 
 

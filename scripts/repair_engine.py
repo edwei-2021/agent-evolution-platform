@@ -8,7 +8,7 @@ import sys
 import time
 from repair_fixture import BASELINE, SKILL, PROMPT, TASK_ID, TOOLS, VISIBLE, HIDDEN, digest, validate_source
 from skill_engine import write
-from repair_transport import ToolAccumulator
+from repair_transport import ToolAccumulator, response_metadata
 from llm_transport import stream_chat
 from debug_log import DebugLog
 from repair_runtime import SDK_VERSION
@@ -36,7 +36,7 @@ def task_call_limit(config,calls,sdk,tools):
             bool(calls[-1].get('response',{}).get('choices',[{}])[0].get('message',{}).get('tool_calls')))
 
 
-SUMMARY_MESSAGE={'role':'user','content':'The trusted local visible tests passed for the current solution. The tool phase is finished. Reply with a short final summary only; do not request any tools or additional tests. Hidden tests and independent review will run after your turn. Do not claim their results.'}
+SUMMARY_MESSAGE={'role':'user','content':'The trusted local visible tests passed for the current solution. The tool phase is finished. Reply with one sentence of at most 30 words: summarize only the visible result. Do not include code, detailed analysis, tools or additional tests. Hidden tests and independent review have not run; do not claim their results.'}
 TASKS={'coordinator':'Freeze fixture and prepare fresh task workspace','worker':'Run bounded nanobot SDK tool loop',
        'reflector':'Summarize recorded tools without model calls','evaluator':'Run trusted visible and hidden tests','reviewer':'Replay evidence and verify independent results'}
 
@@ -161,7 +161,9 @@ class RepairRunner:
             if events is not None:record['streamEvents']=events
             message=record['response']['choices'][0]['message'];calls=message.get('tool_calls',[])
             if final_summary and (calls or record['response']['choices'][0].get('finish_reason')!='stop'):
-                raise ValueError('Final summary must end with stop and no tool calls')
+                details=response_metadata(record['response'])
+                raise ValueError('Final summary must end with stop and no tool calls '
+                    f'(finish_reason={details["finishReason"] or "missing"}, tool_calls={details["toolCallCount"]})')
             if not isinstance(calls,list) or len(calls)>8:raise ValueError('Malformed tool call list')
             ids=set()
             for call in calls:
@@ -176,8 +178,7 @@ class RepairRunner:
         finally:
             record.update(finishedAt=time.time(),elapsedMs=round((time.time()-record['startedAt'])*1000,3))
             write(self.directory/'repair-calls.json',self.calls);publish()
-            choice=record['response']['choices'][0] if record['status']=='completed' else {}
-            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO',f'Model call #{record["id"]} {record["status"]}'+(': '+record['error'] if record.get('error') else ''),self.config.get('correlationRunId',self.directory.name),{'elapsedMs':record['elapsedMs'],'chunks':record['chunks'],'finalSummary':bool(final_summary),'finishReason':choice.get('finish_reason'),'requestedTools':[t.get('function',{}).get('name') for t in choice.get('message',{}).get('tool_calls',[])]})
+            self.logs.append('nanobot','ERROR' if record['status']=='failed' else 'INFO',f'Model call #{record["id"]} {record["status"]}'+(': '+record['error'] if record.get('error') else ''),self.config.get('correlationRunId',self.directory.name),{'elapsedMs':record['elapsedMs'],'chunks':record['chunks'],'finalSummary':bool(final_summary),**response_metadata(record.get('response'))})
 
 def evidence(directory):
     names=('repair-config.json','repair-calls.json','repair-tools.json','repair-sdk-result.json','repair-baseline.py','repair-candidate.py','repair-reflection.json')
