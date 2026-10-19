@@ -242,6 +242,9 @@ class GuiHandler(SimpleHTTPRequestHandler):
                 if 'searchMode' in body:fields.add('searchMode')
                 if set(body)!=fields:raise ValueError('Unexpected GEPA submission fields')
                 self.json_response(202, runtime.start(body['registry'],body['requestId'],'gepa-evolution',{k:body[k] for k in fields-{'registry','requestId'}}))
+            elif path == '/api/v1/challenges/presets/repair-v2':
+                if set(body)!={'expectedRevision'}:raise ValueError('Unexpected preset fields')
+                self.json_response(200,runtime.challenges.install_v2(body['expectedRevision']))
             elif path == '/api/v1/challenges':
                 if set(body)!={'expectedRevision','challenge'}:raise ValueError('Unexpected challenge fields')
                 self.json_response(201,runtime.challenges.mutate(body['expectedRevision'],body['challenge']))

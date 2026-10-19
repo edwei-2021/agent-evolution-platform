@@ -8,6 +8,21 @@ import {gepaView} from '../dist/js/gepa-view.js';
 import {gepaPlan} from '../dist/js/gepa-plan.js';
 const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v1.json',import.meta.url)));
 const bank=()=>({schemaVersion:1,version:'python-challenges-v1',revision:1,questions:structuredClone(seeds)});
+const v2=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v2.json',import.meta.url)));
+
+test('V2 preset is explicit, revisioned and preserves drafts on failure; viewing never installs',async()=>{
+ const calls=[];let fail=true;
+ const client=new ChallengesClient({request:async(path,options)=>{calls.push({path,options});if(!options)return bank();if(fail)throw Error('Revision conflict');return {...bank(),version:'python-challenges-v2',revision:2,questions:[...seeds.map(q=>({...q,enabled:false})),...v2]};}});
+ await client.load();client.create();client.edit('title','Unsaved draft');
+ assert.match(challengesView(client.snapshot()),/data-bank-v2/);assert.equal(calls.length,1);
+ assert.equal(await client.installV2(),false);assert.equal(client.draft.title,'Unsaved draft');
+ fail=false;assert.equal(await client.installV2(),true);assert.equal(client.draft,null);
+ assert.equal(calls[2].path,'/api/v1/challenges/presets/repair-v2');
+ assert.deepEqual(calls[2].options.body,{expectedRevision:1});assert.equal(calls[2].options.timeoutMs,90000);
+ assert.equal(client.data.version,'python-challenges-v2');
+ assert.match(challengesView(client.snapshot()),/data-bank-v2 disabled/);
+ assert.throws(()=>validateBank({...bank(),version:'unknown'}),/格式/);
+});
 
 test('bank preparation selects the profile, clears historical selection and preserves uncertain submissions',()=>{
  const client=new RuntimeClient({fetcher:()=>{throw Error('Preparation must not make requests');}});
@@ -58,14 +73,14 @@ test('edit/delete use stable identities, optimistic revisions and only explicit 
 test('bank GEPA preset freezes current bank revision with dynamic workload and no silent token increase',async()=>{
  const calls=[],client=new RuntimeClient({fetcher:async(path,options)=>{calls.push({path,options});return {ok:true,status:200,json:async()=>path==='/api/v1/llm/ollama'?{revision:7}:{}};}});
  client.data={serviceId:'bank-fixture',gepa:{revision:1,sdk:{available:true},optimizer:{available:true},versions:[],runs:[],latestRun:null},challenges:{revision:9,ready:true,counts:{train:6,validation:3,heldout:3}},provider:{config:{maxTokens:256}}};client.capabilities={csrfToken:'test-local-token'};client.enabled=true;
- client.setGepaProfile('bank');assert.equal(client.gepaMetrics,87);assert.equal(client.gepaTaskCalls,10);assert.equal(gepaPlan(client).calls,1002);
+ client.setGepaProfile('bank');assert.equal(client.gepaMetrics,45);assert.equal(client.gepaTaskCalls,10);assert.equal(gepaPlan(client).calls,576);
  assert.match(gepaView(client.snapshot()),/至少 512/);assert.match(gepaView(client.snapshot()),/data-gepa-start[^>]*disabled/);
  client.data.provider.config.maxTokens=1024;
  assert.ok(!gepaView(client.snapshot()).match(/data-gepa-start[^>]*disabled/));
  // The production request body is captured; terminate the following refresh.
  client.refresh=async()=>{};await client.startGepa({agents:[]});
  const submitted=JSON.parse(calls.find(c=>c.path==='/api/v1/gepa/runs').options.body);
- assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,9);assert.equal(submitted.metricBudget,87);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');assert.equal(submitted.proposalBudget,12);
+ assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,9);assert.equal(submitted.metricBudget,45);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');assert.equal(submitted.proposalBudget,6);
  assert.equal(client.data.provider.config.maxTokens,1024);
 });
 
@@ -74,7 +89,7 @@ test('exploration mode preserves pending submissions and blocks incomplete train
  client.data={gepa:{sdk:{available:true},optimizer:{available:true},versions:[],runs:[]},challenges:{revision:1,ready:true,counts:{train:6,validation:3,heldout:3}},provider:{config:{maxTokens:1024}}};
  client.capabilities={};client.enabled=true;client.setGepaProfile('bank');
  const frozen={profile:'bank',searchMode:'explore',metricBudget:87};client.pendingGepaSubmission=frozen;
- assert.equal(client.gepaProposals,12);assert.equal(gepaPlan(client).verificationBatches,297);
+ assert.equal(client.gepaProposals,6);assert.equal(gepaPlan(client).verificationBatches,171);
  let html=gepaView(client.snapshot());assert.match(html,/多候選探索（建議）/);assert.match(html,/max="16"/);
  client.gepaMetrics=23;html=gepaView(client.snapshot());assert.match(html,/完整訓練覆蓋至少需要 3 個提案與 24 次搜尋評測/);assert.match(html,/data-gepa-start[^>]*disabled/);
  client.setGepaSearchMode('standard');assert.equal(client.gepaMetrics,10);assert.equal(client.gepaProposals,1);assert.equal(client.gepaSeconds,3600);

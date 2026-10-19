@@ -93,7 +93,7 @@ export function validateGepaRun(run){
  if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full','bank'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>2176||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>(c.searchMode==='explore'?120:80)||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
  if(c.searchMode!==undefined&&!['standard','explore'].includes(c.searchMode)||c.searchMode==='explore'&&(!Number.isInteger(c.searchSeed)||c.searchSeed<0||c.searchSeed>=2**31||!Number.isInteger(c.proposalBudget)||c.proposalBudget<1||c.proposalBudget>16))throw Error('GEPA 探索設定不正確');
  if(c.explorationPolicy!==undefined&&(c.explorationPolicy!=='failure-diversity-v2'||c.searchMode!=='explore'))throw Error('GEPA 探索策略不正確');
- if(c.profile==='bank'){const n=c.counts;if(!n||['train','validation','heldout'].some(k=>!Number.isInteger(n[k])||n[k]<2||n[k]>(k==='train'?30:20))||n.validation+n.heldout>30||n.train+n.validation+n.heldout>50||c.datasetSnapshot?.revision!==c.bankRevision||c.datasetSnapshot?.version!=='python-challenges-v1')throw Error('題庫凍結資料不正確');}
+ if(c.profile==='bank'){const n=c.counts;if(!n||['train','validation','heldout'].some(k=>!Number.isInteger(n[k])||n[k]<2||n[k]>(k==='train'?30:20))||n.validation+n.heldout>30||n.train+n.validation+n.heldout>50||c.datasetSnapshot?.revision!==c.bankRevision||!['python-challenges-v1','python-challenges-v2'].includes(c.datasetSnapshot?.version))throw Error('題庫凍結資料不正確');}
  else for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
  if(p){
   if(p.engine!=='gepa-nanobot-repair-v1')throw Error('GEPA 進度不正確');
@@ -270,7 +270,7 @@ export class RuntimeClient{
     if(!['standard','explore'].includes(mode))throw Error('搜尋模式不正確');
     if(this.gepaProfile!=='bank'){const p=GEPA_PRESETS[this.gepaProfile];this.gepaSearchMode=mode;this.gepaMetrics=this.gepaProfile==='smoke'&&mode==='explore'?10:p.metrics;this.gepaProposals=p.proposals;this.gepaSeconds=p.seconds;return;}
     this.gepaSearchMode=mode;const c=this.data?.challenges?.counts??{train:6,validation:3};
-    this.gepaProposals=mode==='explore'?Math.min(16,Math.max(12,Math.ceil(c.train/2))):1;
+    this.gepaProposals=mode==='explore'?Math.min(16,Math.max(6,Math.ceil(c.train/2))):1;
     this.gepaMetrics=mode==='explore'?Math.min(120,c.validation+this.gepaProposals*(4+c.validation)):2*c.validation+4;
     this.gepaSeconds=mode==='explore'?7200:3600;
   }

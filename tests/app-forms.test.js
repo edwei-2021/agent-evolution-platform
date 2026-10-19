@@ -40,6 +40,12 @@ test('app form events preserve settings through click, submit, navigation and LL
    if(options.method==='POST'){const body=JSON.parse(options.body);assert.equal(body.expectedRevision,challengeData.revision);challengeData={...challengeData,revision:challengeData.revision+1,questions:[...challengeData.questions,{...body.challenge,id:'CH-created-fixture'}]};}
    value=challengeData;
   }
+  else if(path==='/api/v1/challenges/presets/repair-v2'){
+   const body=JSON.parse(options.body);assert.deepEqual(body,{expectedRevision:challengeData.revision});
+   const seeds=JSON.parse(fs.readFileSync(new URL('../data/python-challenges-v2.json',import.meta.url)));
+   challengeData={...challengeData,version:'python-challenges-v2',revision:challengeData.revision+1,questions:[...challengeData.questions.map(q=>({...q,enabled:false})),...seeds]};
+   runtime.challenges={version:challengeData.version,revision:challengeData.revision,ready:true,counts:{train:6,validation:3,heldout:3}};value=challengeData;
+  }
   else if(path.startsWith('/api/v1/challenges/')){
    const body=JSON.parse(options.body),id=path.split('/')[4];assert.equal(body.expectedRevision,challengeData.revision);
    challengeData={...challengeData,revision:challengeData.revision+1,questions:path.endsWith('/delete')?challengeData.questions.filter(q=>q.id!==id):challengeData.questions.map(q=>q.id===id?{...body.challenge,id}:q)};value=challengeData;
@@ -259,16 +265,29 @@ test('app form events preserve settings through click, submit, navigation and LL
   const posts=calls.filter(c=>c.path==='/api/v1/gepa/runs');assert.equal(posts.length,3);
   const submitted=JSON.parse(posts.at(-1).options.body);
   assert.equal(submitted.profile,'bank');assert.equal(submitted.bankRevision,challengeData.revision);
-  assert.equal(submitted.metricBudget,87);assert.equal(submitted.proposalBudget,12);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');
+  assert.equal(submitted.metricBudget,45);assert.equal(submitted.proposalBudget,6);assert.equal(submitted.taskCallBudget,10);assert.equal(submitted.maxSeconds,7200);assert.equal(submitted.searchMode,'explore');
   const target=(selector,value)=>({value,dataset:{},matches:s=>s===selector,hasAttribute:()=>false});
   const postsBefore=calls.filter(c=>c.options?.method==='POST').length;
   await dispatch('change',{target:target('[data-gepa-mode]','standard')});
   assert.match(html,/data-gepa-metrics[^>]*value="10"/);assert.match(html,/data-gepa-proposals[^>]*value="1"/);
   await dispatch('change',{target:target('[data-gepa-mode]','explore')});
-  assert.match(html,/data-gepa-metrics[^>]*value="87"/);assert.match(html,/data-gepa-proposals[^>]*value="12"/);
+  assert.match(html,/data-gepa-metrics[^>]*value="45"/);assert.match(html,/data-gepa-proposals[^>]*value="6"/);
   assert.equal(calls.filter(c=>c.options?.method==='POST').length,postsBefore);
 
   assert.equal(calls.filter(c=>c.path==='/api/v1/repair/runs').length,1,'bank Start must not repeat the single repair');
+ });
+
+ await t.test('actual V2 install button switches future bank with one explicit POST and no model dispatch',async()=>{
+  await click(button(null,{page:'challenges'}));for(let i=0;i<20;i++)await Promise.resolve();
+  assert.match(html,/data-bank-v2/);
+  const before=calls.length;await click(button(null,{bankV2:''}));
+  const posted=calls.slice(before).filter(c=>c.options?.method==='POST');
+  assert.equal(posted.length,1);assert.equal(posted[0].path,'/api/v1/challenges/presets/repair-v2');
+  assert.equal(challengeData.version,'python-challenges-v2');assert.equal(challengeData.questions.filter(q=>q.enabled).length,12);
+  assert.match(html,/data-bank-v2 disabled/);
+  await click(button(null,{bankGepa:''}));assert.match(html,/data-gepa-metrics[^>]*value="45"/);
+  assert.match(html,/data-gepa-proposals[^>]*value="6"/);
+  assert.equal(calls.slice(before).filter(c=>c.options?.method==='POST').length,1);
  });
 
  await t.test('Skill archive navigation and exact Run queries read local records without mutations',async()=>{

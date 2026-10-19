@@ -1,0 +1,1556 @@
+[
+  {
+    "id": "CH-v2-quoted-fields",
+    "title": "引號欄位掃描 / Quoted fields",
+    "difficulty": "medium",
+    "topic": "lexical-state",
+    "group": "v2-quoted-fields",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input is one CSV-like record string. Return its fields. Commas separate fields outside double quotes. A quoted field must start at the field boundary; doubled quotes inside it represent one quote. After a closing quote only a comma or end is valid. Quotes inside unquoted fields and unclosed quotes raise ValueError. Preserve spaces and empty fields, including a trailing empty field. Empty input returns [\"\"]. No multiline records are supplied.",
+    "baseline": "def solve(data):\n    out = []\n    field = ''\n    state = 'start'\n    i = 0\n    while i < len(data):\n        ch = data[i]\n        if state == 'quoted':\n            if ch == '\"':\n                if i + 1 < len(data) and data[i + 1] == '\"':\n                    field += '\"'\n                    i += 0\n                else:\n                    state = 'closed'\n            else:\n                field += ch\n        elif state == 'closed':\n            if ch != ',':\n                raise ValueError\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == ',':\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == '\"':\n            if state != 'start':\n                raise ValueError\n            state = 'quoted'\n        else:\n            field += ch\n            state = 'plain'\n        i += 1\n    if state == 'quoted':\n        raise ValueError\n    if field:\n        out.append(field)\n    return out\n",
+    "reference": "def solve(data):\n    out = []\n    field = ''\n    state = 'start'\n    i = 0\n    while i < len(data):\n        ch = data[i]\n        if state == 'quoted':\n            if ch == '\"':\n                if i + 1 < len(data) and data[i + 1] == '\"':\n                    field += '\"'\n                    i += 1\n                else:\n                    state = 'closed'\n            else:\n                field += ch\n        elif state == 'closed':\n            if ch != ',':\n                raise ValueError\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == ',':\n            out.append(field)\n            field = ''\n            state = 'start'\n        elif ch == '\"':\n            if state != 'start':\n                raise ValueError\n            state = 'quoted'\n        else:\n            field += ch\n            state = 'plain'\n        i += 1\n    if state == 'quoted':\n        raise ValueError\n    out.append(field)\n    return out\n",
+    "visible": [
+      {
+        "input": "a,b",
+        "expected": [
+          "a",
+          "b"
+        ]
+      },
+      {
+        "input": "\"a,b\",c",
+        "expected": [
+          "a,b",
+          "c"
+        ]
+      },
+      {
+        "input": "x,",
+        "expected": [
+          "x",
+          ""
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": "",
+        "expected": [
+          ""
+        ]
+      },
+      {
+        "input": "\"a\"\"b\",,",
+        "expected": [
+          "a\"b",
+          "",
+          ""
+        ]
+      },
+      {
+        "input": "\"\", z",
+        "expected": [
+          "",
+          " z"
+        ]
+      },
+      {
+        "input": "a\"b",
+        "raises": "ValueError"
+      },
+      {
+        "input": "\"a\"x",
+        "raises": "ValueError"
+      },
+      {
+        "input": "\"open",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-sessionize",
+    "title": "事件分段 / Sessionization",
+    "difficulty": "medium",
+    "topic": "event-partition",
+    "group": "v2-sessionize",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input {events:[[user,time],...], gap:nonnegative integer}. Events may be unordered; user is a string and time an integer. For each user, sort times ascending, preserving duplicates. Consecutive events belong to the same session when their gap is <= gap. Return [user,start,end,count] sessions ordered by user ascending, then start ascending. Negative gap raises ValueError. Empty events return []. Do not modify input.",
+    "baseline": "def solve(data):\n    gap = data['gap']\n    if gap < 0:\n        raise ValueError\n    events = data['events']\n    out = []\n    for user, t in events:\n        if out and out[-1][0] == user and t - out[-1][2] < gap:\n            out[-1][2] = t\n            out[-1][3] += 1\n        else:\n            out.append([user, t, t, 1])\n    return out\n",
+    "reference": "def solve(data):\n    gap = data['gap']\n    if gap < 0:\n        raise ValueError\n    events = sorted(data['events'])\n    out = []\n    for user, t in events:\n        if out and out[-1][0] == user and t - out[-1][2] <= gap:\n            out[-1][2] = t\n            out[-1][3] += 1\n        else:\n            out.append([user, t, t, 1])\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "events": [
+            [
+              "a",
+              1
+            ],
+            [
+              "a",
+              2
+            ],
+            [
+              "b",
+              8
+            ]
+          ],
+          "gap": 2
+        },
+        "expected": [
+          [
+            "a",
+            1,
+            2,
+            2
+          ],
+          [
+            "b",
+            8,
+            8,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "x",
+              5
+            ],
+            [
+              "x",
+              1
+            ],
+            [
+              "x",
+              3
+            ]
+          ],
+          "gap": 2
+        },
+        "expected": [
+          [
+            "x",
+            1,
+            5,
+            3
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "events": [],
+          "gap": 0
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "b",
+              0
+            ],
+            [
+              "a",
+              3
+            ],
+            [
+              "a",
+              3
+            ],
+            [
+              "a",
+              4
+            ]
+          ],
+          "gap": 0
+        },
+        "expected": [
+          [
+            "a",
+            3,
+            3,
+            2
+          ],
+          [
+            "a",
+            4,
+            4,
+            1
+          ],
+          [
+            "b",
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "input": {
+          "events": [],
+          "gap": -1
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "events": [
+            [
+              "u",
+              -4
+            ],
+            [
+              "u",
+              0
+            ]
+          ],
+          "gap": 4
+        },
+        "expected": [
+          [
+            "u",
+            -4,
+            0,
+            2
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-lru",
+    "title": "有界 LRU 快取 / LRU cache",
+    "difficulty": "medium",
+    "topic": "recency-state",
+    "group": "v2-lru",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input {capacity:integer, ops:[operation,...]}. An operation is [\"put\",string-key,JSON-value] or [\"get\",string-key]. Return {reads:[value-or-null,...], keys:[least-recent,...,most-recent]}. Successful get and every put make the key most recent. Updating an existing key must not evict a different key. At capacity, inserting a new key evicts the least recent. Capacity zero stores nothing; negative capacity or an unknown operation raises ValueError. Values may be null. Do not mutate input.",
+    "baseline": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    values = {}\n    order = []\n    reads = []\n    for op in data['ops']:\n        name, key = op[0], op[1]\n        if name == 'get':\n            reads.append(values.get(key))\n            if key in values:\n                pass\n        elif name == 'put':\n            if cap < 0:\n                continue\n            if key in values:\n                order.pop(order.index(key))\n            elif len(order) >= cap:\n                old = order.pop(0)\n                values.pop(old)\n            values[key] = op[2]\n            order.append(key)\n        else:\n            raise ValueError\n    return {'reads': reads, 'keys': order}\n",
+    "reference": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    values = {}\n    order = []\n    reads = []\n    for op in data['ops']:\n        name, key = op[0], op[1]\n        if name == 'get':\n            reads.append(values.get(key))\n            if key in values:\n                order.pop(order.index(key))\n                order.append(key)\n        elif name == 'put':\n            if cap == 0:\n                continue\n            if key in values:\n                order.pop(order.index(key))\n            elif len(order) >= cap:\n                old = order.pop(0)\n                values.pop(old)\n            values[key] = op[2]\n            order.append(key)\n        else:\n            raise ValueError\n    return {'reads': reads, 'keys': order}\n",
+    "visible": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "put",
+              "a",
+              1
+            ],
+            [
+              "put",
+              "b",
+              2
+            ],
+            [
+              "get",
+              "a"
+            ],
+            [
+              "put",
+              "c",
+              3
+            ],
+            [
+              "get",
+              "b"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            1,
+            null
+          ],
+          "keys": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "get",
+              "x"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "keys": []
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "capacity": 0,
+          "ops": [
+            [
+              "put",
+              "a",
+              1
+            ],
+            [
+              "get",
+              "a"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "keys": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "put",
+              "a",
+              null
+            ],
+            [
+              "put",
+              "b",
+              2
+            ],
+            [
+              "put",
+              "a",
+              3
+            ],
+            [
+              "put",
+              "c",
+              4
+            ],
+            [
+              "get",
+              "a"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            3
+          ],
+          "keys": [
+            "c",
+            "a"
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": -1,
+          "ops": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "bad",
+              "x"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-dependency-layers",
+    "title": "相依批次排序 / Dependency layers",
+    "difficulty": "medium",
+    "topic": "dag-frontier",
+    "group": "v2-dependency-layers",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input {nodes:[distinct string IDs in priority order], edges:[[prerequisite,dependent],...]}. Return execution layers: each layer contains every remaining node whose prerequisites were in earlier layers, in original nodes order. Nodes in the same layer cannot unlock one another until the next layer. Duplicate edges count once. Unknown IDs, self edges, duplicate node IDs or cycles raise ValueError. Empty graph returns []. Do not mutate input.",
+    "baseline": "def solve(data):\n    nodes = data['nodes']\n    if len(set(nodes)) != len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a, b in data['edges']:\n        if a not in needs or b not in needs:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    layers = []\n    while len(done) < len(nodes):\n        layer = []\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                layer.append(n)\n                done.add(n)\n        if not layer:\n            raise ValueError\n        for n in layer:\n            done.add(n)\n        layers.append(layer)\n    return layers\n",
+    "reference": "def solve(data):\n    nodes = data['nodes']\n    if len(set(nodes)) != len(nodes):\n        raise ValueError\n    needs = {}\n    for n in nodes:\n        needs[n] = set()\n    for a, b in data['edges']:\n        if a not in needs or b not in needs or a == b:\n            raise ValueError\n        needs[b].add(a)\n    done = set()\n    layers = []\n    while len(done) < len(nodes):\n        layer = []\n        for n in nodes:\n            if n in done:\n                continue\n            ready = True\n            for p in needs[n]:\n                if p not in done:\n                    ready = False\n            if ready:\n                layer.append(n)\n        if not layer:\n            raise ValueError\n        for n in layer:\n            done.add(n)\n        layers.append(layer)\n    return layers\n",
+    "visible": [
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b",
+            "c"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "a"
+          ],
+          [
+            "b"
+          ],
+          [
+            "c"
+          ]
+        ]
+      },
+      {
+        "input": {
+          "nodes": [
+            "z",
+            "a"
+          ],
+          "edges": []
+        },
+        "expected": [
+          [
+            "z",
+            "a"
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "nodes": [],
+          "edges": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "nodes": [
+            "c",
+            "b",
+            "a"
+          ],
+          "edges": [
+            [
+              "a",
+              "c"
+            ],
+            [
+              "a",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "b",
+            "a"
+          ],
+          [
+            "c"
+          ]
+        ]
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a"
+          ],
+          "edges": [
+            [
+              "x",
+              "a"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "a"
+          ],
+          "edges": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "nodes": [
+            "a",
+            "b",
+            "c"
+          ],
+          "edges": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              "b",
+              "c"
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "a"
+          ],
+          [
+            "b"
+          ],
+          [
+            "c"
+          ]
+        ]
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-expression",
+    "title": "整數運算式 / Integer expression",
+    "difficulty": "medium",
+    "topic": "operator-state",
+    "group": "v2-expression",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Evaluate a string of unsigned decimal integer operands separated by binary +, - or * operators, with optional ASCII spaces anywhere between tokens. Multiplication has higher precedence; + and - associate left to right. No unary operators, parentheses, implicit multiplication, tabs or other characters. Empty input, missing operands or adjacent operand tokens raise ValueError. Digits within one operand must be contiguous. Return the integer value. All supplied intermediate values are bounded.",
+    "baseline": "def solve(data):\n    total = 0\n    term = 0\n    op = '+'\n    i = 0\n    while True:\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        start = i\n        while i < len(data) and data[i] in '0123456789':\n            i += 1\n        if start == i:\n            raise ValueError\n        num = int(data[start:i])\n        if op == '*':\n            term = (total + term) * num\n            total = 0\n        else:\n            total += term\n            term = num if op == '+' else -num\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        if i == len(data):\n            return total + term\n        op = data[i]\n        if op not in '+-*/':\n            raise ValueError\n        i += 1\n",
+    "reference": "def solve(data):\n    total = 0\n    term = 0\n    op = '+'\n    i = 0\n    while True:\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        start = i\n        while i < len(data) and data[i] in '0123456789':\n            i += 1\n        if start == i:\n            raise ValueError\n        num = int(data[start:i])\n        if op == '*':\n            term *= num\n        else:\n            total += term\n            term = num if op == '+' else -num\n        while i < len(data) and data[i] == ' ':\n            i += 1\n        if i == len(data):\n            return total + term\n        op = data[i]\n        if op not in '+-*':\n            raise ValueError\n        i += 1\n",
+    "visible": [
+      {
+        "input": "2+3*4",
+        "expected": 14
+      },
+      {
+        "input": " 12 - 2 * 3 + 1 ",
+        "expected": 7
+      },
+      {
+        "input": "7",
+        "expected": 7
+      }
+    ],
+    "hidden": [
+      {
+        "input": "9-2*3*2",
+        "expected": -3
+      },
+      {
+        "input": "0*8+03",
+        "expected": 3
+      },
+      {
+        "input": "",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1 2",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1+",
+        "raises": "ValueError"
+      },
+      {
+        "input": "-1",
+        "raises": "ValueError"
+      },
+      {
+        "input": "2/1",
+        "raises": "ValueError"
+      },
+      {
+        "input": "1\t+2",
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-grid-paths",
+    "title": "網格最短路徑計數 / Grid paths",
+    "difficulty": "medium",
+    "topic": "breadth-first",
+    "group": "v2-grid-paths",
+    "split": "train",
+    "enabled": true,
+    "prompt": "Input {grid:[equal-length strings of . or #], start:[row,column], end:[row,column]}. Move orthogonally one cell per step through dots. Return {distance:shortest-length, ways:number-of-distinct-shortest-paths}. Unreachable or blocked endpoints return {distance:-1,ways:0}. Start=end on a free cell has distance 0 and one path. Empty/ragged grid or out-of-bounds endpoints raise ValueError. Inputs are otherwise well formed and path counts are <=1000000. Do not mutate input.",
+    "baseline": "def solve(data):\n    grid = data['grid']\n    h = len(grid)\n    if h == 0 or len(grid[0]) == 0:\n        raise ValueError\n    w = len(grid[0])\n    for line in grid:\n        if len(line) != w:\n            raise ValueError\n    sr, sc = data['start']\n    er, ec = data['end']\n    if min(sr, sc, er, ec) < 0 or sr >= h or er >= h or sc >= w or ec >= w:\n        raise ValueError\n    if grid[er][ec] == '#':\n        return {'distance': -1, 'ways': 0}\n    dist = {}\n    ways = {}\n    key = sr * w + sc\n    dist[key] = 0\n    ways[key] = 1\n    queue = [[sr, sc]]\n    pos = 0\n    while pos < len(queue):\n        r, c = queue[pos]\n        pos += 1\n        old = r * w + c\n        for dr, dc in [[0, 1], [1, 0], [0, -1], [-1, 0]]:\n            nr, nc = r + dr, c + dc\n            if nr < 0 or nr >= h or nc < 0 or nc >= w or grid[nr][nc] == '#':\n                continue\n            nxt = nr * w + nc\n            if nxt not in dist:\n                dist[nxt] = dist[old] + 1\n                ways[nxt] = ways[old]\n                queue.append([nr, nc])\n            elif dist[nxt] == dist[old] + 1:\n                ways[nxt] = ways[old]\n    end = er * w + ec\n    return {'distance': dist.get(end, -1), 'ways': ways.get(end, 0)}\n",
+    "reference": "def solve(data):\n    grid = data['grid']\n    h = len(grid)\n    if h == 0 or len(grid[0]) == 0:\n        raise ValueError\n    w = len(grid[0])\n    for line in grid:\n        if len(line) != w:\n            raise ValueError\n    sr, sc = data['start']\n    er, ec = data['end']\n    if min(sr, sc, er, ec) < 0 or sr >= h or er >= h or sc >= w or ec >= w:\n        raise ValueError\n    if grid[sr][sc] == '#' or grid[er][ec] == '#':\n        return {'distance': -1, 'ways': 0}\n    dist = {}\n    ways = {}\n    key = sr * w + sc\n    dist[key] = 0\n    ways[key] = 1\n    queue = [[sr, sc]]\n    pos = 0\n    while pos < len(queue):\n        r, c = queue[pos]\n        pos += 1\n        old = r * w + c\n        for dr, dc in [[0, 1], [1, 0], [0, -1], [-1, 0]]:\n            nr, nc = r + dr, c + dc\n            if nr < 0 or nr >= h or nc < 0 or nc >= w or grid[nr][nc] == '#':\n                continue\n            nxt = nr * w + nc\n            if nxt not in dist:\n                dist[nxt] = dist[old] + 1\n                ways[nxt] = ways[old]\n                queue.append([nr, nc])\n            elif dist[nxt] == dist[old] + 1:\n                ways[nxt] += ways[old]\n    end = er * w + ec\n    return {'distance': dist.get(end, -1), 'ways': ways.get(end, 0)}\n",
+    "visible": [
+      {
+        "input": {
+          "grid": [
+            "..",
+            ".."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            1,
+            1
+          ]
+        },
+        "expected": {
+          "distance": 2,
+          "ways": 2
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            ".#."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            2
+          ]
+        },
+        "expected": {
+          "distance": -1,
+          "ways": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "grid": [
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            0
+          ]
+        },
+        "expected": {
+          "distance": 0,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "#."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            1
+          ]
+        },
+        "expected": {
+          "distance": -1,
+          "ways": 0
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "...",
+            "...",
+            "..."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            2,
+            2
+          ]
+        },
+        "expected": {
+          "distance": 4,
+          "ways": 6
+        }
+      },
+      {
+        "input": {
+          "grid": [
+            "..",
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            0,
+            1
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "grid": [
+            "."
+          ],
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            1,
+            0
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-glob",
+    "title": "跳脫萬用字元比對 / Escaped glob",
+    "difficulty": "hard",
+    "topic": "pattern-dp",
+    "group": "v2-glob",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Input {text:string,pattern:string}. Match the whole text. In pattern, ? matches exactly one arbitrary character and * matches any sequence including empty. A backslash escapes the next character, including *, ? and backslash. A trailing unpaired backslash raises ValueError. Matching is case-sensitive. Return a boolean. Do not use regex or imports.",
+    "baseline": "def solve(data):\n    tokens = []\n    p = data['pattern']\n    i = 0\n    while i < len(p):\n        ch = p[i]\n        if ch == '\\\\':\n            i += 1\n            if i == len(p):\n                raise ValueError\n            tokens.append(['lit', p[i]])\n        elif ch in '*?':\n            tokens.append([ch, ''])\n        else:\n            tokens.append(['lit', ch])\n        i += 1\n    text = data['text']\n    prev = [True] + [False] * len(text)\n    for kind, val in tokens:\n        cur = [False] * (len(text) + 1)\n        if kind == '*':\n            cur[0] = False\n        for j in range(1, len(text) + 1):\n            if kind == '*':\n                cur[j] = prev[j]\n            else:\n                cur[j] = prev[j - 1] and (kind == '?' or val == text[j - 1])\n        prev = cur\n    return prev[-1]\n",
+    "reference": "def solve(data):\n    tokens = []\n    p = data['pattern']\n    i = 0\n    while i < len(p):\n        ch = p[i]\n        if ch == '\\\\':\n            i += 1\n            if i == len(p):\n                raise ValueError\n            tokens.append(['lit', p[i]])\n        elif ch in '*?':\n            tokens.append([ch, ''])\n        else:\n            tokens.append(['lit', ch])\n        i += 1\n    text = data['text']\n    prev = [True] + [False] * len(text)\n    for kind, val in tokens:\n        cur = [False] * (len(text) + 1)\n        if kind == '*':\n            cur[0] = prev[0]\n        for j in range(1, len(text) + 1):\n            if kind == '*':\n                cur[j] = prev[j] or cur[j - 1]\n            else:\n                cur[j] = prev[j - 1] and (kind == '?' or val == text[j - 1])\n        prev = cur\n    return prev[-1]\n",
+    "visible": [
+      {
+        "input": {
+          "text": "abcd",
+          "pattern": "a*d"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ac",
+          "pattern": "a?c"
+        },
+        "expected": false
+      },
+      {
+        "input": {
+          "text": "*",
+          "pattern": "\\*"
+        },
+        "expected": true
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "text": "",
+          "pattern": "**"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "ab",
+          "pattern": "*?*?"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "a?b",
+          "pattern": "a\\?b"
+        },
+        "expected": true
+      },
+      {
+        "input": {
+          "text": "A",
+          "pattern": "a"
+        },
+        "expected": false
+      },
+      {
+        "input": {
+          "text": "",
+          "pattern": "x\\"
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "text": "\\",
+          "pattern": "\\\\"
+        },
+        "expected": true
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-inventory",
+    "title": "原子庫存交易 / Atomic inventory",
+    "difficulty": "hard",
+    "topic": "transaction-rollback",
+    "group": "v2-inventory",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Input {stock:{string-item:nonnegative-integer,...}, transactions:[[[item,delta],...],...]}. Apply each transaction sequentially to a temporary stock. Unknown items start at zero. If ANY intermediate quantity would be negative, reject that whole transaction and roll back all its changes, even if later deltas could fix it. Otherwise commit. Return {stock:final-stock,accepted:[boolean,...]}. Rejected new keys must not remain in stock. Empty transactions succeed. Negative initial stock raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    stock = dict(data['stock'])\n    for v in stock.values():\n        if v < 0:\n            raise ValueError\n    accepted = []\n    for tx in data['transactions']:\n        trial = stock\n        valid = True\n        for key, delta in tx:\n            trial[key] = trial.get(key, 0) + delta\n        for key in trial:\n            if trial[key] < 0:\n                valid = False\n        accepted.append(valid)\n        if valid:\n            stock = trial\n    return {'stock': stock, 'accepted': accepted}\n",
+    "reference": "def solve(data):\n    stock = dict(data['stock'])\n    for v in stock.values():\n        if v < 0:\n            raise ValueError\n    accepted = []\n    for tx in data['transactions']:\n        trial = dict(stock)\n        valid = True\n        for key, delta in tx:\n            trial[key] = trial.get(key, 0) + delta\n            if trial[key] < 0:\n                valid = False\n        accepted.append(valid)\n        if valid:\n            stock = trial\n    return {'stock': stock, 'accepted': accepted}\n",
+    "visible": [
+      {
+        "input": {
+          "stock": {
+            "a": 2
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -1
+              ]
+            ],
+            [
+              [
+                "a",
+                -3
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 1
+          },
+          "accepted": [
+            true,
+            false
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {},
+          "transactions": [
+            [
+              [
+                "b",
+                2
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "b": 2
+          },
+          "accepted": [
+            true
+          ]
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "stock": {
+            "a": 1
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -2
+              ],
+              [
+                "a",
+                2
+              ]
+            ],
+            []
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 1
+          },
+          "accepted": [
+            false,
+            true
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {},
+          "transactions": [
+            [
+              [
+                "x",
+                2
+              ],
+              [
+                "y",
+                -1
+              ]
+            ],
+            [
+              [
+                "z",
+                0
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "z": 0
+          },
+          "accepted": [
+            false,
+            true
+          ]
+        }
+      },
+      {
+        "input": {
+          "stock": {
+            "x": -1
+          },
+          "transactions": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "stock": {
+            "a": 2
+          },
+          "transactions": [
+            [
+              [
+                "a",
+                -1
+              ],
+              [
+                "a",
+                -1
+              ]
+            ]
+          ]
+        },
+        "expected": {
+          "stock": {
+            "a": 0
+          },
+          "accepted": [
+            true
+          ]
+        }
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-sweep-load",
+    "title": "時段負載統計 / Sweep load",
+    "difficulty": "hard",
+    "topic": "temporal-aggregation",
+    "group": "v2-sweep-load",
+    "split": "validation",
+    "enabled": true,
+    "prompt": "Input {intervals:[[start,end,positive-weight],...], limit:nonnegative-number}. Each interval is half-open [start,end); zero-length intervals contribute nothing. Return {peak:maximum-active-weight, first:earliest-time-at-peak-or-null, over:total-duration-with-active-weight-strictly-greater-than-limit}. With no positive-length intervals use peak=0,first=null,over=0. Endpoints are integer times, may be negative or unordered. start>end, weight<=0 or limit<0 raises ValueError. Aggregate all events at the same time before measuring the following segment. Do not mutate input.",
+    "baseline": "def solve(data):\n    limit = data['limit']\n    if limit < 0:\n        raise ValueError\n    events = {}\n    for a, b, weight in data['intervals']:\n        if a > b or weight <= 0:\n            raise ValueError\n        if a == b:\n            continue\n        events[a] = events.get(a, 0) + weight\n        events[b] = events.get(b, 0) - weight\n    times = sorted(events)\n    active = 0\n    peak = 0\n    first = None\n    over = 0\n    for i in range(len(times) - 1):\n        t = times[i]\n        active += events[t]\n        if active >= peak:\n            peak = active\n            first = t\n        if active >= limit:\n            over += times[i + 1] - t\n    return {'peak': peak, 'first': first, 'over': over}\n",
+    "reference": "def solve(data):\n    limit = data['limit']\n    if limit < 0:\n        raise ValueError\n    events = {}\n    for a, b, weight in data['intervals']:\n        if a > b or weight <= 0:\n            raise ValueError\n        if a == b:\n            continue\n        events[a] = events.get(a, 0) + weight\n        events[b] = events.get(b, 0) - weight\n    times = sorted(events)\n    active = 0\n    peak = 0\n    first = None\n    over = 0\n    for i in range(len(times) - 1):\n        t = times[i]\n        active += events[t]\n        if active > peak:\n            peak = active\n            first = t\n        if active > limit:\n            over += times[i + 1] - t\n    return {'peak': peak, 'first': first, 'over': over}\n",
+    "visible": [
+      {
+        "input": {
+          "intervals": [
+            [
+              0,
+              3,
+              2
+            ],
+            [
+              2,
+              4,
+              3
+            ]
+          ],
+          "limit": 3
+        },
+        "expected": {
+          "peak": 5,
+          "first": 2,
+          "over": 1
+        }
+      },
+      {
+        "input": {
+          "intervals": [],
+          "limit": 0
+        },
+        "expected": {
+          "peak": 0,
+          "first": null,
+          "over": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "intervals": [
+            [
+              0,
+              2,
+              2
+            ],
+            [
+              2,
+              4,
+              2
+            ]
+          ],
+          "limit": 2
+        },
+        "expected": {
+          "peak": 2,
+          "first": 0,
+          "over": 0
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              5,
+              5,
+              9
+            ]
+          ],
+          "limit": 0
+        },
+        "expected": {
+          "peak": 0,
+          "first": null,
+          "over": 0
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              4,
+              5,
+              3
+            ],
+            [
+              -2,
+              0,
+              3
+            ]
+          ],
+          "limit": 2
+        },
+        "expected": {
+          "peak": 3,
+          "first": -2,
+          "over": 3
+        }
+      },
+      {
+        "input": {
+          "intervals": [
+            [
+              2,
+              1,
+              1
+            ]
+          ],
+          "limit": 0
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "intervals": [],
+          "limit": -1
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-tree-paths",
+    "title": "樹狀路徑編碼 / Tree path encoding",
+    "difficulty": "hard",
+    "topic": "iterative-traversal",
+    "group": "v2-tree-paths",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Input is a finite tree node: {kind:\"leaf\",value:JSON-value} or {kind:\"branch\",entries:[[string-key,child-node],...]}. Return [[encoded-path,value],...] for leaves in depth-first entry order. Root path is empty; append '/' and each escaped key when descending. Escape '~' as '~0' and '/' as '~1' in that order. Empty branches emit no rows. Duplicate sibling keys or unknown kinds raise ValueError. Trees have depth <=5; do not recurse, mutate input or sort entries.",
+    "baseline": "def solve(data):\n    stack = [['', data]]\n    out = []\n    while stack:\n        path, node = stack.pop()\n        if node['kind'] == 'leaf':\n            out.append([path, node['value']])\n        elif node['kind'] == 'branch':\n            seen = set()\n            entries = node['entries']\n            for key, child in entries:\n                if key in seen:\n                    raise ValueError\n                seen.add(key)\n            for i in range(len(entries)):\n                key, child = entries[i]\n                encoded = key.replace('/', '~1').replace('~', '~0')\n                stack.append([path + '/' + encoded, child])\n        else:\n            raise ValueError\n    return out\n",
+    "reference": "def solve(data):\n    stack = [['', data]]\n    out = []\n    while stack:\n        path, node = stack.pop()\n        if node['kind'] == 'leaf':\n            out.append([path, node['value']])\n        elif node['kind'] == 'branch':\n            seen = set()\n            entries = node['entries']\n            for key, child in entries:\n                if key in seen:\n                    raise ValueError\n                seen.add(key)\n            for i in range(len(entries) - 1, -1, -1):\n                key, child = entries[i]\n                encoded = key.replace('~', '~0').replace('/', '~1')\n                stack.append([path + '/' + encoded, child])\n        else:\n            raise ValueError\n    return out\n",
+    "visible": [
+      {
+        "input": {
+          "kind": "leaf",
+          "value": 7
+        },
+        "expected": [
+          [
+            "",
+            7
+          ]
+        ]
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 1
+              }
+            ],
+            [
+              "b",
+              {
+                "kind": "leaf",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "/a",
+            1
+          ],
+          [
+            "/b",
+            2
+          ]
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "~/",
+              {
+                "kind": "branch",
+                "entries": [
+                  [
+                    "",
+                    {
+                      "kind": "leaf",
+                      "value": null
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        },
+        "expected": [
+          [
+            "/~0~1/",
+            null
+          ]
+        ]
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": []
+        },
+        "expected": []
+      },
+      {
+        "input": {
+          "kind": "branch",
+          "entries": [
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 1
+              }
+            ],
+            [
+              "a",
+              {
+                "kind": "leaf",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "kind": "other"
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-ring-buffer",
+    "title": "可調容量緩衝區 / Resizable buffer",
+    "difficulty": "hard",
+    "topic": "buffer-capacity",
+    "group": "v2-ring-buffer",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Input {capacity:nonnegative-integer,ops:[operation,...]}. Operations: [\"write\",JSON-value], [\"read\"], [\"resize\",nonnegative-integer]. Write appends newest, dropping oldest when full; capacity 0 discards writes. Read removes oldest, or returns null if empty. Resize keeps the newest values that fit, preserving their order; growing never restores discarded values. Return {reads:[read-results,...],items:[oldest,...,newest]}. Negative capacity/resize or unknown operation raises ValueError. Do not mutate input.",
+    "baseline": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    items = []\n    reads = []\n    for op in data['ops']:\n        if op[0] == 'write':\n            if cap > 0:\n                items.append(op[1])\n                if len(items) > cap:\n                    items.pop(0)\n        elif op[0] == 'read':\n            reads.append(items.pop(0) if items else None)\n        elif op[0] == 'resize':\n            cap = op[1]\n            if cap < 0:\n                raise ValueError\n            if cap == 0:\n                items = items[-cap:]\n            elif len(items) > cap:\n                items = items[:cap]\n        else:\n            raise ValueError\n    return {'reads': reads, 'items': items}\n",
+    "reference": "def solve(data):\n    cap = data['capacity']\n    if cap < 0:\n        raise ValueError\n    items = []\n    reads = []\n    for op in data['ops']:\n        if op[0] == 'write':\n            if cap > 0:\n                items.append(op[1])\n                if len(items) > cap:\n                    items.pop(0)\n        elif op[0] == 'read':\n            reads.append(items.pop(0) if items else None)\n        elif op[0] == 'resize':\n            cap = op[1]\n            if cap < 0:\n                raise ValueError\n            if cap == 0:\n                items = []\n            elif len(items) > cap:\n                items = items[-cap:]\n        else:\n            raise ValueError\n    return {'reads': reads, 'items': items}\n",
+    "visible": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "write",
+              3
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            2
+          ],
+          "items": [
+            3
+          ]
+        }
+      },
+      {
+        "input": {
+          "capacity": 3,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "resize",
+              1
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [],
+          "items": [
+            2
+          ]
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "capacity": 2,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "resize",
+              0
+            ],
+            [
+              "write",
+              2
+            ],
+            [
+              "resize",
+              2
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "items": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 0,
+          "ops": [
+            [
+              "write",
+              1
+            ],
+            [
+              "read"
+            ]
+          ]
+        },
+        "expected": {
+          "reads": [
+            null
+          ],
+          "items": []
+        }
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "resize",
+              -1
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "capacity": 1,
+          "ops": [
+            [
+              "bad"
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  },
+  {
+    "id": "CH-v2-bounded-change",
+    "title": "有界找零 / Bounded change",
+    "difficulty": "hard",
+    "topic": "bounded-dp",
+    "group": "v2-bounded-change",
+    "split": "heldout",
+    "enabled": true,
+    "prompt": "Input {target:nonnegative-integer,coins:[[positive-denomination,nonnegative-stock],...]}. Coin denominations must be distinct. Return {minimum:minimum-number-of-coins,ways:number-of-distinct-count-vectors-reaching-target}. ways counts ALL feasible combinations, not permutations or just minimum combinations. Impossible target uses minimum=-1,ways=0. Target 0 has minimum=0,ways=1. Negative target/stock, nonpositive denomination or duplicate denomination raises ValueError. Inputs and outputs are bounded. Do not mutate input.",
+    "baseline": "def solve(data):\n    target = data['target']\n    if target < 0:\n        raise ValueError\n    seen = set()\n    best = [target + 1] * (target + 1)\n    ways = [0] * (target + 1)\n    best[0] = 0\n    ways[0] = 1\n    for coin, stock in data['coins']:\n        if coin <= 0 or stock < 0 or coin in seen:\n            raise ValueError\n        seen.add(coin)\n        nxt = [target + 1] * (target + 1)\n        counts = [0] * (target + 1)\n        for amount in range(target + 1):\n            if ways[amount] == 0:\n                continue\n            for n in range(stock):\n                new = amount + n * coin\n                if new > target:\n                    break\n                counts[new] = ways[amount]\n                nxt[new] = min(nxt[new], best[amount] + n)\n        best = nxt\n        ways = counts\n    return {'minimum': best[target] if ways[target] else -1, 'ways': ways[target]}\n",
+    "reference": "def solve(data):\n    target = data['target']\n    if target < 0:\n        raise ValueError\n    seen = set()\n    best = [target + 1] * (target + 1)\n    ways = [0] * (target + 1)\n    best[0] = 0\n    ways[0] = 1\n    for coin, stock in data['coins']:\n        if coin <= 0 or stock < 0 or coin in seen:\n            raise ValueError\n        seen.add(coin)\n        nxt = [target + 1] * (target + 1)\n        counts = [0] * (target + 1)\n        for amount in range(target + 1):\n            if ways[amount] == 0:\n                continue\n            for n in range(stock + 1):\n                new = amount + n * coin\n                if new > target:\n                    break\n                counts[new] += ways[amount]\n                nxt[new] = min(nxt[new], best[amount] + n)\n        best = nxt\n        ways = counts\n    return {'minimum': best[target] if ways[target] else -1, 'ways': ways[target]}\n",
+    "visible": [
+      {
+        "input": {
+          "target": 4,
+          "coins": [
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 3
+        }
+      },
+      {
+        "input": {
+          "target": 3,
+          "coins": [
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": -1,
+          "ways": 0
+        }
+      }
+    ],
+    "hidden": [
+      {
+        "input": {
+          "target": 0,
+          "coins": []
+        },
+        "expected": {
+          "minimum": 0,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "target": 4,
+          "coins": [
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 1
+        }
+      },
+      {
+        "input": {
+          "target": 6,
+          "coins": [
+            [
+              4,
+              1
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "expected": {
+          "minimum": 2,
+          "ways": 2
+        }
+      },
+      {
+        "input": {
+          "target": 2,
+          "coins": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "target": -1,
+          "coins": []
+        },
+        "raises": "ValueError"
+      },
+      {
+        "input": {
+          "target": 2,
+          "coins": [
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "raises": "ValueError"
+      }
+    ],
+    "sources": [],
+    "attribution": "Original multi-defect repair challenge. Difficulty is an author estimate; no target-model calibration or benchmark score is claimed."
+  }
+]

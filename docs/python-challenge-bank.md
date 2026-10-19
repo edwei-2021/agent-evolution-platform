@@ -2,6 +2,43 @@
 
 The GUI includes 12 original repair challenges, a local question editor, and a **多難度題庫** GEPA profile. Finishing an experiment does not imply a new Skill. A perfect seed can leave GEPA with no measurable improvement and zero proposals. More offsets of the same easy program do not establish broader repair capability.
 
+## Multi-defect V2 update (多缺陷題庫 v2)
+
+The October 19 Strata Run `RUN-bb2efa32-1065-4571-b4fe-e365dfd379cd` generated twelve distinct instructions and completed all 87 search evaluations, but selected baseline index 0. Nine candidates tied at 3/3 search validation, three scored 2/3. The baseline's 3/3 is inferred from the pinned highest-score/earliest-tie selection rule. Search took about 101 minutes; the two-hour deadline stopped the last of twelve independent final tasks, before evaluator replay and reviewer replay. This is evidence for candidate diversity and a saturated small validation split, not a completed improving release.
+
+The new bank exploration default is **6 proposals / 45 search evaluations / 10 calls per task / 7200 seconds**. For 6/3/3 tasks: 45 search + 12 final = 57 rollout slots, 576 request slots and 171 trusted batches across immediate, evaluator and reviewer passes. Historical settings remain frozen. The reduced workload reserves more practical room for final work; the same hard deadline can still expire on a slower model or harder task. No retry, resume, time extension or weaker approval gate was added.
+
+Open **多難度 Python 題庫 → 套用多缺陷題庫 v2** to explicitly install `data/python-challenges-v2.json`. This performs bounded local reference validation, disables old questions and appends/enables twelve new questions. It preserves all existing question text, references and cases, including user edits; the visible editor warns that its unsaved draft will be cleared on success. A second install or ID collision is rejected rather than overwriting edits. Restart alone never installs V2. Existing databases retain V1 and receive only a version-column schema migration; existing frozen V1 datasets remain readable and hash-checked. No model request is made by preset installation.
+
+The new enabled bank is **6 training / 3 validation / 3 held-out** with distinct declared groups:
+
+| Split | New challenge | Principal defects and edge cases |
+| --- | --- | --- |
+| Train | Quoted field scanner | Escaped quotes, closing state, trailing empty fields |
+| Train | Event sessionization | Unsorted input, duplicate timestamps, inclusive gap |
+| Train | LRU cache | Get recency, updates, zero capacity |
+| Train | Dependency layers | Same-layer unlocking, cycles, duplicate edges |
+| Train | Integer expression | Operator precedence, token boundaries, invalid syntax |
+| Train | Grid paths | Equal-length shortest paths, blocked endpoints, bounds |
+| Validation | Escaped glob matching | Wildcards matching empty text, escaping, whole-text DP |
+| Validation | Atomic inventory | Intermediate failure, rollback, absent keys |
+| Validation | Temporal load | Simultaneous events, strict thresholds, earliest peak |
+| Held-out | Tree path encoding | Iterative traversal order, escaping, duplicate keys |
+| Held-out | Resizable buffer | Shrinking keeps newest, zero capacity, nonrestoration |
+| Held-out | Bounded change | Stock limits, combination counts, unreachable targets |
+
+These are original tasks with interacting defects and explicitly specified edge behavior, not renamed V1 templates. Expected outputs are authored independently of the reference implementations; both visible and retained cases are checked. Every erroneous start must fail at least one retained case as well as the existing faulty-start check. Reference code stays outside frozen model fixtures; validation and held-out trajectories never enter reflection. Declared group uniqueness does not prove absence of every semantic overlap.
+
+V2 uses the existing `python-challenge-v1` syntax/evaluator policy without adding Python privileges. Difficulty labels are estimates (six medium and six hard tasks), **not target-model calibration**. Run the smaller experiment with the same provider/model/settings and examine baseline validation, retained performance, call caps and source rejections. If baseline again reaches 3/3, do not claim a useful success-rate gradient or repeatedly tune against these held-out cases; create another version with fresh independent cases. Instruction length or more candidates alone is not improvement.
+
+`POST /api/v1/challenges/presets/repair-v2` accepts only `expectedRevision` and uses the existing localhost/origin/token boundary. Twelve serial validation subprocesses each retain a five-second parent bound (60 seconds total); the GUI reserves a 90-second HTTP wait without extending any workflow. Revision is checked before validation and again under the write lock. Duplicate install, stale revision, invalid fields or failed validation cannot partially update the bank. Catalog GETs, navigation and rendering remain read-only.
+
+The focused execution graph is test runner → RuntimeService → coordinator → pinned GEPA worker → fresh nanobot task processes and `repair_evaluator.py` tool/batch subprocesses → independent final tasks → evaluator replay → reviewer replay → explicit approval verification. The new exact V2 integration has a 22-rollout/133-request ceiling, ten-second requests, at most 24 five-second visible-test tools per task and three five-second trusted batches per task. Startup 120 + requests 1330 + tools/replays 2970 + cleanup 30 = **4450 workflow seconds**; terminal collection adds 30, approval replay reserves 110, and the ten-second JS consumer plus preset validation fit the existing 7200-second module cap. The scripted fixture actually uses three tools/one public-test invocation per repaired task; exact counts are asserted. The oracle/HTTP migration module separately bounds each validation subprocess and uses a 70-second local HTTP wait.
+
+Local verification passes 40 distinct Python cases with zero skips: six V2 oracle/migration/API cases, one V2 SDK workflow, eleven V1 bank cases, one V1 SDK workflow, one exploration SDK workflow, twelve exploration contracts and eight workload/manifest cases. All 139 frontend cases pass, as do Ruff, source credential-pattern and whitespace checks. An initial retained-case assertion exposed that the dependency-layer baseline still passed its original five retained cases; a chain ordered by prerequisites now specifically detects same-layer unlocking. The final oracle and V2 SDK checks pass with that added case. The published V2 pack has 27 visible and 62 retained examples; prior failed test evidence remains in local reports.
+
+Read-only source hashes are frozen before actual SDK checks. V1 workflow and V2 workflow cases run sequentially; each has its own frozen dataset. Copied isolated-evaluator checks cover all V2 reference cases without site packages. Frontend checks exercise the actual install button and POST, pending-request preservation, new default payload, version acceptance and dynamic counts. Scripted loopback improvement qualifies implementation behavior only; no Windows/GPU, Docker execution, full M acceptance or real-model gain is claimed.
+
 ## Research and scope (研究依據與範圍)
 
 - [EvalPlus, Liu et al.](https://arxiv.org/abs/2305.01210): insufficient tests can miss incorrect programs. Each challenge includes public and retained edge cases, a checked reference and a genuinely defective starting program.
@@ -36,7 +73,7 @@ These are **original adaptations of evaluation principles**, not downloaded benc
 3. Supply a title, difficulty, aspect, related-question group, split, requirement, erroneous starting program, reference, public tests and retained tests. References and cases are visible to the local operator. Reference code is excluded from frozen GEPA fixtures and model prompts; retained tests are unavailable to repair tools.
 4. Choose **驗證並儲存題目**. The reference must pass every case and the start must fail at least one. Invalid JSON and evaluation errors preserve the draft. Saving calls no model.
 5. In **框架整合**, select and save Ollama or Strata. Set maximum output tokens to **1024** initially for the bank; values below 512 are rejected before cold SDK discovery. This recommendation does not automatically increase saved limits. A short output cap can truncate a valid repair.
-6. Click **準備題庫演化** on the bank or single-repair page. This selects **多難度題庫** in GEPA and shows its revision/counts without calling the model. Inspect settings and work ceilings, then explicitly click **開始題庫演化** to submit. Initial counts are 6 training, 3 validation and 3 held-out tasks. The GUI now defaults to [multi-candidate exploration](gepa-exploration.md): 87 search evaluations, 12 proposal slots, 10 calls per task and 7200 seconds for this bank. The standard mode retains 10/1/3600. These are ceilings, not a promise that a particular GPU/model will finish in time.
+6. Click **準備題庫演化** on the bank or single-repair page. This selects **多難度題庫** in GEPA and shows its revision/counts without calling the model. Inspect settings and work ceilings, then explicitly click **開始題庫演化** to submit. Initial counts are 6 training, 3 validation and 3 held-out tasks. The GUI now defaults to [multi-candidate exploration](gepa-exploration.md): 45 search evaluations, 6 proposal slots, 10 calls per task and 7200 seconds for this bank. The standard mode retains 10/1/3600. These are ceilings, not a promise that a particular GPU/model will finish in time.
 7. Inspect **實際演化成果**, **依難度與題目面向查看成效**, the per-question attempt table, frozen-bank coverage, source-change history and Skill history. No samples means **無題目**, not a perfect score. A releasable new Skill requires a changed body, independent validation improvement and no held-out regression. Approval remains explicit.
 
 Use train cases with meaningful feedback and attainable successes. Keep related programs in the same group and split. The group check catches declared overlap, not semantic duplicates; authors must identify related templates. Do not rewrite held-out cases after every candidate's mistakes and claim an unchanged benchmark. Edits create a new revision; cross-revision scores are not a controlled comparison.

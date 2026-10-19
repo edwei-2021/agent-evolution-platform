@@ -134,6 +134,7 @@ document.addEventListener('click',async event=>{
  if(b.hasAttribute('data-step-refresh')){await steps.refresh();return;}
  if(b.hasAttribute('data-step-toggle')){steps.enabled=!steps.enabled;render();if(steps.enabled)await steps.refresh();return;}
  if(b.hasAttribute('data-gepa-start')){await live.startGepa(api.snapshot().registry);toast('已提交 GEPA 搜尋');return;}
+ if(b.hasAttribute('data-bank-v2')){if(await bank.installV2()){await live.refresh();toast('已啟用 v2 題庫；請準備題庫演化後檢查工作量');}return;}
  if(b.hasAttribute('data-gepa-select')){await inspectChanges(()=>live.selectGepaRun(b.dataset.gepaSelect));return;}
  if(b.dataset.gepaApprove){await live.approveGepa(b.dataset.gepaApprove);toast('已核准並啟用 GEPA Skill');return;}
  if(b.dataset.gepaActivate){await live.activateGepa(b.dataset.gepaActivate);toast('已切換 GEPA Skill 版本');return;}

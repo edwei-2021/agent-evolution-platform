@@ -22,14 +22,14 @@ For the shipped 6/3/3 bank:
 
 | Setting | Exploration default | Maximum |
 | --- | ---: | ---: |
-| Candidate proposals | 12 | 16 |
-| Search evaluations | 87 | 120 |
+| Candidate proposals | 6 | 16 |
+| Search evaluations | 45 | 120 |
 | Requests per repair task, including summary | 10 | 12 |
 | Whole workflow seconds | 7200 | 7200 |
 
-The default search ceiling is three initial validation tasks plus twelve iterations of two parent training tasks, two candidate training tasks and three validation tasks. Twelve final rollouts are separately required. Total capacity is 99 rollouts, 1002 model requests and 297 trusted verifier batches. At sixteen proposals the corresponding search planning figure is 115; increasing the proposal limit alone does not enlarge an already configured metric limit.
+The default search ceiling is three initial validation tasks plus six iterations of two parent training tasks, two candidate training tasks and three validation tasks. Twelve final rollouts are separately required. Total capacity is 57 rollouts, 576 model requests and 171 trusted verifier batches. At sixteen proposals the corresponding search planning figure is 115; increasing the proposal limit alone does not enlarge an already configured metric limit.
 
-For edited banks, the GUI derives defaults from current counts, bounded by 120 search evaluations and sixteen proposals. Submission requires enough proposal slots and metric capacity for a first complete training epoch, conservatively reserving full batches and validation. The GUI shows the same blocker. A bank too large for these bounds requires fewer enabled questions or standard mode; it is not silently truncated.
+For edited banks, the GUI uses at least six proposal slots (or enough batches for one complete training epoch) and derives metric defaults from current counts, bounded by 120 search evaluations and sixteen proposals. Submission requires enough proposal slots and metric capacity for a first complete training epoch, conservatively reserving full batches and validation. The GUI shows the same blocker. A bank too large for these bounds requires fewer enabled questions or standard mode; it is not silently truncated.
 
 Each rollout performs immediate verification, evaluator replay and reviewer replay. The GUI exposes the total work before submission. Time capacity does not reserve enough wall-clock time to consume every request slot. Slower models can hit the two-hour cap before all candidates are generated. Historical Runs and uncertain submissions retain their frozen settings. Explicit standard mode and API submissions omitting `searchMode` retain perfect-score skipping. Smoke/Full support explicit exploration without promising full training coverage within their smaller presets.
 
@@ -39,7 +39,7 @@ GUI defaults, including final work and all three verifier passes:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Smoke exploration | 10 / 2 | 12 | 22 | 8 | 178 | 66 |
 | Full exploration | 26 / 1 | 60 | 86 | 8 | 689 | 258 |
-| Shipped bank exploration | 87 / 12 | 12 | 99 | 10 | 1002 | 297 |
+| Shipped bank exploration | 45 / 6 | 12 | 57 | 10 | 576 | 171 |
 
 Standard Smoke keeps 8/2/1800 seconds. Full keeps 26/1/7200 seconds. Bank standard keeps 10/1/3600 seconds. Switching modes does not mutate an already frozen pending request. The bank still requires capacity for a complete first training epoch before dispatch. Existing datasets, Python policy, model versions, final comparisons and approval gates are unchanged.
 

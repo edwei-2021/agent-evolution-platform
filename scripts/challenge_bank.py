@@ -8,6 +8,8 @@ from challenge_policy import POLICY, check_json, validate_source, model_contract
 from repair_fixture import digest
 
 VERSION = 'python-challenges-v1'
+V2 = 'python-challenges-v2'
+VERSIONS = (VERSION, V2)
 SPLITS = ('train', 'validation', 'heldout')
 FIELDS = {'id', 'title', 'difficulty', 'topic', 'group', 'split', 'enabled', 'prompt', 'baseline',
           'reference', 'visible', 'hidden', 'sources', 'attribution'}
@@ -71,7 +73,7 @@ def validate_question(value, *, execute=False):
 
 def validate_snapshot(value):
     if (not isinstance(value, dict) or set(value) != {'version', 'revision', 'data', 'hash'} or
-            value.get('version') != VERSION or type(value.get('revision')) is not int or value['revision'] < 1):
+            value.get('version') not in VERSIONS or type(value.get('revision')) is not int or value['revision'] < 1):
         raise ValueError('Invalid frozen challenge dataset')
     if value.get('hash') != digest({k: value[k] for k in ('version', 'revision', 'data')}):
         raise ValueError('Frozen challenge dataset hash changed')
@@ -109,17 +111,19 @@ class ChallengeBank:
         self._summary = None
         with service.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS challenge_bank (singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL, data TEXT NOT NULL)')
+            if 'version' not in {r[1] for r in db.execute('PRAGMA table_info(challenge_bank)')}:
+                db.execute("ALTER TABLE challenge_bank ADD COLUMN version TEXT NOT NULL DEFAULT 'python-challenges-v1'")
             if not db.execute('SELECT 1 FROM challenge_bank').fetchone():
                 root = Path(__file__).resolve().parents[1]
                 seeds = json.loads((root / 'data/python-challenges-v1.json').read_text())
                 for question in seeds:
                     validate_question(question)
-                db.execute('INSERT INTO challenge_bank VALUES (1,1,?)', (json.dumps(seeds, ensure_ascii=False),))
+                db.execute('INSERT INTO challenge_bank (singleton,revision,data) VALUES (1,1,?)', (json.dumps(seeds, ensure_ascii=False),))
 
     def snapshot(self):
         with self.service.lock, self.service.connect() as db:
-            revision, raw = db.execute('SELECT revision,data FROM challenge_bank WHERE singleton=1').fetchone()
-        return {'schemaVersion': 1, 'version': VERSION, 'revision': revision, 'questions': json.loads(raw)}
+            revision, raw, version = db.execute('SELECT revision,data,version FROM challenge_bank WHERE singleton=1').fetchone()
+        return {'schemaVersion': 1, 'version': version, 'revision': revision, 'questions': json.loads(raw)}
 
     def summary(self):
         snap = self.snapshot()
@@ -131,7 +135,7 @@ class ChallengeBank:
             self.freeze(snap['revision'])
         except ValueError as exc:
             error = str(exc)
-        self._summary = {'revision': snap['revision'], 'version': VERSION, 'counts': counts,
+        self._summary = {'revision': snap['revision'], 'version': snap['version'], 'counts': counts,
                          'total': len(snap['questions']), 'ready': error is None, 'error': error}
         return copy.deepcopy(self._summary)
 
@@ -149,10 +153,33 @@ class ChallengeBank:
                 row = {k: question[k] for k in ('id', 'title', 'difficulty', 'topic', 'group')}
                 row['fixture'] = fixture(question)
                 data[question['split']].append(row)
-        frozen = {'version': VERSION, 'revision': revision, 'data': data}
+        frozen = {'version': snap['version'], 'revision': revision, 'data': data}
         frozen['hash'] = digest(frozen)
         validate_snapshot(frozen)
         return frozen
+
+    def install_v2(self, revision):
+        """Explicit local migration: retain edited questions; switch enabled set."""
+        self.check_revision(revision)
+        root = Path(__file__).resolve().parents[1]
+        seeds = json.loads((root/'data/python-challenges-v2.json').read_text())
+        if {q['id'] for q in self.snapshot()['questions']} & {q['id'] for q in seeds}:
+            raise RuntimeError('V2 questions already exist; edit or enable them in the question list')
+        for question in seeds:
+            validate_question(question, execute=True)
+        with self.service.lock:
+            self.check_revision(revision)
+            rows = self.snapshot()['questions']
+            if {q['id'] for q in rows} & {q['id'] for q in seeds}:
+                raise RuntimeError('V2 questions already exist; edit or enable them in the question list')
+            if len(rows)+len(seeds)>100:
+                raise ValueError('Challenge bank is limited to 100 questions')
+            # Preserve every old body/reference/case; only future enablement changes.
+            rows = [dict(q, enabled=False) for q in rows] + seeds
+            with self.service.connect() as db:
+                db.execute('UPDATE challenge_bank SET revision=?,data=?,version=? WHERE singleton=1',
+                           (revision+1, json.dumps(rows, ensure_ascii=False), V2))
+        return self.snapshot()
 
     def mutate(self, revision, question=None, identifier=None, delete=False):
         self.check_revision(revision)

@@ -1,5 +1,5 @@
 export function validateBank(data){
- if(data?.schemaVersion!==1||data.version!=='python-challenges-v1'||!Number.isInteger(data.revision)||data.revision<1||!Array.isArray(data.questions)||data.questions.length>100)throw Error('題庫格式不正確');
+ if(data?.schemaVersion!==1||!['python-challenges-v1','python-challenges-v2'].includes(data.version)||!Number.isInteger(data.revision)||data.revision<1||!Array.isArray(data.questions)||data.questions.length>100)throw Error('題庫格式不正確');
  const ids=new Set();for(const q of data.questions){
   if(!/^CH-[A-Za-z0-9-]{1,80}$/.test(q.id)||ids.has(q.id)||!['easy','medium','hard'].includes(q.difficulty)||!['train','validation','heldout'].includes(q.split)||typeof q.enabled!=='boolean'||['title','topic','group','prompt','baseline','reference','attribution'].some(k=>typeof q[k]!=='string')||!Array.isArray(q.visible)||!Array.isArray(q.hidden)||!Array.isArray(q.sources))throw Error('題目資料不正確');ids.add(q.id);
  }return data;
@@ -22,4 +22,5 @@ export class ChallengesClient{
   catch(e){this.error=e.message;return false;}finally{this.busy=false;this.onUpdate();}
  }
  async remove(id){if(this.busy||!this.data)return false;this.busy=true;this.error=null;this.onUpdate();try{this.data=validateBank(await this.request(`/api/v1/challenges/${encodeURIComponent(id)}/delete`,{method:'POST',body:{expectedRevision:this.data.revision}}));if(this.selectedId===id){this.draft=null;this.selectedId='';}return true;}catch(e){this.error=e.message;return false;}finally{this.busy=false;this.onUpdate();}}
+ async installV2(){if(this.busy||!this.data)return false;this.busy=true;this.error=null;this.onUpdate();try{this.data=validateBank(await this.request('/api/v1/challenges/presets/repair-v2',{method:'POST',body:{expectedRevision:this.data.revision},timeoutMs:90000}));this.draft=null;this.selectedId='';return true;}catch(e){this.error=e.message;return false;}finally{this.busy=false;this.onUpdate();}}
 }
