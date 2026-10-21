@@ -11,13 +11,52 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE, canonical_fixture_budget
+from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE, canonical_fixture_budget, integration_module_budget, INTEGRATION_MODULES
 
 PERFECT = 'gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement'
 APPROVAL = 'gepa_test.GepaWorkflowTests.' + APPROVAL_CASE
 
 
 class GepaBudgetTests(unittest.TestCase):
+    def test_delegated_bank_and_strata_parents_contain_real_workflows_and_post_completion_replays(self):
+        for module in INTEGRATION_MODULES:
+            expanded=expand_plan([('python-'+module,['python','runner',module+'.py'])],ROOT)
+            for name,command in expanded:
+                budget=integration_module_budget(name,2,command,ROOT)
+                self.assertLessEqual(budget['maximumSeconds'],7200)
+                self.assertEqual(budget['maximumSeconds'],sum(budget['phasesSeconds'].values())+30)
+                if module in ('challenge_workflow_test','challenge_v2_workflow_test','challenge_v3_workflow_test','paired_workflow_test'):
+                    self.assertEqual(budget['maximumRollouts'],22)
+                    self.assertEqual(budget['verificationBatches'],66)
+                    self.assertGreaterEqual(budget['maximumSeconds'],4450+240+30+22*5)
+                if module=='strata_workflow_test':
+                    self.assertGreaterEqual(budget['maximumSeconds'],case_budget(APPROVAL,2)['maximumSeconds']+480+120)
+        with self.assertRaisesRegex(ValueError,'split'):
+            integration_module_budget('python-challenge_failure_test',2,['python','runner','challenge_failure_test.py'],ROOT)
+
+    def test_task_cap_cases_split_before_dispatch_and_keep_exact_failed_tail(self):
+        plan=[('python-challenge_failure_test',['python','runner','challenge_failure_test.py'])]
+        expanded=expand_plan(plan,ROOT)
+        self.assertEqual(len(expanded),5)
+        anchor=expanded[-2][1][-1]
+        tail=expand_plan([(plan[0][0],[*plan[0][1],'--from-case',anchor])],ROOT)
+        self.assertEqual(tail,expanded[-2:])
+        with self.assertRaisesRegex(ValueError,'exceeds 7200s'):
+            integration_module_budget('python-exploration_workflow_test',100,[],ROOT)
+
+    def test_delegated_parent_records_named_limits_before_child_dispatch(self):
+        import check_steps
+        from adaptive_validation import calculate
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'tests').mkdir()
+            (root/'tests/strata_workflow_test.py').write_bytes((ROOT/'tests/strata_workflow_test.py').read_bytes())
+            plan=[('python-strata_workflow_test',[sys.executable,'-c','print("delegated budget probe")'])]
+            with patch('check_steps.ROOT',root),patch('adaptive_validation.current',return_value=calculate([.25])),redirect_stdout(io.StringIO()):
+                self.assertEqual(check_steps.run('release',plan=plan,interactive=False),0)
+            row=json.loads(next((root/'.local/test-reports').glob('CHECK-*/report.json')).read_text())['steps'][0]
+            self.assertEqual(row['gepaCaseBudget']['policy'],'delegated-sdk-workload-v1')
+            self.assertGreater(row['maximumSeconds'],row['gepaCaseBudget']['phasesSeconds']['gepaWithApproval'])
+
     def test_canonical_parent_contains_all_three_cases_and_replays(self):
         import check_steps
         from adaptive_validation import calculate
@@ -130,7 +169,7 @@ class GepaBudgetTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT))
         from platform_m.gates import release_step_count
         modules = [('python-' + path.stem, []) for path in sorted((ROOT/'tests').glob('*_test.py'))]
-        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 13)
+        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 13 + 4)
         self.assertEqual(release_step_count(ROOT), 2 + len(expand_plan(modules, ROOT)))
 
     def test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch(self):

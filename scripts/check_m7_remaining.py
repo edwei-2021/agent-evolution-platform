@@ -91,7 +91,8 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
                      'scripts/gepa_validation_budget.py', 'scripts/check_start_selection.py',
                      'scripts/run_m_repair.py','scripts/branch_diagnostics.py','scripts/repair_feedback.py',
                      'scripts/gepa_engine.py','scripts/gepa_sdk.py','scripts/gepa_canonical.py',
-                     'scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py']),
+                     'scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py',
+                     'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py']),
         ('m7-types', [node, 'node_modules/typescript/bin/tsc', '--noEmit', '--strict',
                       '--lib', 'es2020,dom', 'packages/contracts/contracts.ts']),
     ])
@@ -120,7 +121,8 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
                 pattern = command[2]
                 if not anchor.startswith(pattern.removesuffix('.py') + '.'):
                     raise ValueError('Failed case does not belong to the selected runner module')
-                command.extend(['--case' if failed_step.startswith(('python-gepa_test--', 'python-gepa_test:')) else '--from-case', anchor])
+                exact=failed_step.startswith(('python-gepa_test--','python-gepa_test:','python-challenge_failure_test--'))
+                command.extend(['--case' if exact else '--from-case', anchor])
     # Filesystem calibration is cheap, and must precede frozen workflow budgets.
     plan.insert(0, ('filesystem-calibration', [python, str(ROOT/'scripts/calibrate_release_tests.py')]))
     return plan, omitted, completed, origin

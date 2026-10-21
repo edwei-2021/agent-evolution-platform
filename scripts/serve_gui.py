@@ -25,8 +25,11 @@ class DiagnosticServer(ThreadingHTTPServer):
         from diagnostic_log import DiagnosticLog, exception_details
         exc = sys.exc_info()[1]
         runtime = getattr(self,'runtime',None)
-        DiagnosticLog(runtime.root if runtime else DIST.parent).write('http','request.unhandled',
-            level='ERROR',client=client_address[0],**exception_details(exc))
+        try:
+            DiagnosticLog(runtime.root if runtime else DIST.parent).write('http','request.unhandled',
+                level='ERROR',client=client_address[0],**exception_details(exc))
+        except Exception:
+            pass  # Supplementary logging must preserve the original server failure.
         super().handle_error(request,client_address)
 
 
@@ -42,10 +45,13 @@ class GuiHandler(SimpleHTTPRequestHandler):
     def log_request(self, code='-', size='-'):
         from diagnostic_log import DiagnosticLog
         runtime = getattr(self.server,'runtime',None)
-        DiagnosticLog(runtime.root if runtime else DIST.parent).write('http', 'http.access',
-            level='ERROR' if isinstance(code,int) and code>=500 else 'WARNING' if isinstance(code,int) and code>=400 else 'INFO',
-            method=self.command, path=urlsplit(self.path).path[:240], status=code, bytes=size,
-            client=self.client_address[0])
+        try:
+            DiagnosticLog(runtime.root if runtime else DIST.parent).write('http', 'http.access',
+                level='ERROR' if isinstance(code,int) and code>=500 else 'WARNING' if isinstance(code,int) and code>=400 else 'INFO',
+                method=self.command, path=urlsplit(self.path).path[:240], status=code, bytes=size,
+                client=self.client_address[0])
+        except Exception:
+            pass  # An access-log fault cannot abort an otherwise valid HTTP response.
         super().log_request(code,size)
 
     def json_response(self, status, data):

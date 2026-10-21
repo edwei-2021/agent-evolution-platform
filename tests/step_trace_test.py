@@ -96,17 +96,21 @@ class StepApiTests(unittest.TestCase):
                 def get_run(self,id):
                     if id!='RUN-test':raise KeyError('Run not found')
                     return {'status':'completed'}
-            service=Service();service.logs=DebugLog(root)
+            service=Service();service.logs=DebugLog(root);service.root=Path(root)
             with Step(service.logs,'gepa','search','RUN-test'):pass
             class Quiet(GuiHandler):
                 def log_message(self,*args):pass
             server=ThreadingHTTPServer(('127.0.0.1',0),partial(Quiet,directory=str(DIST)));server.runtime=service
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
             try:
-                for path,headers,status in [('/api/v1/debug/steps/RUN-test',{},200),('/api/v1/debug/steps/RUN-missing',{},404),('/api/v1/debug/steps/RUN-test',{'Origin':'https://outside.example'},403),('/api/v1/debug/steps/not-a-run',{},404)]:
-                    conn=HTTPConnection('127.0.0.1',server.server_port);conn.request('GET',path,headers=headers);response=conn.getresponse();data=json.loads(response.read());conn.close()
-                    self.assertEqual(response.status,status)
-                    if status==200:self.assertEqual(data['steps'][0]['name'],'search')
+                from contextlib import nullcontext
+                for fault in (False,True):
+                    with patch('diagnostic_log.DiagnosticLog.write',side_effect=OSError('controlled access-log failure')) if fault else nullcontext() as logging:
+                        for path,headers,status in [('/api/v1/debug/steps/RUN-test',{},200),('/api/v1/debug/steps/RUN-missing',{},404),('/api/v1/debug/steps/RUN-test',{'Origin':'https://outside.example'},403),('/api/v1/debug/steps/not-a-run',{},404)]:
+                            conn=HTTPConnection('127.0.0.1',server.server_port);conn.request('GET',path,headers=headers);response=conn.getresponse();data=json.loads(response.read());conn.close()
+                            self.assertEqual(response.status,status)
+                            if status==200:self.assertEqual(data['steps'][0]['name'],'search')
+                        if fault:self.assertGreaterEqual(logging.call_count,4)
             finally:server.shutdown();server.server_close();worker.join()
 
 if __name__=='__main__':unittest.main()

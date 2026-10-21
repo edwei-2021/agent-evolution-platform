@@ -10,6 +10,61 @@ FULL_CASES = ('test_actual_js_client_to_python_api_dispatch_and_result_validatio
               'test_heldout_regression_blocks_release_even_with_validation_improvement')
 APPROVAL_CASE = FULL_CASES[1]
 MAX_SECONDS = 7200
+SPLIT_MODULES=('gepa_test','challenge_failure_test')
+BANK_MODULES=('challenge_workflow_test','challenge_v2_workflow_test','challenge_v3_workflow_test','paired_workflow_test')
+INTEGRATION_MODULES=(*BANK_MODULES,'challenge_failure_test','exploration_workflow_test','strata_workflow_test')
+
+
+def integration_module_budget(name,io_seconds,command,root):
+    """Contain delegated SDK workflows and post-completion replays in their parent."""
+    module=name.removeprefix('python-').split('--',1)[0]
+    if module not in INTEGRATION_MODULES:return None
+    if not math.isfinite(io_seconds) or io_seconds<0:raise ValueError('Invalid integration storage calibration')
+    from check_start_selection import case_ids
+    ids=case_ids(root,module+'.py');selected=ids
+    for option in ('--case','--from-case'):
+        if option in command:
+            anchor=command[command.index(option)+1]
+            if anchor not in ids:raise ValueError('Unknown integration case: '+anchor)
+            selected=[anchor] if option=='--case' else ids[ids.index(anchor):]
+    if not selected:raise ValueError('Empty integration workload')
+    passes=3
+    if module=='strata_workflow_test':
+        if len(ids)!=3:raise ValueError('Strata workflow manifest changed; audit delegated cases')
+        from validation_wait import repair_workflow_seconds
+        phases={'gepaWithApproval':case_budget('gepa_test.GepaWorkflowTests.'+APPROVAL_CASE,io_seconds)['maximumSeconds'],
+                'llmWorkflowAndReplay':math.ceil(15*(10+io_seconds)+30)+60,
+                'repairWorkflowAndReplay':repair_workflow_seconds(io_seconds)+30,
+                'sdkAdmission':480,'setupAndTeardown':90}
+        rollouts=20;extra=4
+    elif module=='challenge_failure_test':
+        if len(selected)!=1:raise ValueError('Integration module exceeds 7200s; split task-cap cases before dispatch')
+        method=selected[0].rsplit('.',1)[-1]
+        if '.CapClassificationTests.' in selected[0] and method in (
+                'test_late_rollout_publication_cannot_erase_later_calls',
+                'test_only_a_complete_local_call_cap_qualifies_and_infrastructure_remains_fatal'):
+            phases={'controlledClassification':60};rollouts=0;extra=0
+        elif method=='test_last_call_correct_source_is_still_a_failed_task_without_sdk_completion':
+            phases={'sdkAdmission':240,'sdkStartup':120,'requests':20,'tools':10,'replays':10,'setupAndTeardown':60}
+            rollouts=1;extra=1;passes=1
+        elif method in ('test_failed_search_and_final_tasks_score_zero_and_remaining_tail_is_reviewed',
+                        'test_http_failure_aborts_without_scoring_zero_or_running_final_tasks'):
+            rollouts=22;extra=3 if method.startswith('test_failed_search') else 0
+            phases={'workflow':4450,'sdkAdmission':240,'terminalCollection':30,'setupAndTeardown':60,
+                    'postCompletionReplay':math.ceil(extra*rollouts*(5+2*io_seconds))}
+        else:raise ValueError('Unbudgeted task-cap integration case')
+    else:
+        if len(ids)!=1:raise ValueError('Integration manifest changed; audit every added workflow')
+        rollouts=43 if module=='exploration_workflow_test' else 22
+        extra=3 if module=='exploration_workflow_test' else 2 if module=='challenge_workflow_test' else 1
+        phases={'workflow':3630 if module=='exploration_workflow_test' else 4450,'sdkAdmission':240,
+                'terminalCollection':30,'setupAndTeardown':60+math.ceil(60*io_seconds),
+                'postCompletionReplay':math.ceil(extra*rollouts*(5+2*io_seconds))}
+    maximum=sum(phases.values())+30
+    if maximum>MAX_SECONDS:raise ValueError('Integration fixture workload exceeds 7200s; inspect calibration or split cases')
+    return {'policy':'delegated-sdk-workload-v1','selected':selected,'maximumRollouts':rollouts,
+            'verificationBatches':passes*rollouts,'postCompletionPasses':extra,'phasesSeconds':phases,
+            'normalSeconds':max(60,math.ceil(120+rollouts*(4+12*io_seconds))), 'maximumSeconds':maximum}
 
 
 def canonical_fixture_budget(io_seconds):
@@ -110,10 +165,11 @@ def expand_plan(plan, root):
     """One supervised GEPA case per step; no aggregate parent can cut off a case."""
     result = []
     for name, command in plan:
-        if name == 'python-gepa_test' and '--case' not in command:
+        if name in tuple('python-'+module for module in SPLIT_MODULES) and '--case' not in command:
             # Discover the manifest before any expensive imports or model work.
-            tree = ast.parse((Path(root) / 'tests/gepa_test.py').read_text())
-            ids = sorted('gepa_test.' + cls.name + '.' + fn.name
+            module=name.removeprefix('python-')
+            tree = ast.parse((Path(root) / ('tests/'+module+'.py')).read_text())
+            ids = sorted(module+'.' + cls.name + '.' + fn.name
                          for cls in tree.body if isinstance(cls, ast.ClassDef)
                          for fn in cls.body if isinstance(fn, ast.FunctionDef) and fn.name.startswith('test_'))
             base = list(command)

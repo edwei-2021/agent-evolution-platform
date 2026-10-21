@@ -40,6 +40,20 @@ The canonical module also includes controlled child-process cancellation and fai
 
 CI run 39617559487 at source `894cd23` passed M1–M6, including the real Docker-backed native queue, then reached `native_checks_test.NativeChecksTests.test_explicit_scope_preserves_all_original_modules_and_detects_source_or_budget_drift` in M7. Its historical five-module assertion incorrectly equated the fixed health manifest with an expanding `s*_test.py` wildcard. The regression now checks all five original identities, explicitly accounts for the three later archive/Strata modules and proves those modules remain in the complete release plan. Health scope and nested production limits stay unchanged. CI's actual perfect-seed case passed 17 rollouts / 51 verification batches / 68 requests; two local aggregate attempts retained inconsistent earlier call artifacts and correctly failed closed, while the isolated unchanged-source replay passed. Those local failures remain preserved as separate diagnostic evidence.
 
+The subsequent native-health graph exposed `step_trace_test.StepApiTests.test_real_http_read_only_route_preserves_origin_and_unknown_run_boundaries`: a minimal Service fixture lacked the root used by HTTP access diagnostics, and that supplementary exception disconnected the response. The fixture now supplies its root; the real HTTP test also injects access-log write failures and still requires the original 200/403/404 statuses. Access/error logging now isolates diagnostic exceptions while preserving the original server exception. This case stays in the existing ten-case step-trace module and its native health budgets.
+
+The remaining-tail audit also found delegated workflows under generic 600–780 second parents even though their frozen inner work allowed 3630–4450 seconds. Parents now use named pre-dispatch workload budgets, including cold SDK admission, terminal collection, post-completion replay and teardown. No production workflow deadline is extended. Task-cap integration is split into five exact-case steps before its aggregate can exceed 7200 seconds; continuation and the outer monitor use the same expanded manifest (four additional steps).
+
+| Module | Inner workload | Additional parent work |
+| --- | --- | --- |
+| challenge_workflow | ≤22 rollouts, 133 request slots, 66 trusted batches, 4450 s | two full evidence replays, 240 s cold admission, collection/export/teardown |
+| challenge_v2_workflow / challenge_v3_workflow / paired_workflow | same 22-rollout graph | one full approval replay, cold admission, collection/teardown |
+| exploration_workflow | ≤43 rollouts, 262 request slots, 129 trusted batches, 3630 s | three full replays, cold admission, collection/export/teardown |
+| challenge_failure | five exact cases; two bounded workflow cases plus isolated cap/classification cases | successful cap case reserves three additional full/partial replays; no aggregate parent |
+| strata_workflow | delegated LLM, repair and full GEPA approval cases | original GEPA four-replay budget plus bounded LLM/repair replay and cold admission |
+
+The workload suite checks these counts, sums all enclosing phases, rejects excessive calibration before launch and proves that selected failure tails remain exact. Full Docker acceptance still belongs to a source-identified CI run; these bounds alone do not certify WSL storage timing.
+
 ## Remaining Phase M closure (尚待結案項目)
 
 Container-backed GUI GEPA, optimizer-internal crash/resume, repeated final comparison in that GUI path, verified GEPA-selection-to-signed-release assembly, whole-bundle activation/rollback and Git/DB release reconciliation remain separate closure work. The signed M release service and comparison CLI already exist; ledger mode does not falsely label local Skill approval as that complete release path. Real WSL/GPU quality and complete browser end-to-end acceptance require their own evidence.
