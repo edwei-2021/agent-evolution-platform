@@ -33,7 +33,13 @@ class NativeChecksTests(unittest.TestCase):
     def test_explicit_scope_preserves_all_original_modules_and_detects_source_or_budget_drift(self):
         plan = build(ROOT, CALIBRATION)
         self.assertEqual(tuple(r['module'] for r in plan['modules']), MODULES)
-        self.assertEqual(set(MODULES), {p.name for p in (ROOT/'tests').glob('s*_test.py')})
+        self.assertEqual(set(MODULES), {'sdk_runtime_probe_test.py','setup_orchestrator_test.py',
+                                       'setup_test.py','skill_test.py','step_trace_test.py'})
+        release_only={'skill_archive_test.py','strata_diagnostic_test.py','strata_workflow_test.py'}
+        self.assertEqual(set(MODULES)|release_only,{p.name for p in (ROOT/'tests').glob('s*_test.py')})
+        from check_start_selection import release_plan
+        release_names={name for name,_ in release_plan(ROOT,sys.executable,'node')}
+        self.assertTrue({'python-'+Path(name).stem for name in release_only}<=release_names)
         self.assertEqual(validate(plan, ROOT), plan)
         changed = copy.deepcopy(plan)
         changed['modules'][0]['maximumSeconds'] += 1

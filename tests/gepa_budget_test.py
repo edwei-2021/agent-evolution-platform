@@ -18,7 +18,7 @@ APPROVAL = 'gepa_test.GepaWorkflowTests.' + APPROVAL_CASE
 
 
 class GepaBudgetTests(unittest.TestCase):
-    def test_canonical_parent_contains_both_cases_and_all_replays(self):
+    def test_canonical_parent_contains_all_three_cases_and_replays(self):
         import check_steps
         from adaptive_validation import calculate
         budget=canonical_fixture_budget(2)

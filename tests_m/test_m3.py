@@ -19,6 +19,7 @@ def test_concurrent_duplicate_submission_is_one_logical_job(tmp_path):
 def test_lifecycle_completion_and_cancel_fence(tmp_path):
     store = Store(tmp_path/'db')
     identifier = store.submit('one', {})
+    with pytest.raises(ValueError,match='Worker lease'):store.transition(identifier,'running')
     job = store.claim('worker')
     with pytest.raises(ValueError):
         store.complete(job, {})

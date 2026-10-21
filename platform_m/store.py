@@ -177,7 +177,7 @@ class Store:
                 raise KeyError(identifier)
             if state not in TRANSITIONS.get(row['state'], set()):
                 raise ValueError("Invalid lifecycle transition")
-            if row['state'] not in ('draft','queued'):
+            if state!='cancelled' or row['state'] not in ('draft','queued'):
                 if job is None:
                     raise ValueError("Worker lease required")
                 self._owned(db, identifier, job['owner'], job['fence'])
@@ -235,7 +235,7 @@ class Store:
             row = db.execute("SELECT * FROM jobs WHERE id=?", (identifier,)).fetchone()
             if not row or row['state'] != 'interrupted' or row['request_hash'] != expected_hash:
                 raise ValueError("Resume requires same snapshot and interrupted state")
-            if json.loads(row['payload']).get('environment',{}).get('adapter')=='nanobot':
+            if json.loads(row['payload']).get('environment',{}).get('adapter') in ('nanobot','gepa'):
                 raise ValueError('Native interrupted request requires evidence review; automatic model replay is forbidden')
             db.execute("UPDATE jobs SET state='queued',owner=NULL,lease=NULL,fence=fence+1 WHERE id=?", (identifier,))
             self._event(db, identifier, "resumed", {"external_call_may_repeat": True})

@@ -266,4 +266,5 @@ def test_gui_restart_fences_unfinished_work_without_waiting_for_lease_expiry(tmp
     bridge.recover()
     assert ledger.get(identifier)['state']=='interrupted'
     with pytest.raises(RuntimeError,match='Stale worker'):ledger.heartbeat(old)
+    with pytest.raises(ValueError,match='evidence review'):ledger.resume(identifier,ledger.get(identifier)['request_hash'])
     assert not native_once(ledger,bridge.artifacts)

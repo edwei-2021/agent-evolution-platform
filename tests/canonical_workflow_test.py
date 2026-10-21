@@ -77,7 +77,16 @@ class CanonicalWorkflowTests(unittest.TestCase):
             'requests':count,'readRecoveryRequests':0,'workflowBatches':66,'approvalBatches':88}),flush=True)
 
     def test_canonical_cancel_publishes_after_process_cleanup_and_slot_release(self):
-        self.service.command_factory=lambda role,path:[sys.executable,'-c','import time;time.sleep(60)']
+        self.controlled_finalizer(False)
+
+    def test_canonical_failure_publishes_after_process_cleanup_and_slot_release(self):
+        self.controlled_finalizer(True)
+
+    def controlled_finalizer(self,fail):
+        marker=self.service.local/'release-failing-child'
+        program=('from pathlib import Path\nimport sys,time\n'
+                 'while not Path(sys.argv[1]).exists():time.sleep(.01)\nsys.exit(2)') if fail else 'import time;time.sleep(60)'
+        self.service.command_factory=lambda role,path:[sys.executable,'-c',program,str(marker)]
         entered=threading.Event();release=threading.Event();finish=self.service.canonical.finish
         def paused(run):
             entered.set()
@@ -91,17 +100,19 @@ class CanonicalWorkflowTests(unittest.TestCase):
             while self.service.process is None and time.monotonic()<limit:time.sleep(.02)
             self.assertIsNotNone(self.service.process)
             process=self.service.process
-            self.service.canonical.store.request_cancel(identifier)
+            if fail:marker.touch()
+            else:self.service.canonical.store.request_cancel(identifier)
             try:
                 self.assertTrue(entered.wait(10))
                 self.assertIsNotNone(process.poll())
                 self.assertFalse(self.service.ollama.operation.locked())
-                self.assertEqual(self.service.canonical.store.get(identifier)['state'],'cancelling')
+                self.assertEqual(self.service.canonical.store.get(identifier)['state'],'running' if fail else 'cancelling')
                 self.assertEqual(self.service.get_run(run['id'])['status'],'running')
             finally:release.set()
             self.assertTrue(self.service.completion_event.wait(10))
-        self.assertEqual(self.service.get_run(run['id'])['status'],'cancelled')
-        self.assertEqual(self.service.canonical.store.get(identifier)['state'],'cancelled')
+        expected='failed' if fail else 'cancelled'
+        self.assertEqual(self.service.get_run(run['id'])['status'],expected)
+        self.assertEqual(self.service.canonical.store.get(identifier)['state'],expected)
         self.assertEqual(len(fixture.Model.calls),0)
 
 

@@ -13,14 +13,14 @@ MAX_SECONDS = 7200
 
 
 def canonical_fixture_budget(io_seconds):
-    """Two canonical cases: actual search/replay/approval and paused cancellation."""
+    """Three cases: actual search/replay/approval, paused cancellation and failure."""
     if not math.isfinite(io_seconds) or io_seconds<0:raise ValueError('Invalid canonical storage calibration')
     rollouts=10+2*(3+3);calls=rollouts*6+1
     workflow=120+calls*10+rollouts*(24*5+3*5)+30+8*15
-    phases={'sdkAdmission':2*240,'sourceAdmission':2*15,'positiveWorkflow':workflow,
+    phases={'sdkAdmission':3*240,'sourceAdmission':3*15,'positiveWorkflow':workflow,
             'approvalReplay':math.ceil(rollouts*(5+2*io_seconds)),
-            'cancelChildStartup':10,'pausedFinalizers':25,'terminalCollection':60,
-            'setupAndTeardown':60+math.ceil(60*io_seconds)}
+            'controlledChildStartup':20,'pausedFinalizers':35,'terminalCollection':90,
+            'setupAndTeardown':90+math.ceil(90*io_seconds)}
     maximum=sum(phases.values())
     if maximum>MAX_SECONDS:raise ValueError('Canonical fixture workload exceeds 7200s; inspect storage calibration')
     return {'policy':'canonical-gepa-fixture-v1','maximumRollouts':rollouts,'modelRequests':calls,
