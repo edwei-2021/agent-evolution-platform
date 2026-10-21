@@ -233,15 +233,17 @@ def run(profile, *, interactive=True, monitor_id=None, plan=None, metadata=None,
     from gepa_validation_budget import expand_plan
     plan=expand_plan(plan, ROOT)
     calibration=None
-    if any(name=='filesystem-calibration' or name.split(':',1)[0].split('--',1)[0]=='python-gepa_test' for name,_ in plan):
+    if any(name in ('filesystem-calibration','python-canonical_workflow_test') or name.split(':',1)[0].split('--',1)[0]=='python-gepa_test' for name,_ in plan):
         from adaptive_validation import current
         calibration=current()
     # Validate every selected case before dispatching the first model workflow.
     # This also prevents a later excessive calibration from leaving a running
     # report after earlier cases already consumed time.
-    from gepa_validation_budget import module_budget
+    from gepa_validation_budget import module_budget, canonical_fixture_budget
     gepa_limits={name:module_budget(calibration['perCallIoAllowanceSeconds'], command, ROOT)
                  for name,command in plan if name.split(':',1)[0].split('--',1)[0]=='python-gepa_test'}
+    gepa_limits.update({name:canonical_fixture_budget(calibration['perCallIoAllowanceSeconds'])
+                       for name,_ in plan if name=='python-canonical_workflow_test'})
     identifier=identifier or 'CHECK-'+uuid.uuid4().hex
     if not re.fullmatch(r'CHECK-[0-9a-f]{32}',identifier):raise ValueError('Invalid check report identity')
     directory=ROOT/'.local/test-reports'/identifier;directory.mkdir(parents=True)

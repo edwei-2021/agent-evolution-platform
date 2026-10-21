@@ -47,7 +47,8 @@ def validate_bindings(registry):
 
 
 class RuntimeService:
-    def __init__(self, root=ROOT, command_factory=None, stage_timeout=DEFAULT_ROLE_SECONDS):
+    def __init__(self, root=ROOT, command_factory=None, stage_timeout=DEFAULT_ROLE_SECONDS, *, canonical=False):
+        self.canonical = None
         self.root = Path(root).resolve()
         self.local = self.root / '.local'
         self.local.mkdir(exist_ok=True)
@@ -103,6 +104,10 @@ class RuntimeService:
         self.gepa = GepaStore(self)
         from challenge_bank import ChallengeBank
         self.challenges = ChallengeBank(self)
+        if canonical:
+            from gepa_canonical import CanonicalGepa
+            self.canonical=CanonicalGepa(self)
+            self.canonical.recover()
         self.logs.append('runtime', 'INFO', 'Local runtime service started', details={'serviceId': self.service_id})
 
     @staticmethod
@@ -131,6 +136,9 @@ class RuntimeService:
 
     def persist(self):
         self.current['updatedAt'] = now()
+        if self.canonical:self.canonical.observe(self.current)
+        if self.canonical and self.current.get('gepaConfig',{}).get('canonicalJob') and self.current['status'] in TERMINAL:
+            return  # Canonical finalizer publishes only after cleanup and slot release.
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?)', (self.current['id'], self.current['requestId'], json.dumps(self.current), self.current['createdAt']))
 
@@ -304,7 +312,7 @@ class RuntimeService:
             if existing.get('submissionHash', submission_hash) != submission_hash or existing.get('task') != task:
                 raise RuntimeError('Idempotency request ID is already bound to a different submission')
             return self.decorate(existing)
-        if self.current and self.current['status'] not in TERMINAL:
+        if self.current and (self.current['status'] not in TERMINAL or not self.completion_event.is_set()):
             raise RuntimeError('A workflow is already running; cancel or wait before starting another')
         return None
 
@@ -355,7 +363,9 @@ class RuntimeService:
                 identifier = 'RUN-' + str(uuid.uuid4())
                 directory = self.local / 'runs' / identifier
                 directory.mkdir(parents=True)
-                if task=='gepa-evolution':config['runId']=identifier
+                if task=='gepa-evolution':
+                    config['runId']=identifier
+                    if self.canonical:self.canonical.prepare(identifier,request_id,config)
                 if native_plan is not None:
                     (directory/'native-check-plan.json').write_text(json.dumps(native_plan, indent=2))
                 (directory / 'agents.json').write_text(json.dumps(agents, indent=2))
@@ -403,6 +413,8 @@ class RuntimeService:
             if not self.current or self.current['id'] != identifier:
                 raise RuntimeError('Run is not owned by this supervisor')
             self.cancel_event.set()
+            if self.canonical and self.current.get('gepaConfig',{}).get('canonicalJob'):
+                self.canonical.store.request_cancel(self.current['gepaConfig']['canonicalJob']['id'])
             self.event(None, 'Cancellation requested; terminating active process group')
             self.persist()
             return copy.deepcopy(self.current)
@@ -416,6 +428,7 @@ class RuntimeService:
                 self.current['status'] = 'running'
                 self.persist()
             for agent in self.current['agents']:
+                if self.canonical and self.canonical.cancel_requested(self.current):self.cancel_event.set()
                 if self.cancel_event.is_set():
                     break
                 log = directory / (agent['role'] + '.log')
@@ -439,6 +452,7 @@ class RuntimeService:
                         timed_out = False
                         timeout_error = None
                         while self.process.poll() is None:
+                            if self.canonical and self.canonical.cancel_requested(self.current):self.cancel_event.set()
                             if self.cancel_event.wait(0.25):
                                 self.stop_process()
                             elif (self.current.get('task') in MODEL_TASKS and time.monotonic() - workflow_started > (self.current.get('llmConfig') or self.current.get('repairConfig') or self.current['gepaConfig'])['maxSeconds']) or (self.current.get('task') not in MODEL_TASKS and time.monotonic() - started > self.current.get('nativeCheckPlan', {}).get('roleMaximumSeconds', {}).get(agent['role'], self.stage_timeout)):
@@ -458,6 +472,7 @@ class RuntimeService:
                                 self.persist()
                             log_offset = self.capture_log(agent, log, log_offset)
                         code = self.process.wait()
+                        if self.canonical and self.canonical.cancel_requested(self.current):self.cancel_event.set()
                     tail = self.tail(log)
                     self.capture_log(agent, log, log_offset)
                     with self.lock:
@@ -508,11 +523,24 @@ class RuntimeService:
                 self.persist()
 
         finally:
-            try:
-                if provider_leased:
-                    self.ollama.operation.release()
-            finally:
-                completion.set()
+            with self.lock:
+                try:
+                    if provider_leased:
+                        self.ollama.operation.release()
+                    if self.canonical and self.current and self.current.get('task')=='gepa-evolution':
+                        self.canonical.finish(self.current)
+                        with self.connect() as db:
+                            db.execute('UPDATE runs SET data=? WHERE id=?',(json.dumps(self.current),self.current['id']))
+                except Exception as exc:
+                    from branch_diagnostics import record
+                    record(self.root,'M3','gepa.canonical.publication','failed',identifier=self.current['id'],error=exc)
+                    with self.lock:
+                        self.current.update(status='failed',checksPassed=False)
+                        self.event(None,'Canonical persistence failed; release blocked')
+                        with self.connect() as db:
+                            db.execute('UPDATE runs SET data=? WHERE id=?',(json.dumps(self.current),self.current['id']))
+                finally:
+                    completion.set()
 
     @staticmethod
     def tail(path):

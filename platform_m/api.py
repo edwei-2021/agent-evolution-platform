@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from .store import Store
 from .evidence import Artifacts, atomic_write
 from .releases import Releases, signing_key_path
+from scripts.branch_diagnostics import record
 
 def create_app(root, token, role='operator', legacy_port=None):
     root = Path(root).resolve()
@@ -45,18 +46,27 @@ def create_app(root, token, role='operator', legacy_port=None):
             return JSONResponse({'error': 'Invalid Content-Length'}, status_code=400)
         if size < 0 or size > 1000000:
             return JSONResponse({'error': 'Request too large'}, status_code=413)
-        store.event(request_id, 'api.request', {'method': request.method, 'path': request.url.path}, request_id)
-        response = await call_next(request)
-        store.event(request_id, 'api.response', {'status': response.status_code}, request_id)
+        try:
+            store.event(request_id, 'api.request', {'method': request.method, 'path': request.url.path}, request_id)
+            response = await call_next(request)
+            store.event(request_id, 'api.response', {'status': response.status_code}, request_id)
+        except Exception as exc:
+            record(root,'M7','api.authoritative-request','failed',identifier=request_id,error=exc)
+            raise
+        route=getattr(request.scope.get('route'),'name','unknown')
+        record(root,'M7','api.'+route,'failed' if response.status_code>=500 else 'withheld' if response.status_code>=400 else 'completed',
+               identifier=request_id,status=response.status_code)
         response.headers['X-Request-ID'] = request_id
         return response
 
     @app.exception_handler(ValueError)
     async def invalid(request, error):
+        record(root,'M7','api.validation','withheld',identifier=request.state.correlation_id,error=error)
         return JSONResponse({'error': str(error), 'request_id': request.state.correlation_id}, status_code=400)
 
     @app.exception_handler(PermissionError)
     async def forbidden(request, error):
+        record(root,'M7','api.permission','withheld',identifier=request.state.correlation_id,error=error)
         return JSONResponse({'error': str(error)}, status_code=403)
 
     @app.exception_handler(KeyError)
@@ -65,6 +75,7 @@ def create_app(root, token, role='operator', legacy_port=None):
 
     @app.exception_handler(RuntimeError)
     async def conflict(request, error):
+        record(root,'M7','api.conflict','withheld',identifier=request.state.correlation_id,error=error)
         return JSONResponse({'error': str(error)}, status_code=409)
 
     @app.get('/api/m/health')
@@ -94,10 +105,37 @@ def create_app(root, token, role='operator', legacy_port=None):
         return {'id': identifier, 'state': row['state'], 'request_hash': row['request_hash'],
                 'result': json.loads(result[0]) if result else None}
 
+    @app.post('/api/m/nanobot/jobs',status_code=202)
+    async def submit_nanobot(request: Request):
+        spec=await request.json()
+        fields={'task_id','skill_body','label','repetition','calls','seconds','experiment'}
+        if not isinstance(spec,dict) or set(spec)!=fields:
+            raise ValueError('Supply exactly the native task, Skill and bounded execution fields')
+        key=request.headers.get('Idempotency-Key')
+        if not isinstance(key,str) or not 1<=len(key)<=112:
+            raise ValueError('Idempotency-Key must contain 1..112 characters')
+        key='nanobot:'+key
+        with store.db() as db:
+            prior=db.execute('SELECT id,payload FROM jobs WHERE idem=?',(key,)).fetchone()
+        if prior:
+            frozen=json.loads(prior['payload'])
+            if frozen.get('submission')!=spec:
+                raise ValueError('Idempotency key reused with different native input')
+            if store.get(prior['id'])['state']=='queued':
+                store.configure(prior['id'],frozen['configuration_hash'])
+            return {'id':prior['id'],'state':store.get(prior['id'])['state']}
+        from scripts.run_m_repair import prepare
+        # Explicit POST only: dependency/model/data freezing stays out of reads.
+        _,_,config,payload=await asyncio.to_thread(prepare,root,image='aep-evaluator:m',**spec)
+        payload['submission']=spec
+        payload['configuration_hash']=artifacts.put(config)
+        identifier=store.submit(key,payload,request.state.correlation_id)
+        store.configure(identifier,payload['configuration_hash'])
+        return {'id':identifier,'state':store.get(identifier)['state']}
+
     @app.post('/api/m/jobs/{identifier}/cancel')
     def cancel(identifier: str):
-        store.transition(identifier, 'cancelled')
-        return {'id': identifier, 'state': 'cancelled'}
+        return {'id': identifier, 'state': store.request_cancel(identifier)}
 
     @app.post('/api/m/jobs/{identifier}/resume')
     async def resume(identifier: str, request: Request):

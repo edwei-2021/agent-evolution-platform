@@ -7,10 +7,13 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from repair_sdk import run_sdk
 from repair_engine import RepairRunner, provenance
 from repair_fixture import SKILL
 from skill_engine import write
+
+async def execute_sdk(directory,config,runner):
+    from repair_sdk import run_sdk
+    return await run_sdk(directory,config,runner)
 
 def main(directory):
     cfg = json.loads((directory/'repair-config.json').read_text())
@@ -30,16 +33,26 @@ def main(directory):
     (directory/'repair-baseline.py').write_text(fixture['baseline'])
     write(directory/'repair-tools.json', [])
     write(directory/'repair-calls.json', [])
+    runner=RepairRunner(directory,cfg)
+    original_test=None
     if cfg.get('evaluatorImage'):
         import repair_engine
         from platform_m.evaluator import evaluate
         def container_test(source, split, fixture=None):
             report = evaluate([{'source': source, 'split': split, 'fixture': fixture}], cfg['evaluatorImage'])
-            if not report['results'] or not report['cleanup']['removed']:
-                raise RuntimeError('Container visible evaluation failed or cleanup unconfirmed')
+            if report['verdict']=='invalid_evaluation' or not report['results'] or not report['cleanup']['removed']:
+                runner.infrastructure_failure=RuntimeError('Container visible evaluation failed or cleanup unconfirmed')
+                from branch_diagnostics import record
+                record(cfg['logRoot'],'M4','native.visible-evaluator','failed',identifier=directory.name,cleanupRemoved=report['cleanup']['removed'],results=len(report['results']))
+                raise runner.infrastructure_failure
             return report['results'][0]
+        original_test=repair_engine.trusted_test
         repair_engine.trusted_test = container_test
-    asyncio.run(run_sdk(directory, cfg, RepairRunner(directory, cfg)))
+    try:
+        asyncio.run(execute_sdk(directory,cfg,runner))
+        if getattr(runner,'infrastructure_failure',None) is not None:raise runner.infrastructure_failure
+    finally:
+        if original_test is not None:repair_engine.trusted_test=original_test
     calls = json.loads((directory/'repair-calls.json').read_text())
     initial = '\n'.join(m.get('content', '') or '' for m in calls[0]['request']['messages'])
     if body not in initial or fixture['prompt'] not in initial:
@@ -49,7 +62,7 @@ def main(directory):
                                        ensure_ascii=False, allow_nan=False).encode()).hexdigest()
     write(directory/'canonical-sdk.json', {'loaded_skill_hash': digest(cfg['skill']),
           'candidate_source': (directory/'repair-candidate.py').read_text(),
-          'calls': len(calls), 'sdk_version': cfg['sdk']['version'], 'stop_reason': 'completed'})
+          'calls': len(calls), 'toolCalls':len(json.loads((directory/'repair-tools.json').read_text())), 'sdk_version': cfg['sdk']['version'], 'stop_reason': 'completed'})
 
 if __name__ == '__main__':
     main(Path(sys.argv[1]).resolve())

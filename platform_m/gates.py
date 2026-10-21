@@ -63,7 +63,7 @@ CHILD_STARTUP_SECONDS = 360
 CHILD_HEARTBEAT_SECONDS = 120
 CHILD_CLEANUP_SECONDS = 60
 FIRST_RUN_SECONDS = {
-    'M1': [15, 20], 'M2': [15, 30, 120], 'M3': [30], 'M4': [60, 30],
+    'M1': [15, 20], 'M2': [15, 30, 120], 'M3': [30, 180], 'M4': [60, 30],
     'M5': [60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
 }
 
@@ -385,7 +385,7 @@ def plans(root, python):
             *[str(p.relative_to(root)) for p in sorted((root/'tests').glob('*.test.js'))]]]),
         ('M2', [[python,'scripts/generate_m_contracts.py','--check'],
                 pytest+['tests_m/test_m2.py'],pytest+['tests_m/test_nanobot_bridge.py']]),
-        ('M3', [pytest+['tests_m/test_m3.py']]),
+        ('M3', [pytest+['tests_m/test_m3.py'],pytest+['tests_m/test_native_queue.py']]),
         ('M4', [[python,'scripts/check_m_environment.py','--docker'],
                 pytest+['tests_m/test_m4.py']]),
         ('M5', [pytest+['tests_m/test_m5.py']]),
@@ -399,6 +399,8 @@ def plans(root, python):
                     'scripts/check_steps.py','scripts/run_test_module.py','scripts/calibrate_release_tests.py',
                     'scripts/check_m7_remaining.py','scripts/native_agents.py',
                     'scripts/native_check_plan.py','scripts/native_check_support.py',
-                    'scripts/check_start_selection.py','scripts/gepa_validation_budget.py'],
+                    'scripts/check_start_selection.py','scripts/gepa_validation_budget.py','scripts/run_m_repair.py',
+                    'scripts/branch_diagnostics.py','scripts/repair_feedback.py','scripts/gepa_engine.py','scripts/gepa_sdk.py',
+                    'scripts/gepa_canonical.py','scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]

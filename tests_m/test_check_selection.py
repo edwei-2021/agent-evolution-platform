@@ -53,18 +53,20 @@ def test_unknown_stage_and_out_of_range_steps_fail(stage,step):
         selected_plan(fixture_plan(),ROOT,stage,step)
 
 
-def test_menu_drills_into_m7_release_and_skips_ten_passed_gepa_cases():
+def test_menu_drills_into_m7_release_and_skips_only_cases_before_selected_identity():
     plan = plans(ROOT,sys.executable)
     catalog = release_plan(ROOT,'python','node')
     release_index = [name for name,_ in catalog].index('python-gepa_test') + 1
-    answers = iter(['7','5',str(release_index),'11'])
+    cases = case_ids(ROOT,'gepa_test.py')
+    selected_index = cases.index(PERFECT)
+    answers = iter(['7','5',str(release_index),str(selected_index+1)])
     with redirect_stdout(io.StringIO()):
         selected,scope = select_start(plan,ROOT,catalog,interactive=True,read=lambda _:next(answers))
     assert [stage for stage,_ in selected] == ['M7']
     assert len(selected[0][1]) == 3
     command = selected[0][1][0]
     assert command[-4:] == ['--from-step','python-gepa_test','--from-case',PERFECT]
-    assert len(scope['omittedCases']) == 10
+    assert scope['omittedCases'] == cases[:selected_index]
     assert scope['fromCase'] == PERFECT
     tail,omitted = release_tail(catalog,ROOT,'python-gepa_test',PERFECT)
     from scripts.gepa_validation_budget import expand_plan

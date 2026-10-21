@@ -9,11 +9,14 @@ import uuid
 from .contracts import Event, StepCheck, Evaluation
 from .evidence import canonical, digest, redact
 
+from scripts.branch_diagnostics import diagnosed
+
 HEAD = 1
 TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 TRANSITIONS = {"draft": {"queued", "cancelled"}, "queued": {"running", "cancelled"},
-               "running": {"evaluating", "failed", "cancelled", "interrupted"},
-               "evaluating": {"completed", "failed", "cancelled", "interrupted"}}
+               "running": {"evaluating", "failed", "cancelling", "cancelled", "interrupted"},
+               "evaluating": {"completed", "failed", "cancelling", "cancelled", "interrupted"},
+               "cancelling": {"cancelled", "failed", "interrupted"}}
 
 SCHEMA = """
 CREATE TABLE jobs(id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, request_hash TEXT NOT NULL,
@@ -51,6 +54,7 @@ class Store:
             raise
         finally:
             db.close()
+    @diagnosed('M3','ledger.migrate')
     def migrate(self):
         import fcntl
         stream = self.path.with_suffix(self.path.suffix+'.migration.lock').open('a+')
@@ -85,6 +89,7 @@ class Store:
                               (identifier, after, limit)).fetchall()
         return [Event(seq=r['seq'], aggregate_id=r['aggregate_id'], correlation_id=r['correlation_id'],
                       type=r['type'], at=r['at'], payload=json.loads(r['payload'])).model_dump() for r in rows]
+    @diagnosed('M3','ledger.submit')
     def submit(self, key, payload, correlation=None):
         if not isinstance(key, str) or not 1 <= len(key) <= 120:
             raise ValueError("Idempotency key required")
@@ -107,6 +112,37 @@ class Store:
         if not row:
             raise KeyError(identifier)
         return {**dict(row), 'payload': json.loads(row['payload'])}
+    @diagnosed('M3','ledger.configure')
+    def configure(self, identifier, config_hash):
+        if not isinstance(config_hash,str) or len(config_hash)!=64 or any(c not in '0123456789abcdef' for c in config_hash):
+            raise ValueError('Immutable configuration hash required')
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT state,payload FROM jobs WHERE id=?',(identifier,)).fetchone()
+            if not row or row['state']!='queued' or json.loads(row['payload']).get('environment',{}).get('adapter')!='nanobot':
+                raise ValueError('Only a queued native task can be configured')
+            old=db.execute('SELECT hash FROM checkpoints WHERE job_id=? AND ordinal=-1',(identifier,)).fetchone()
+            if old:return old[0]
+            db.execute('INSERT INTO checkpoints VALUES(?,-1,?)',(identifier,config_hash))
+            self._event(db,identifier,'configuration.frozen',{'config_hash':config_hash})
+            return config_hash
+    @diagnosed('M3','ledger.claim-id')
+    def claim_id(self, identifier, owner, seconds=30):
+        if type(seconds) is not int or not 1<=seconds<=3600:
+            raise ValueError('Invalid lease')
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT * FROM jobs WHERE id=? AND state=\'queued\'',(identifier,)).fetchone()
+            if not row:return None
+            if json.loads(row['payload']).get('environment',{}).get('adapter')=='nanobot' and not db.execute(
+                    'SELECT 1 FROM checkpoints WHERE job_id=? AND ordinal=-1',(identifier,)).fetchone():
+                raise ValueError('Native configuration must be frozen before dispatch')
+            token=owner+':'+secrets.token_hex(8)
+            db.execute('UPDATE jobs SET state=\'running\',owner=?,lease=?,fence=fence+1 WHERE id=?',
+                       (token,time.time()+seconds,identifier))
+            self._event(db,identifier,'running',{'owner':owner,'fence':row['fence']+1})
+            return {**dict(row),'payload':json.loads(row['payload']),'owner':token,'fence':row['fence']+1}
+    @diagnosed('M3','ledger.claim')
     def claim(self, owner, seconds=30, adapter=None):
         if not 1 <= seconds <= 3600:
             raise ValueError("Invalid lease")
@@ -132,6 +168,7 @@ class Store:
             db.execute("BEGIN IMMEDIATE")
             self._owned(db, job['id'], job['owner'], job['fence'])
             db.execute("UPDATE jobs SET lease=? WHERE id=?", (time.time()+seconds, job['id']))
+    @diagnosed('M3','ledger.transition')
     def transition(self, identifier, state, job=None):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -140,12 +177,38 @@ class Store:
                 raise KeyError(identifier)
             if state not in TRANSITIONS.get(row['state'], set()):
                 raise ValueError("Invalid lifecycle transition")
-            if state != 'cancelled':
+            if row['state'] not in ('draft','queued'):
                 if job is None:
                     raise ValueError("Worker lease required")
                 self._owned(db, identifier, job['owner'], job['fence'])
             db.execute("UPDATE jobs SET state=? WHERE id=?", (state, identifier))
             self._event(db, identifier, state, {})
+    @diagnosed('M3','ledger.cancel-request')
+    def request_cancel(self, identifier):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT state FROM jobs WHERE id=?',(identifier,)).fetchone()
+            if not row:raise KeyError(identifier)
+            if row['state'] in TERMINAL or row['state']=='cancelling':return row['state']
+            state='cancelled' if row['state'] in ('draft','queued') else 'cancelling'
+            db.execute('UPDATE jobs SET state=? WHERE id=?',(state,identifier))
+            self._event(db,identifier,'cancel.requested',{'state':state,'cleanup_pending':state=='cancelling'})
+            if state=='cancelled':self._event(db,identifier,'cancelled',{'dispatched':False})
+            return state
+    @diagnosed('M3','ledger.gui-restart')
+    def interrupt_gui(self, identifier, fence, run_id):
+        """Called only by the GUI supervisor holding the exclusive runtime lock."""
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT * FROM jobs WHERE id=?',(identifier,)).fetchone()
+            if not row:raise KeyError(identifier)
+            payload=json.loads(row['payload'])
+            if (payload.get('environment',{}).get('adapter')!='gepa' or payload.get('run_id')!=run_id or
+                    row['fence']!=fence or row['state'] not in ('running','evaluating','cancelling')):
+                raise ValueError('GUI recovery identity/fence mismatch')
+            db.execute("UPDATE jobs SET state='interrupted',fence=fence+1 WHERE id=?",(identifier,))
+            self._event(db,identifier,'interrupted',{'reason':'exclusive GUI supervisor restarted; no external-call replay'})
+    @diagnosed('M3','ledger.complete')
     def complete(self, job, result):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -155,23 +218,28 @@ class Store:
             db.execute("INSERT INTO results VALUES(?,?,?)", (job['id'], job['fence'], canonical(result).decode()))
             db.execute("UPDATE jobs SET state='completed' WHERE id=?", (job['id'],))
             self._event(db, job['id'], "completed", {"result_hash": digest(result)})
+    @diagnosed('M3','ledger.reconcile')
     def reconcile(self):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            rows = db.execute("SELECT id FROM jobs WHERE state IN ('running','evaluating') AND lease<?",
+            rows = db.execute("SELECT id FROM jobs WHERE state IN ('running','evaluating','cancelling') AND lease<?",
                               (time.time(),)).fetchall()
             for row in rows:
                 db.execute("UPDATE jobs SET state='interrupted',fence=fence+1 WHERE id=?", (row['id'],))
                 self._event(db, row['id'], "interrupted", {"reason": "expired lease; no automatic model retry"})
         return len(rows)
+    @diagnosed('M3','ledger.resume')
     def resume(self, identifier, expected_hash):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT * FROM jobs WHERE id=?", (identifier,)).fetchone()
             if not row or row['state'] != 'interrupted' or row['request_hash'] != expected_hash:
                 raise ValueError("Resume requires same snapshot and interrupted state")
+            if json.loads(row['payload']).get('environment',{}).get('adapter')=='nanobot':
+                raise ValueError('Native interrupted request requires evidence review; automatic model replay is forbidden')
             db.execute("UPDATE jobs SET state='queued',owner=NULL,lease=NULL,fence=fence+1 WHERE id=?", (identifier,))
             self._event(db, identifier, "resumed", {"external_call_may_repeat": True})
+    @diagnosed('M3','ledger.checkpoint')
     def checkpoint(self, job, ordinal, identifier):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -182,14 +250,17 @@ class Store:
                     raise ValueError("Checkpoint changed")
                 return
             db.execute("INSERT INTO checkpoints VALUES(?,?,?)", (job['id'], ordinal, identifier))
+    @diagnosed('M3','ledger.evaluation')
     def evaluation(self, value):
         value = Evaluation.model_validate(value).model_dump()
         with self.db() as db:
             db.execute("INSERT INTO evaluations VALUES(?,?)", (value['id'], canonical(value).decode()))
+    @diagnosed('M3','ledger.check')
     def check(self, value):
         value = StepCheck.model_validate(value).model_dump()
         with self.db() as db:
             db.execute("INSERT INTO checks VALUES(?,?)", (value['id'], canonical(value).decode()))
+    @diagnosed('M3','ledger.backup')
     def backup(self, destination):
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)

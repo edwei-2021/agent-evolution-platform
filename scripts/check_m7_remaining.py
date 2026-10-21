@@ -88,7 +88,10 @@ def build_plan(release_plan, prior, failed_step, anchor, node):
                      'scripts/check_steps.py', 'scripts/run_test_module.py',
                      'scripts/calibrate_release_tests.py', 'scripts/check_m7_remaining.py',
                      'scripts/native_agents.py', 'scripts/native_check_plan.py', 'scripts/native_check_support.py',
-                     'scripts/gepa_validation_budget.py', 'scripts/check_start_selection.py']),
+                     'scripts/gepa_validation_budget.py', 'scripts/check_start_selection.py',
+                     'scripts/run_m_repair.py','scripts/branch_diagnostics.py','scripts/repair_feedback.py',
+                     'scripts/gepa_engine.py','scripts/gepa_sdk.py','scripts/gepa_canonical.py',
+                     'scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py']),
         ('m7-types', [node, 'node_modules/typescript/bin/tsc', '--noEmit', '--strict',
                       '--lib', 'es2020,dom', 'packages/contracts/contracts.ts']),
     ])

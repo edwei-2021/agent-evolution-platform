@@ -1,5 +1,7 @@
 # Runtime Diagnostic Logs (執行期診斷紀錄)
 
+[Phase M branch diagnostics](phase-m-ledger-followup.md) add stable decision names, scalar admission/release facts and source-frame locations across real queue/GEPA/ledger/release paths. Diagnostic failure remains isolated; authoritative evidence failure remains fatal (診斷寫入失敗不改結果，正式證據寫入失敗會阻擋流程).
+
 The GUI automatically records categorized local metadata after startup. A download combines these logs with recent persisted status and source identity, so troubleshooting can use one archive rather than screenshots and repeated model runs.
 
 ## Start and collect (啟動與收集)

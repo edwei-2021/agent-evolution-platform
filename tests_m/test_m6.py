@@ -58,3 +58,34 @@ def test_budget_resume_and_over_budget_rejection():
         resumed.reserve('t1', {'search_tasks':1,'model_calls':6}, {'skill':'S1'})
     with pytest.raises(ValueError):
         resumed.reserve('t2', {'search_tasks':80}, {})
+
+def test_validation_net_gain_cannot_hide_a_lost_baseline_success(posix_tmp_path):
+    service,_,manifest=approved_release(posix_tmp_path)
+    with service.store.db() as db:
+        import json
+        rows=[json.loads(r[0]) for r in db.execute('SELECT data FROM evaluations')]
+    first=next(v['task_id'] for v in rows if v['split']=='validation')
+    replaced={}
+    for value in rows:
+        if value['split']=='validation' and value['task_id']==first:
+            score=int(value['label']=='baseline')
+            new={**value,'id':value['id']+'-regression','score':score,
+                 'verdict':'pass' if score else 'fail','failure_category':'none' if score else 'assertion'}
+            service.store.evaluation(new);replaced[value['id']]=new['id']
+    manifest={**manifest,'result_ids':[replaced.get(i,i) for i in manifest['result_ids']]}
+    with pytest.raises(ValueError,match='lost baseline successes'):
+        service.register(manifest)
+
+def test_release_replay_rejects_uncommitted_execution_before_evaluator_dispatch(posix_tmp_path):
+    from unittest.mock import patch
+    service,_,manifest=approved_release(posix_tmp_path)
+    task=next(t for t in service.artifacts.get(manifest['dataset_hash'])['tasks'] if t['split']=='validation')
+    identifier=service.store.submit('uncommitted-release',{})
+    execution={'status':'succeeded','task_id':task['id'],'run_id':identifier,
+               'loaded_skill_hash':manifest['skill_hash'],'output':{'candidate_source':'pass'}}
+    value={'task_id':task['id'],'split':task['split'],'run_id':identifier,
+           'artifacts':[service.artifacts.put(execution),service.artifacts.put({'verdict':'pass'})]}
+    with patch('platform_m.evaluator.evaluate',side_effect=AssertionError('No replay before commitment')) as evaluator:
+        with pytest.raises(ValueError,match='Committed completed execution'):
+            service.replay(value,manifest)
+        evaluator.assert_not_called()

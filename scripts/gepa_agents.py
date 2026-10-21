@@ -8,7 +8,11 @@ from skill_engine import write
 
 @traced('gepa','role.execute')
 def run(role,directory):
-    cfg=json.loads((directory/'gepa-config.json').read_text());progress(directory,phase=role)
+    cfg=json.loads((directory/'gepa-config.json').read_text())
+    if cfg.get('canonicalJob'):
+        from gepa_canonical import source_snapshot,ROOT
+        if cfg['canonicalSourceHash']!=source_snapshot(ROOT)[0]:raise ValueError('Canonical source changed before role dispatch')
+    progress(directory,phase=role)
     if role=='coordinator':
         for name in ('gepa-calls.json','gepa-rollouts.json','gepa-proposals.json'):write(directory/name,[])
         print('Grouped dataset and server-owned model/SDK/tool budgets frozen.',flush=True)

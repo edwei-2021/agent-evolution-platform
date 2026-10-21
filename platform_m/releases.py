@@ -1,4 +1,5 @@
 """Evidence-derived immutable manifests, Ed25519 approval and transactional pointers."""
+from scripts.branch_diagnostics import diagnosed
 import base64
 import hashlib
 import json
@@ -45,6 +46,7 @@ class Releases:
         if self.key_path.is_symlink() or self.key_path.stat().st_mode & 0o077:
             raise RuntimeError('Signing key requires owner-only permissions')
         return Ed25519PrivateKey.from_private_bytes(self.key_path.read_bytes())
+    @diagnosed('M6','release.register')
     def register(self, manifest):
         release = Release.model_validate(manifest).model_dump()
         for name in ('skill_hash', 'workflow_hash', 'runtime_hash', 'model_policy_hash', 'tool_policy_hash',
@@ -83,6 +85,11 @@ class Releases:
         totals = {label: sum(v['score'] for v in validation if v['label'] == label) for label in ('baseline','candidate')}
         if totals['candidate'] <= totals['baseline']:
             raise ValueError('Validation did not improve; retain baseline')
+        validation_scores = {(v['label'],v['task_id']):v['score'] for v in validation}
+        report['validation_regressions'] = sorted(task for task in expected_tasks
+            if validation_scores['baseline',task] == 1 and validation_scores['candidate',task] == 0)
+        if report['validation_regressions']:
+            raise ValueError('Validation lost baseline successes; retain baseline')
         report['validation_totals'] = totals
         report['result_ids'] = sorted(release['result_ids'])
         if not report['eligible'] or report['evaluator_hash'] != release['evaluator_hash']:
@@ -95,6 +102,7 @@ class Releases:
         with self.store.db() as db:
             db.execute('INSERT OR IGNORE INTO releases VALUES(?,?,?)', (identifier, canonical(release).decode(), comparison_hash))
         return identifier
+    @diagnosed('M6','release.replay')
     def replay(self, value, release):
         # Recompute task success from frozen source/fixture in the same protected image.
         from .evaluator import evaluate
@@ -106,6 +114,19 @@ class Releases:
         execution = self.artifacts.get(value['artifacts'][0])
         if execution.get('status') != 'succeeded' or execution.get('task_id') != value['task_id']:
             raise ValueError('Verified execution required before release')
+        parent=execution.get('output',{}).get('canonical_job_id',execution.get('run_id'))
+        with self.store.db() as db:
+            committed=db.execute("SELECT r.data FROM results r JOIN jobs j ON j.id=r.job_id "
+                "WHERE j.id=? AND j.state='completed'",(parent,)).fetchone()
+        if not committed or execution.get('run_id')!=value['run_id']:
+            raise ValueError('Committed completed execution required before release')
+        final=json.loads(committed[0])
+        if parent==value['run_id'] and (final.get('evaluation')!=value or final.get('execution')!=execution):
+            raise ValueError('Release evaluation differs from committed execution')
+        if parent!=value['run_id'] and not any(e['type']=='rollout.committed' and
+                e['payload'].get('execution_hash')==value['artifacts'][0]
+                for e in self.store.events(parent,limit=500)):
+            raise ValueError('Rollout is absent from committed parent evidence')
         loaded = execution['loaded_skill_hash']
         self.artifacts.get(loaded)
         if value['label'] == 'candidate' and loaded != release['skill_hash']:
@@ -116,6 +137,7 @@ class Releases:
         if report['verdict'] != expected or not report['cleanup']['removed']:
             raise ValueError('Fresh evaluator replay differs from stored verdict')
         return loaded
+    @diagnosed('M6','release.approve')
     def approve(self, identifier, actor, role, rationale):
         if role != 'approver' or not actor or not rationale.strip():
             raise PermissionError('Approver identity and rationale required')
@@ -132,6 +154,7 @@ class Releases:
             db.execute('INSERT INTO approvals VALUES(?,?,?,?,?,?)', (identifier, actor, time.time(), rationale,
                         signature, base64.b64encode(public).decode()))
             self.store._event(db, identifier, 'approved', {'actor': actor, 'rationale': rationale})
+    @diagnosed('M6','release.verify')
     def verify(self, identifier, db):
         row = db.execute('SELECT r.data,a.signature,a.public_key FROM releases r JOIN approvals a ON a.hash=r.hash WHERE r.hash=?',
                          (identifier,)).fetchone()
@@ -153,6 +176,7 @@ class Releases:
     def active(self):
         with self.store.db() as db:
             return dict(db.execute('SELECT hash,revision FROM active').fetchone())
+    @diagnosed('M6','release.activate')
     def activate(self, identifier, expected_revision, actor, role, rollback=False):
         if role != 'approver' or not actor:
             raise PermissionError('Only approver may activate')

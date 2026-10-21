@@ -11,13 +11,34 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE
+from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE, canonical_fixture_budget
 
 PERFECT = 'gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement'
 APPROVAL = 'gepa_test.GepaWorkflowTests.' + APPROVAL_CASE
 
 
 class GepaBudgetTests(unittest.TestCase):
+    def test_canonical_parent_contains_both_cases_and_all_replays(self):
+        import check_steps
+        from adaptive_validation import calculate
+        budget=canonical_fixture_budget(2)
+        self.assertEqual(budget['maximumRollouts'],22)
+        self.assertEqual(budget['modelRequests'],133)
+        self.assertEqual(budget['verificationBatches'],66)
+        self.assertEqual(budget['approvalBatches'],22)
+        self.assertEqual(budget['workflowSeconds'],4570)
+        self.assertEqual(budget['maximumSeconds'],sum(budget['phasesSeconds'].values()))
+        self.assertLessEqual(budget['maximumSeconds'],7200)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            plan=[('python-canonical_workflow_test',[sys.executable,'-c','print("canonical budget probe")'])]
+            with patch('check_steps.ROOT',root),patch('adaptive_validation.current',return_value=calculate([.25])),redirect_stdout(io.StringIO()):
+                self.assertEqual(check_steps.run('release',plan=plan,interactive=False),0)
+            row=json.loads(next((root/'.local/test-reports').glob('CHECK-*/report.json')).read_text())['steps'][0]
+            self.assertGreaterEqual(row['maximumSeconds'],budget['workflowSeconds']+budget['phasesSeconds']['sdkAdmission'])
+            self.assertEqual(row['gepaCaseBudget']['verificationBatches'],66)
+        with self.assertRaises(ValueError):canonical_fixture_budget(100)
+
     def test_each_rollout_is_verified_three_times_not_once(self):
         budget = smoke_budget(2)
         self.assertEqual(budget['maximumRollouts'], 20)

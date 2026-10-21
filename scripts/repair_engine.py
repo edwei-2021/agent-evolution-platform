@@ -123,6 +123,7 @@ class RepairRunner:
 
     @traced('nanobot','model.call')
     def call(self,messages,tools):
+        if getattr(self,'infrastructure_failure',None) is not None:raise self.infrastructure_failure
         cfg=self.config
         if len(self.calls)>=cfg['callBudget'] or time.time()>=cfg['deadlineEpoch']:raise RuntimeError('Repair model call/time budget exhausted')
         grants=() if cfg.get('reflectionOnly') else TOOLS

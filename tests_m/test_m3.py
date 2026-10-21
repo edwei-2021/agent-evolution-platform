@@ -22,7 +22,11 @@ def test_lifecycle_completion_and_cancel_fence(tmp_path):
     job = store.claim('worker')
     with pytest.raises(ValueError):
         store.complete(job, {})
-    store.transition(identifier, 'cancelled')
+    assert store.request_cancel(identifier)=='cancelling'
+    assert store.get(identifier)['state']=='cancelling'
+    store.heartbeat(job)
+    with pytest.raises(ValueError):store.complete(job,{})
+    store.transition(identifier,'cancelled',job)
     with pytest.raises(RuntimeError):
         store.heartbeat(job)
     with pytest.raises(ValueError):

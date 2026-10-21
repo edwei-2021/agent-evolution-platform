@@ -106,7 +106,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
             if path == '/api/v1/runtime/capabilities':
                 from setup_wsl import find_node
                 sdk, optimizer = runtime.sdk_snapshot()
-                self.json_response(200, {'schemaVersion': 1, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': optimizer['available'], 'gepaVersion': optimizer['version'], 'gepaWorkerAvailable': optimizer['available'], 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
+                self.json_response(200, {'schemaVersion': 1, 'canonicalMode': getattr(runtime,'canonical',None) is not None, 'mode': 'native-tools', 'serviceId': runtime.service_id, 'csrfToken': runtime.csrf_token, 'engine': 'native-tool-agent', 'skillEngine': 'local-rule-search-v1', 'nodeReady': bool(find_node()), 'nanobotInstalled': sdk['available'], 'nanobotSdkVersion': sdk['version'], 'pythonRepairAvailable': sdk['available'], 'gepaInstalled': optimizer['available'], 'gepaVersion': optimizer['version'], 'gepaWorkerAvailable': optimizer['available'], 'frameworkConnected': False, 'modelConnected': False, 'llmSkillEngine': 'ollama-prompt-reflection-v1', 'llmWorkerAvailable': True})
             elif path == '/api/v1/runtime':
                 self.json_response(200, runtime.snapshot())
             elif path == '/api/v1/gepa':
@@ -325,6 +325,7 @@ class GuiHandler(SimpleHTTPRequestHandler):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='Local GUI HTTP port')
+    parser.add_argument('--canonical',action='store_true',help='Persist actual GUI GEPA execution in the Phase M ledger; use the M environment')
     parser.add_argument('--static-only', action='store_true', help='Serve GUI without starting the local runtime service')
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
@@ -361,7 +362,7 @@ def main(argv=None):
     if not args.static_only:
         from runtime_service import RuntimeService
         try:
-            runtime = RuntimeService(DIST.parent)
+            runtime = RuntimeService(DIST.parent,canonical=args.canonical)
             server.runtime = runtime
         except (RuntimeError, OSError) as exc:
             diagnostics.write('startup','runtime.start_failed',level='ERROR',**exception_details(exc))

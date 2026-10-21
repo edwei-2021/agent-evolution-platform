@@ -1,5 +1,6 @@
 """Actual pinned GEPA optimizer with serial fresh nanobot evaluations."""
 from step_trace import traced
+from branch_diagnostics import diagnosed, record as decision
 import asyncio
 import importlib.metadata
 import json
@@ -68,6 +69,9 @@ class Session:
         if 'taskOutcome' in result:row.update({k:result[k] for k in ('taskOutcome','sdkStopReason')})
         row.update(score=score(result),evidenceHash=result['evidenceHash'],finishedAt=time.time());self.ledger.append(row)
         write(self.directory/'gepa-rollouts.json',self.ledger)
+        if self.cfg.get('canonicalJob'):
+            from gepa_canonical import save_rollout
+            save_rollout(self.directory,self.cfg,row,result,task)
         with self.publish_lock:
             progress(self.directory,rollouts=len(self.ledger),metricEvaluations=sum(r['stage']=='search' for r in self.ledger))
         print(f'{identifier} {stage} {task["id"]}: trusted task success {row["score"]}',flush=True)
@@ -79,6 +83,7 @@ class Adapter:
         if set(candidate)!={'skill_body'}:raise ValueError('Only the Skill body may evolve')
         body=skill(candidate['skill_body'])['body']
         used=sum(r['stage']=='search' for r in self.session.ledger)
+        decision(self.session.cfg['logRoot'],'M5','search.metric-admission','admitted' if used+len(batch)<=self.session.cfg['metricBudget'] else 'withheld',identifier=self.session.directory.name,used=used,requested=len(batch),limit=self.session.cfg['metricBudget'])
         if used+len(batch)>self.session.cfg['metricBudget']:raise RuntimeError('Hard metric evaluation budget exhausted')
         outputs=[];traces=[];scores=[]
         for task in batch:
@@ -93,7 +98,9 @@ class Adapter:
     def propose_new_texts(self,candidate,reflective_dataset,components_to_update):
         # The pinned SDK retries a failed batch inside the same iteration,
         # before stop_callbacks run. Never enter an already failed attempt.
-        if self.session.fatal is not None:return {}
+        if self.session.fatal is not None:
+            decision(self.session.cfg['logRoot'],'M5','proposal.reentry','withheld',identifier=self.session.directory.name)
+            return {}
         try:return self._propose(candidate,reflective_dataset,components_to_update)
         except Exception as exc:
             # Returning native empty updates bypasses GEPA's internal retry;
@@ -131,6 +138,7 @@ class Adapter:
             row={'id':identifier,'parentBody':candidate['skill_body'],'candidate':dict(candidate),'training':training,
               'components':components_to_update,'system':REFLECTION_SYSTEM,'input':content,'body':body,'createdAt':time.time()}
             duplicate=duplicate_of(body,session.proposals,session.cfg['baseline']['skill']['body']) if adaptive(session.cfg) else None
+            decision(session.cfg['logRoot'],'M5','proposal.novelty','duplicate' if duplicate is not None else 'novel',identifier=session.directory.name,attempt=len(session.proposals)+1,temperature=temperature)
             if duplicate is not None:
                 row.update(duplicateOf=duplicate,skippedEvaluations=len(training))
                 session.search_audit['decisions'].append({'proposalId':identifier,'accepted':False,
@@ -142,6 +150,7 @@ class Adapter:
             # real model response remains an archived attempt, never a score.
             return {} if duplicate is not None else {'skill_body':body}
 
+@diagnosed('M5','gepa.search')
 @traced('gepa','search')
 def search(directory,cfg):
     if importlib.metadata.version('gepa')!=GEPA_VERSION:raise RuntimeError('Unexpected GEPA SDK version')
@@ -173,6 +182,7 @@ def search(directory,cfg):
         covered={r['taskId'] for r in session.ledger if r['stage']=='search'}
         if adaptive(cfg) and {t['id'] for t in data['train']}<=covered and duplicate_streak(session.proposals,cfg['baseline']['skill']['body'])>=6:reasons.append('duplicate-stagnation')
         if time.time()>=cfg['deadlineEpoch']:reasons.append('deadline')
+        decision(cfg['logRoot'],'M5','search.iteration-admission','stopped' if reasons else 'admitted',identifier=directory.name,used=used,required=2*minibatch+len(data['validation']),limit=cfg['metricBudget'],proposals=len(session.proposals),proposalLimit=cfg['proposalBudget'],fatal=session.fatal is not None,deadlineExpired=time.time()>=cfg['deadlineEpoch'])
         if reasons:
             search_audit['stop']={'at':stamp(),'reasons':reasons,'used':used,'metricBudget':cfg['metricBudget'],
                 'requiredNext':2*minibatch+len(data['validation']),'proposals':len(session.proposals)}
@@ -194,6 +204,7 @@ def search(directory,cfg):
     progress(directory,phase='selection-frozen',selectedSkill=selected,validationScores=report['validationScores'])
     logs.append('gepa','INFO','Validation-selected Skill frozen before final tasks',directory.name,{'bestIndex':result.best_idx,'metricEvaluations':report['metricCalls']})
 
+@diagnosed('M5','gepa.final-evaluation')
 @traced('gepa','final-evaluation')
 def evaluate_final(directory,cfg):
     selected=json.loads((directory/'gepa-selection.json').read_text())['skill'];data=data_for(cfg);session=Session(directory,cfg)

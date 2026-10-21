@@ -75,7 +75,7 @@ class Candidate(Record):
 
 class Experiment(Record):
     id: str
-    state: Literal["draft", "queued", "running", "evaluating", "completed", "failed", "cancelled", "interrupted"]
+    state: Literal["draft", "queued", "running", "evaluating", "cancelling", "completed", "failed", "cancelled", "interrupted"]
     snapshots: dict
     budgets: dict
     consumed: dict

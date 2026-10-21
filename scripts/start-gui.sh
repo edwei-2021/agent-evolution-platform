@@ -3,7 +3,11 @@
 set +x
 set -euo pipefail
 LAB_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-[[ -x "$LAB_ROOT/.venv/bin/python" ]] || { echo 'Run bash scripts/install-wsl.sh first.' >&2; exit 1; }
+LAB_GUI_PYTHON="$LAB_ROOT/.venv/bin/python"
+for LAB_GUI_OPTION in "$@"; do
+  if [[ "$LAB_GUI_OPTION" == '--canonical' ]]; then LAB_GUI_PYTHON="$LAB_ROOT/.venv-m/bin/python"; fi
+done
+[[ -x "$LAB_GUI_PYTHON" ]] || { echo 'Run bash scripts/install-wsl.sh first.' >&2; exit 1; }
 
 # Match the user's existing `source ~/strata-wsl.env` initialization. An empty
 # override opts out; an explicitly named missing file is a configuration error.
@@ -31,4 +35,4 @@ export TMPDIR="$LAB_ROOT/.local/tmp"
 export TMP="$TMPDIR" TEMP="$TMPDIR"
 export TIKTOKEN_CACHE_DIR="$LAB_ROOT/.local/cache/tiktoken"
 export XDG_CACHE_HOME="$LAB_ROOT/.local/cache"
-exec "$LAB_ROOT/.venv/bin/python" "$LAB_ROOT/scripts/serve_gui.py" "$@"
+exec "$LAB_GUI_PYTHON" "$LAB_ROOT/scripts/serve_gui.py" "$@"

@@ -53,8 +53,12 @@ class GepaStore:
         if frozen and provider['config']['maxTokens']<512:raise ValueError('Challenge bank requires max output tokens >=512; save 1024 in Integrations before starting')
         self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
         if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
+        canonical_hash=None
+        if getattr(self.service,'canonical',None) is not None:
+            from gepa_canonical import source_snapshot, ROOT
+            canonical_hash=source_snapshot(ROOT)[0]
         budget=(options['metricBudget']+2*(len(data['validation'])+len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
-        return {'schemaVersion':1,'engine':ENGINE,**options,'comparisonPolicy':COMPARISON_POLICY,'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
+        return {'schemaVersion':1,'engine':ENGINE,**options,'comparisonPolicy':COMPARISON_POLICY,**({'canonicalSourceHash':canonical_hash} if canonical_hash else {}),'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
           'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile'],frozen),'logRoot':str(self.service.root),
@@ -64,6 +68,9 @@ class GepaStore:
         with self.service.lock:
             self.check_revision(expected);run=self.service.get_run(identifier)
             if run.get('task')!='gepa-evolution' or run['status']!='completed' or not run.get('gepaResult',{}).get('eligible'):raise RuntimeError('Only a completed improving GEPA run can be approved')
+            if run.get('gepaConfig',{}).get('canonicalJob'):
+                if getattr(self.service,'canonical',None) is None or self.service.canonical.store.get(run['gepaConfig']['canonicalJob']['id'])['state']!='completed':
+                    raise RuntimeError('Canonical finalization must complete before approval')
             directory=self.service.local/'runs'/identifier
             if json.loads((directory/'gepa-config.json').read_text())!=run['gepaConfig']:raise ValueError('Frozen GEPA configuration changed')
             result=verify(directory)

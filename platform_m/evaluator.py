@@ -1,4 +1,5 @@
 """Digest-pinned Docker evaluator. No host fallback when isolation is requested."""
+from scripts.branch_diagnostics import diagnosed, record as decision
 import json
 from pathlib import Path
 import re
@@ -63,6 +64,7 @@ def cleanup_container(name, timeout=5):
             time.sleep(min(0.25, remaining))
     return result
 
+@diagnosed('M4','evaluator.execute')
 def evaluate(jobs, image, timeout=10):
     if not isinstance(jobs, list) or not 1 <= len(jobs) <= 32:
         raise ValueError('Use 1..32 evaluator jobs')
@@ -108,6 +110,7 @@ def evaluate(jobs, image, timeout=10):
         cleanup = cleanup_container(name)
         if not cleanup['removed']:
             status, reason = 'invalid_evaluation', 'integrity'
+    decision(None,'M4','evaluator.cleanup-and-verdict',status,jobs=len(jobs),cleanupRemoved=cleanup['removed'],infrastructureInvalid=status=='invalid_evaluation')
     return {'verdict': status, 'failure_category': reason, 'results': results, 'image': pinned,
             'evaluation_verdict': evaluation_status, 'evaluation_failure_category': evaluation_reason,
             'request_hash': digest(jobs), 'output_hash': digest(output), 'cleanup': cleanup,

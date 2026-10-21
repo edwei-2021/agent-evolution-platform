@@ -1,5 +1,7 @@
 # Intermediate Phase M Implementation and Operator Guide
 
+Implementation follow-up: [real native queue, opt-in GUI GEPA ledger and branch diagnostics](phase-m-ledger-followup.md). The queue now accepts explicit authenticated native submissions in addition to Mock jobs. This does not establish optimizer resume or complete signed GUI releases (已新增真實工作提交，完整階段結案仍須整合驗收).
+
 This delivery adds M service components and machine checks to the v0.7.1 runtime. Existing GUI/model settings and legacy runs remain supported. It does not certify the entire hardened platform as complete. Container acceptance must run on Docker-capable Ubuntu/WSL; real Windows model quality and full production migration remain unverified.
 
 For the current M7 failure, use the [failure recovery guidance](#m7-failure-recovery-and-ai-maintenance-失敗接續與維護經驗) and [AI maintenance lessons](ai-maintenance-lessons.md). Historical full-run instructions below describe earlier revisions; the scoped continuation command avoids repeating passed upstream checks when diagnosing the failed M7 tail.
@@ -16,7 +18,7 @@ For the current M7 failure, use the [failure recovery guidance](#m7-failure-reco
 | M6 | releases.py; budget.py; m_admin.py | Ed25519/RBAC, CAS integrity, validation/final gates, parent/revision activation, rollback, persisted task checkpoints | Optimizer-internal GEPA search resume and Git manifest reconciliation are not claimed complete |
 | M7 | uv.lock; FastAPI facade; Compose; CI; check_m.py | API auth/origin/correlation, static TypeScript, staged checks, support bundles, SDK regression | CI/image health and WSL service verification; full GUI/RBAC migration and browser QA |
 
-The acceptance script proves the listed machine-check scope. A green component gate is not proof that the remaining phase-closure items are finished. Current API queue accepts explicitly labeled mock work; actual nanobot work uses the explicit scripts below. No process automatically sends model requests at install/startup.
+The acceptance script proves the listed machine-check scope. A green component gate is not proof that the remaining phase-closure items are finished. Actual nanobot work supports the authenticated native endpoint above and the explicit scripts below. No process automatically sends model requests at install/startup.
 
 ### M1 pytest capture issue on WSL DrvFS
 
