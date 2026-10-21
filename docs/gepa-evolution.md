@@ -1,5 +1,7 @@
 # GEPA Skill Evolution (技能最佳化)
 
+New Runs use [paired final comparison and zero per-task regressions](gepa-paired-comparison.md). The original aggregate gate described below remains the historical behavior; the new frozen policy adds validation/held-out task-level checks without extra inference (新實驗加入逐題檢查，歷史紀錄保留原判定).
+
 Release **v0.7.0** implements an actual **GEPA 0.1.4** adapter over the existing **nanobot-ai 0.3.5** runner. GEPA selects and mutates one text component, `skill_body`; each evaluation executes a fresh nanobot Worker and independently measures a bounded Python repair task. Skill name/description, saved model, temperature, tools, dataset version and workflow remain frozen. This is separate from the earlier custom LLM reflection engine.
 
 ## Upgrade and run (更新與執行)

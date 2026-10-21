@@ -127,6 +127,8 @@ Common maintenance failures to prevent:
 
 Possible next extensions include repeated-run difficulty calibration, more independently reviewed edge cases and a separately designed multi-file/library sandbox. They are not implied by these pure-function tasks.
 
+New GEPA experiments produce a [paired final-task comparison](gepa-paired-comparison.md). A net score gain cannot hide a lost baseline success: validation and held-out must both have zero per-task regressions before release. Older saved aggregate verdicts remain historical evidence; viewing the report adds no model calls.
+
 ## Execution identity follow-up (執行對象辨識)
 
 A completed single-repair record is evidence for `nanobot-repair` and its fixed clamp fixture; it does not establish a bank GEPA experiment. When diagnosing an apparently instant completion, correlate the current startup session, HTTP submission route, workflow task, model-call metadata and frozen profile. A bank GET, successful save, navigation or historical completed result is not a submitted experiment. Retained logs can prove observations within their covered interval, not actions outside it.

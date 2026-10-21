@@ -10,6 +10,7 @@ from repair_engine import TASK_FAILURE_POLICY
 from repair_runtime import sdk_status
 from gepa_runtime import gepa_status
 from gepa_engine import ENGINE, provenance, verify
+from gepa_comparison import POLICY as COMPARISON_POLICY
 
 class GepaStore:
     def __init__(self,service):
@@ -53,7 +54,7 @@ class GepaStore:
         self.check_revision(options['expectedRevision']);snap=self.snapshot(cached_only=False)
         if not snap['sdk']['available'] or not snap['optimizer']['available']:raise RuntimeError('Install pinned nanobot and GEPA with bash scripts/install-nanobot.sh')
         budget=(options['metricBudget']+2*(len(data['validation'])+len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
-        return {'schemaVersion':1,'engine':ENGINE,**options,'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
+        return {'schemaVersion':1,'engine':ENGINE,**options,'comparisonPolicy':COMPARISON_POLICY,'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],
           'reflectionBatch':mini,'counts':{s:len(rows) for s,rows in data.items()},'provenance':provenance(options['profile'],frozen),'logRoot':str(self.service.root),

@@ -1,6 +1,7 @@
 // Live telemetry is ephemeral and separate from browser-local demo/configuration data.
 import {validateChanges} from './changes-client.js';
 import {GEPA_PRESETS} from './gepa-plan.js';
+import {COMPARISON_POLICY,validatePairedComparison} from './gepa-comparison.js';
 export const LIVE_STATUSES={queued:'等待執行',running:'執行中',completed:'已完成',failed:'失敗',cancelled:'已取消',skipped:'未執行',interrupted:'執行中斷'};
 const validTime=v=>typeof v==='string'&&Number.isFinite(Date.parse(v));
 const validSkill=v=>v&&v.name==='normalize-support-title'&&typeof v.description==='string'&&v.description.length<500&&typeof v.body==='string'&&v.body.length<3000&&/^[a-f0-9]{64}$/.test(v.hash)&&v.policy&&Object.keys(v.policy).length===4&&['unicode_nfkc','casefold','trim','collapse_whitespace'].every(k=>typeof v.policy[k]==='boolean');
@@ -93,6 +94,7 @@ export function validateGepaRun(run){
  if(run.task!=='gepa-evolution'||c?.engine!=='gepa-nanobot-repair-v1'||c.sdk?.version!=='0.3.5'||c.optimizer?.version!=='0.1.4'||!validGepaSkill(c.baseline?.skill)||!['smoke','full','bank'].includes(c.profile)||!Number.isInteger(c.callBudget)||c.callBudget<1||c.callBudget>2176||!Number.isInteger(c.metricBudget)||c.metricBudget<6||c.metricBudget>(c.searchMode==='explore'?120:80)||typeof c.provider?.config?.model!=='string')throw Error('GEPA 設定不正確');
  if(c.searchMode!==undefined&&!['standard','explore'].includes(c.searchMode)||c.searchMode==='explore'&&(!Number.isInteger(c.searchSeed)||c.searchSeed<0||c.searchSeed>=2**31||!Number.isInteger(c.proposalBudget)||c.proposalBudget<1||c.proposalBudget>16))throw Error('GEPA 探索設定不正確');
  if(c.explorationPolicy!==undefined&&(c.explorationPolicy!=='failure-diversity-v2'||c.searchMode!=='explore'))throw Error('GEPA 探索策略不正確');
+ if(c.comparisonPolicy!==undefined&&c.comparisonPolicy!==COMPARISON_POLICY)throw Error('GEPA 比較規則不正確');
  if(c.profile==='bank'){const n=c.counts;if(!n||['train','validation','heldout'].some(k=>!Number.isInteger(n[k])||n[k]<2||n[k]>(k==='train'?30:20))||n.validation+n.heldout>30||n.train+n.validation+n.heldout>50||c.datasetSnapshot?.revision!==c.bankRevision||!['python-challenges-v1','python-challenges-v2','python-challenges-v3'].includes(c.datasetSnapshot?.version))throw Error('題庫凍結資料不正確');}
  else for(const [key,count] of Object.entries(c.profile==='smoke'?{train:4,validation:2,heldout:4}:{train:20,validation:10,heldout:20}))if(c.counts?.[key]!==count)throw Error('GEPA 資料分割不正確');
  if(p){
@@ -106,7 +108,8 @@ export function validateGepaRun(run){
   for(const label of ['baseline','selected'])for(const split of ['validation','heldout']){const m=r.final?.[label]?.[split];if(!m||m.total!==c.counts[split]||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('GEPA 評測格式不正確');}
   if(r.breakdown){for(const dim of ['difficulty','topic']){const table=r.breakdown[dim];if(!table||typeof table!=='object'||Array.isArray(table)||Object.keys(table).length>30)throw Error('GEPA 分項格式不正確');for(const label of ['baseline','selected'])for(const split of ['validation','heldout']){let passed=0,total=0;for(const row of Object.values(table)){const m=row?.[label]?.[split];if(!m||!Number.isInteger(m.total)||m.total<0||m.total>c.counts[split]||!Number.isInteger(m.passed)||m.passed<0||m.passed>m.total)throw Error('GEPA 分項計數不正確');passed+=m.passed;total+=m.total;}if(passed!==r.final[label][split].passed||total!==r.final[label][split].total)throw Error('GEPA 分項與總分不一致');}}}
   if(r.taskFailures!==undefined&&(!Array.isArray(r.taskFailures)||r.taskFailures.length>r.rollouts||new Set(r.taskFailures.map(f=>f?.rolloutId)).size!==r.taskFailures.length||r.taskFailures.some(f=>!/^R\d{4}$/.test(f?.rolloutId)||!/^CH-[A-Za-z0-9-]+$/.test(f.taskId)||!['search','baseline','selected'].includes(f.stage)||f.reason!=='max_iterations')))throw Error('GEPA 單題失敗證據不正確');
-  const eligible=r.selectedSkill.hash!==r.baselineSkill.hash&&r.final.selected.validation.passed>r.final.baseline.validation.passed&&r.final.selected.heldout.passed>=r.final.baseline.heldout.passed;
+  const blockers=validatePairedComparison(c,r);
+  const eligible=blockers===null?r.selectedSkill.hash!==r.baselineSkill.hash&&r.final.selected.validation.passed>r.final.baseline.validation.passed&&r.final.selected.heldout.passed>=r.final.baseline.heldout.passed:blockers.length===0;
   if(r.eligible!==eligible)throw Error('GEPA 核准門檻與證據不一致');
   if(r.exploration){const e=r.exploration;if(c.searchMode!=='explore'||e.mode!=='explore'||e.seed!==c.searchSeed||e.trainingTotal!==c.counts.train||e.generated!==r.proposals||['trainingTested','generated','uniqueNew','duplicates','validatedNew'].some(k=>!Number.isInteger(e[k])||e[k]<0)||e.trainingTested>e.trainingTotal||e.generated>c.proposalBudget||e.uniqueNew+e.duplicates!==e.generated||e.validatedNew>e.uniqueNew)throw Error('GEPA 探索紀錄不正確');if(c.explorationPolicy==='failure-diversity-v2'&&(e.policy!==c.explorationPolicy||!Number.isInteger(e.skippedDuplicates)||e.skippedDuplicates<0||e.skippedDuplicates!==e.duplicates||!Number.isInteger(e.savedCandidateEvaluations)||e.savedCandidateEvaluations<0||e.savedCandidateEvaluations>e.skippedDuplicates*c.reflectionBatch))throw Error('GEPA 提前去重紀錄不正確');}
  }

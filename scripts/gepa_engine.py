@@ -10,6 +10,7 @@ from repair_fixture import digest
 from repair_transport import ToolAccumulator
 from gepa_dataset import data_for, dataset_hash, skill, DATASET_VERSION
 from gepa_runtime import GEPA_VERSION
+from gepa_comparison import POLICY as COMPARISON_POLICY, paired_final, release_blockers
 from skill_engine import write
 
 ENGINE='gepa-nanobot-repair-v1'
@@ -18,8 +19,8 @@ TASKS={'coordinator':'Freeze grouped benchmark and search budgets','worker':'Run
 REFLECTION_SYSTEM='Improve only the generic Python repair Skill body using the supplied training trajectories. Do not output solution code or modify Skill name/description. Return exactly a JSON object with one string field: skill_body. Use valid JSON escaping for newlines, quotes and backslashes inside the string; no Markdown fences or surrounding commentary. Keep the body concise enough to finish within the output budget. Keep instructions general; do not embed task IDs or test answers.'
 
 def provenance(profile,frozen=None):
-    return {'engine':ENGINE,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),
-      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py','skill_audit.py','gepa_exploration.py')}}
+    return {'engine':ENGINE,'comparisonPolicy':COMPARISON_POLICY,'gepaVersion':GEPA_VERSION,'datasetVersion':frozen['version'] if frozen else DATASET_VERSION,'datasetHash':frozen['hash'] if frozen else dataset_hash(profile),'repair':repair_provenance(),
+      'codeHashes':{n:hashlib.sha256((ROOT/'scripts'/n).read_bytes()).hexdigest() for n in ('gepa_dataset.py','challenge_bank.py','gepa_engine.py','gepa_sdk.py','gepa_agents.py','skill_audit.py','gepa_exploration.py','gepa_comparison.py')}}
 
 def progress(directory,**changes):
     p=directory/'gepa-progress.json';data=json.loads(p.read_text()) if p.exists() else {'engine':ENGINE,'phase':'queued','calls':0,'completedCalls':0,'failedCalls':0,'metricEvaluations':0,'proposals':0,'rollouts':0,'lastCall':None}
@@ -39,6 +40,7 @@ def score(result):
 def verify(directory, progress_callback=None):
     directory=Path(directory);cfg=json.loads((directory/'gepa-config.json').read_text())
     if cfg['provenance']!=provenance(cfg['profile'],cfg.get('datasetSnapshot')):raise ValueError('GEPA code or dataset provenance changed')
+    if cfg.get('comparisonPolicy')!=cfg['provenance'].get('comparisonPolicy'):raise ValueError('Frozen comparison policy changed')
     if 'explorationPolicy' in cfg and (not adaptive(cfg) or cfg['explorationPolicy']!=POLICY):raise ValueError('Unknown frozen exploration policy')
     if cfg['profile']=='bank' and cfg.get('taskFailurePolicy')!=TASK_FAILURE_POLICY:raise ValueError('Bank task failure policy changed')
     data=data_for(cfg);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
@@ -121,11 +123,14 @@ def verify(directory, progress_callback=None):
             acc=ToolAccumulator()
             for e in call['streamEvents']:acc.add(e)
             if acc.reply()!=call['response']:raise ValueError('Stream evidence drift')
-    eligible=selected['hash']!=seed['hash'] and final['selected']['validation']['passed']>final['baseline']['validation']['passed'] and final['selected']['heldout']['passed']>=final['baseline']['heldout']['passed']
+    comparison=paired_final(data,ledger) if cfg.get('comparisonPolicy')==COMPARISON_POLICY else None
+    blockers=release_blockers(cfg.get('comparisonPolicy'),seed,selected,final,comparison)
+    eligible=not blockers
     hashes={p.relative_to(directory).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in directory.rglob('*') if p.is_file() and (p.name.startswith(('gepa-','repair-')) and not p.name.endswith('progress.json')) and p.name not in ('gepa-evaluation.json','gepa-selection.md')}
     return {'engine':ENGINE,'checksPassed':True,'eligible':eligible,'selectedSkill':selected,'baselineSkill':seed,'final':final,
       'metricEvaluations':len(search_rows),'rollouts':len(ledger),'proposals':len(proposals),'calls':len(actual),'validationScores':scores,
       'gepaVersion':GEPA_VERSION,'sdkVersion':cfg['sdk']['version'],'datasetVersion':cfg['provenance']['datasetVersion'],'evidenceHash':digest(hashes),
+      **({'comparison':comparison,'releaseBlockers':blockers} if comparison else {}),
       **({'breakdown':breakdown(ledger,tasks),'taskFailures':[{'rolloutId':r['id'],'taskId':r['taskId'],'stage':r['stage'],'reason':r['sdkStopReason']} for r in ledger if r.get('taskOutcome')=='call-limit']} if cfg['profile']=='bank' else {}),
       **({'exploration':summary(cfg,ledger,proposals,search['candidates'])} if exploring(cfg) else {})}
 

@@ -42,7 +42,7 @@ Historical v0.7.1 commit reports 207 distinct checks. This revision does not re-
 - The hosted Site serves static GUI assets; real Python/Ollama execution requires the local WSL API. A private Site login does not authenticate or secure that API.
 - The constrained AST evaluator is not an OS sandbox for arbitrary Python.
 - Existing local version activation is not a signed, complete, cross-runtime release manifest.
-- Current GEPA eligibility compares aggregate pass counts; equal totals can conceal individual regressions.
+- New legacy-GUI GEPA runs freeze a [paired zero-regression policy](gepa-paired-comparison.md) for validation and held-out tasks. Historical aggregate results retain their original labels; repeated real-model calibration and the full M5 gate remain separate work.
 - Current task families are synthetic and share primitives. Family separation does not establish broad coding generalization.
 - Current debug retention and best-effort spans do not provide an append-only authoritative evidence ledger.
 - Browser-local role configuration does not change the fixed backend workflow.

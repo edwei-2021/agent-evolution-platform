@@ -1,5 +1,6 @@
 import {escapeHtml as esc} from './agent-view.js';
 import {LIVE_STATUSES} from './runtime-client.js';
+import {BLOCKER_LABELS,OUTCOME_LABELS} from './gepa-comparison.js';
 
 const number=n=>Number(n.toFixed(1)).toString();
 const signed=n=>`${n>0?'+':''}${number(n)}`;
@@ -13,6 +14,7 @@ export function gepaOutcome(run){
  const heldout=r.final.selected.heldout.passed-r.final.baseline.heldout.passed;
  if(!changed)return {ready:true,tone:'neutral',label:r.proposals===0?'未產生候選・尚未完成有效比較':'已探索候選・沿用基準',detail:r.proposals===0?'本輪沒有產生候選，無法判斷新 Skill 的成效。請檢查訓練覆蓋、略過與停止原因。':`產生 ${r.proposals} 個候選提案，最後仍選定基準 Skill；提案數不等於演化成果。`};
  if(r.eligible)return {ready:true,tone:'success',label:'已驗證改善・通過演化門檻',detail:'選定 Skill 已變更，獨立驗證改善，最終測試未退步。'};
+ if(r.comparison?.tasks.some(t=>t.outcome==='regressed'))return {ready:true,tone:'error',label:'逐題退步・未通過演化門檻',detail:'有原本通過的題目在選定 Skill 下失敗；即使總分提高，仍維持目前版本。'};
  return {ready:true,tone:'error',label:heldout<0?'候選退步・未通過演化門檻':validation<=0?'Skill 有變更・驗證未改善':'未通過演化門檻',detail:'保留量測結果與 Skill 差異，維持目前版本。'};
 }
 
@@ -37,6 +39,17 @@ export function gepaResultsView(runtime){
  <div class="gepa-verdicts"><div><span>執行流程</span><strong>${esc(LIVE_STATUSES[run.status]||run.status)}</strong><small>${ready?'評估與審查均已完成':'流程完成後才確認成果'}</small></div><div><span>Skill 內容</span><strong>${ready?(r.selectedSkill.hash===r.baselineSkill.hash?'與基準相同':'已產生變更'):'待確認'}</strong><small>${ready?`候選提案 ${r.proposals} 個`:'尚未完成獨立審查'}</small></div><div><span>版本啟用狀態</span><strong>${esc(activation)}</strong><small>改善成立與版本啟用分別確認</small></div></div>
  ${ready?`<div class="table-wrap"><table class="gepa-score-table"><caption>實際演化成效比較（選定 Skill − 基準）</caption><thead><tr><th>評測資料</th><th>基準</th><th>選定 Skill</th><th>改善幅度</th></tr></thead><tbody>${rows}</tbody></table></div><p class="body-copy">模型呼叫 ${esc(r.calls)} / ${esc(run.gepaConfig.callBudget)} 次 · rollout ${esc(r.rollouts)} 次 · 搜尋評測 ${esc(r.metricEvaluations)} 次。${r.selectedSkill.hash===r.baselineSkill.hash?'同一 Skill 的分數差異不視為新技能演化。':''}</p>`:''}
  ${ready&&r.breakdown?`<details><summary>依難度與題目面向查看成效</summary>${['difficulty','topic'].map(dim=>`<div class="table-wrap"><table><thead><tr><th>${dim==='difficulty'?'難度':'題目面向'}</th><th>基準：驗證／最終</th><th>選定：驗證／最終</th></tr></thead><tbody>${Object.entries(r.breakdown[dim]||{}).map(([key,m])=>`<tr><td>${esc(({easy:'初階',medium:'中階',hard:'進階'})[key]||key)}</td>${['baseline','selected'].map(label=>`<td>${m[label].validation.total?`${m[label].validation.passed}/${m[label].validation.total}`:"無題目"} ／ ${m[label].heldout.total?`${m[label].heldout.passed}/${m[label].heldout.total}`:"無題目"}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}</details>`:''}
+ ${ready?pairedView(r):''}
  <p class="gepa-result-source">來源：<code>${esc(run.id)}</code> · ${run.gepaConfig?.profile==='bank'?`多難度題庫 v${run.gepaConfig.bankRevision}`:run.gepaConfig?.profile==='full'?'Full':'Smoke'}${duration}<br>結果適用於本輪合成任務；尚無跨資料集的效果證據。${runtime.error?'目前連線已過期，以上為保留的歷史結果。':''}</p>
  </section>`;
+}
+
+function pairedView(r){
+ const p=r.comparison;
+ if(!p)return '<p class="body-copy">此歷史結果採總分判定，未保存逐題配對比較；保留原始結論，不補推逐題改善或退步。</p>';
+ return `<section class="spaced" data-gepa-paired><h3>逐題比較：改善、退步與未解題目</h3><p class="body-copy">新實驗要求獨立驗證總分提高，且驗證與最終測試均無逐題退步。這是本輪各一次獨立評測；模型波動仍需以相同設定的重複實驗確認。</p>
+ <div class="table-wrap"><table><thead><tr><th>資料分割</th><th>改善</th><th>退步</th><th>持續通過</th><th>仍未通過</th></tr></thead><tbody>${['validation','heldout'].map(s=>`<tr><th>${s==='validation'?'獨立驗證':'最終測試'}</th>${['improved','regressed','retained-pass','retained-fail'].map(k=>`<td>${p.splits[s][k]}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+ ${r.releaseBlockers.length?`<p class="body-copy">未開放核准：${r.releaseBlockers.map(b=>esc(BLOCKER_LABELS[b]||b)).join('；')}。</p>`:''}
+ <div class="table-wrap"><table><thead><tr><th>題目／分割</th><th>難度／面向</th><th>基準 → 選定</th><th>結果</th><th>評測紀錄</th></tr></thead><tbody>${p.tasks.map(t=>`<tr><td>${esc(t.taskId)}<br>${t.split==='validation'?'獨立驗證':'最終測試'}</td><td>${esc(({easy:'初階',medium:'中階',hard:'進階'})[t.difficulty]||'未分級')} ／ ${esc(t.topic||t.group)}</td><td>${t.baseline} → ${t.selected}</td><td>${esc(OUTCOME_LABELS[t.outcome])}</td><td>${esc(t.baselineRolloutId)} → ${esc(t.selectedRolloutId)}</td></tr>`).join('')}</tbody></table></div>
+ <p class="body-copy">基準已通過的題目沒有提高成功題數的空間；兩者均未通過的題目仍有改善空間，但本輪尚未解決。訓練與搜尋驗證紀錄用於檢查生成原因；最終測試維持隔離，不加入反思輸入。題目分級仍屬設計估計。</p></section>`;
 }

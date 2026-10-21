@@ -30,6 +30,11 @@ class ChallengeV3WorkflowTests(unittest.TestCase):
         done=self.service.get_run(run['id'])
         self.assertEqual(done['status'],'completed',done.get('error') or str(done['agents']))
         result=done['gepaResult'];self.assertTrue(result['eligible'])
+        self.assertEqual(result['releaseBlockers'],[])
+        self.assertEqual(len(result['comparison']['tasks']),6)
+        for split in ('validation','heldout'):
+            self.assertEqual(result['comparison']['splits'][split],
+                             {'improved':3,'regressed':0,'retained-pass':0,'retained-fail':0})
         self.assertEqual(result['final']['selected']['validation'],{'passed':3,'total':3})
         self.assertEqual(result['final']['selected']['heldout'],{'passed':3,'total':3})
         self.assertEqual(done['gepaConfig']['datasetSnapshot'],frozen)

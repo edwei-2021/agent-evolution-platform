@@ -1,5 +1,7 @@
 # 如何判讀 GEPA 的實際演化成果
 
+> New experiments (新實驗): [paired final comparison](gepa-paired-comparison.md) adds a zero-regression gate for individual validation and held-out tasks. Historical aggregate results retain their original verdicts (歷史總分判定保留原結論).
+
 開啟 GUI 的「GEPA 技能最佳化」，頁面上方的「實際演化成果」以目前選取的 Run 為準。可在「近期 GEPA 實驗」點選舊 Run；不需要再次執行模型。更新程式並重新整理頁面後，既有完整結果也會使用新摘要。
 
 ## 三項結論分開看

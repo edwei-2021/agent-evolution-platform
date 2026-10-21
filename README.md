@@ -86,6 +86,10 @@ bash scripts/start-gui.sh
 
 Open `http://localhost:8765/#integrations` to select an exact model ID and save settings. Reading/saving settings makes no Windows HTTP request. Model-list refresh and a single chat completion require explicit clicks. Provider records and settings stay under `.local/ollama/` on D; no extra Python packages are required. Rule-based Skill evolution remains separate; the LLM Skill page uses this provider. Full usage and preserved attachment tools: [Windows Ollama guide](docs/ollama-wsl.md).
 
+## Paired GEPA comparison (GEPA 逐題比較)
+
+For Python GEPA experiments, the [paired final comparison](docs/gepa-paired-comparison.md) now identifies every gain, lost baseline success and unresolved task (逐題改善、退步與未解題目). New experiments require zero individual regressions in both final validation and held-out data before Skill release; historical aggregate results retain their recorded verdicts.
+
 ## Actual LLM Skill evolution (LLM 技能演化)
 
 After saving a model in **Integrations**, open `http://localhost:8765/#llm`. Start with Smoke (3/2/2 tasks, at most 15 model calls), or choose Full (20/10/20, at most 101 calls). The whole-run deadline defaults to 900 seconds. Coordinator freezes settings, Worker executes the baseline, Reflector uses training failures only, Evaluator runs and selects the candidate before held-out tests, and Reviewer recomputes scores from raw responses. Existing polling displays actual PIDs/status/logs; the LLM page shows calls, scores, body diffs, failures and immutable prompt versions.
