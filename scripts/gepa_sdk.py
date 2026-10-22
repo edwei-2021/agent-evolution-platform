@@ -46,7 +46,7 @@ class Session:
         self.calls=json.loads((directory/'gepa-calls.json').read_text())
         self.proposals=json.loads((directory/'gepa-proposals.json').read_text());self.fatal=None
     @traced('gepa','rollout')
-    def rollout(self,task,body,stage):
+    def rollout(self,task,body,stage,repetition=0):
         if time.time()>=self.cfg['deadlineEpoch']:raise RuntimeError('GEPA workflow time budget exhausted')
         identifier=f'R{len(self.ledger)+1:04d}';child=self.directory/'rollouts'/identifier;child.mkdir(parents=True)
         cfg=child_config(self.cfg,task,body);write(child/'repair-config.json',cfg)
@@ -55,7 +55,8 @@ class Session:
         (child/'repair-baseline.py').write_text(task['fixture']['baseline'])
         write(child/'repair-tools.json',[]);write(child/'repair-calls.json',[])
         write(child/'repair-reflection.json',{'kind':'gepa-evaluation','fixedSkillHash':skill(body)['hash']})
-        row={'id':identifier,'stage':stage,'taskId':task['id'],'body':body,'startedAt':time.time()}
+        row={'id':identifier,'stage':stage,'taskId':task['id'],'body':body,'startedAt':time.time(),
+             **({'repetition':repetition} if self.cfg.get('finalRepetitions',1)>1 and stage!='search' else {})}
         with self.publish_lock:
             progress(self.directory,activeRollout=identifier,activeTask=task['id'],phase=stage)
         runner=GlobalRunner(child,cfg,self,{'rolloutId':identifier,'taskId':task['id'],'stage':stage})
@@ -208,6 +209,20 @@ def search(directory,cfg):
 @traced('gepa','final-evaluation')
 def evaluate_final(directory,cfg):
     selected=json.loads((directory/'gepa-selection.json').read_text())['skill'];data=data_for(cfg);session=Session(directory,cfg)
+    decision(cfg['logRoot'],'M5','gepa.final-plan','frozen',identifier=directory.name,
+             repetitions=cfg.get('finalRepetitions',1),validation=len(data['validation']),heldout=len(data['heldout']),
+             planned=2*(len(data['validation'])+cfg.get('finalRepetitions',1)*len(data['heldout'])))
     for split in ('validation','heldout'):
-        for label,s in [('baseline',cfg['baseline']['skill']),('selected',selected)]:
-            for task in data[split]:session.rollout(task,s['body'],label)
+        if cfg.get('finalRepetitions',1)==1:
+            for label,s in [('baseline',cfg['baseline']['skill']),('selected',selected)]:
+                for task in data[split]:session.rollout(task,s['body'],label)
+            continue
+        for rep in range(cfg.get('finalRepetitions',1) if split=='heldout' else 1):
+            decision(cfg['logRoot'],'M5','gepa.final-repetition','started',identifier=directory.name,
+                     repetition=rep,split=split,tasks=len(data[split]))
+            for index,task in enumerate(data[split]):
+                pairs=[('baseline',cfg['baseline']['skill']),('selected',selected)]
+                if (index+rep)%2:pairs.reverse()
+                for label,s in pairs:session.rollout(task,s['body'],label,rep)
+            decision(cfg['logRoot'],'M5','gepa.final-repetition','completed',identifier=directory.name,
+                     repetition=rep,split=split,tasks=len(data[split]))

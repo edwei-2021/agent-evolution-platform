@@ -11,7 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE, canonical_fixture_budget, integration_module_budget, INTEGRATION_MODULES
+from gepa_validation_budget import smoke_budget, case_budget, module_budget, expand_plan, APPROVAL_CASE, canonical_fixture_budget, repeated_fixture_budget, integration_module_budget, INTEGRATION_MODULES
 
 PERFECT = 'gepa_test.GepaWorkflowTests.test_perfect_seed_skips_proposals_and_cannot_release_without_improvement'
 APPROVAL = 'gepa_test.GepaWorkflowTests.' + APPROVAL_CASE
@@ -77,6 +77,21 @@ class GepaBudgetTests(unittest.TestCase):
             self.assertGreaterEqual(row['maximumSeconds'],budget['workflowSeconds']+budget['phasesSeconds']['sdkAdmission'])
             self.assertEqual(row['gepaCaseBudget']['verificationBatches'],66)
         with self.assertRaises(ValueError):canonical_fixture_budget(100)
+
+    def test_three_pass_canonical_parent_reserves_actual_sdk_and_fourth_approval_replay(self):
+        budget=repeated_fixture_budget(2)
+        self.assertEqual(budget['maximumRollouts'],34)
+        self.assertEqual(budget['modelRequests'],137)
+        self.assertEqual(budget['verificationBatches'],102)
+        self.assertEqual(budget['approvalBatches'],34)
+        self.assertEqual(budget['workflowSeconds'],6230)
+        self.assertEqual(budget['maximumSeconds'],sum(budget['phasesSeconds'].values())+30)
+        self.assertLessEqual(budget['maximumSeconds'],7200)
+        command=['python','runner','gepa_repeated_workflow_test.py']
+        selected=integration_module_budget('python-gepa_repeated_workflow_test',2,command,ROOT)
+        self.assertEqual(selected['maximumSeconds'],budget['maximumSeconds'])
+        self.assertEqual(len(selected['selected']),1)
+        with self.assertRaises(ValueError):repeated_fixture_budget(100)
 
     def test_each_rollout_is_verified_three_times_not_once(self):
         budget = smoke_budget(2)

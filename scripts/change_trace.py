@@ -54,7 +54,7 @@ class Reader:
             return None
         return raw.decode('utf-8')
 
-    def json(self, relative, default, maximum=2 * 1024 * 1024):
+    def json(self, relative, default, maximum=3 * 1024 * 1024):
         raw = self.text(relative, maximum)
         if raw is None:
             return default
@@ -107,7 +107,7 @@ def source_trace(reader, prefix, cfg):
 def snapshot(service, run_id, rollout='', offset=0, limit=20):
     if not re.fullmatch(r'RUN-[A-Za-z0-9-]+', run_id) or rollout and not re.fullmatch(r'R\d{4}', rollout):
         raise ValueError('Invalid Run or rollout identity')
-    if type(offset) is not int or not 0 <= offset <= 200 or type(limit) is not int or not 1 <= limit <= 20:
+    if type(offset) is not int or not 0 <= offset <= 300 or type(limit) is not int or not 1 <= limit <= 20:
         raise ValueError('Invalid change history page')
     run = service.get_run(run_id)
     if run.get('task') not in ('gepa-evolution', 'nanobot-repair'):
@@ -133,7 +133,7 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
         selection = reader.json('gepa-selection.json', {})
         if not isinstance(search, dict) or not isinstance(selection, dict):
             raise ValueError('Invalid saved Skill selection')
-        if not isinstance(ledger, list) or len(ledger) > 200 or not isinstance(proposals, list) or len(proposals) > 16:
+        if not isinstance(ledger, list) or len(ledger) > 300 or not isinstance(proposals, list) or len(proposals) > 16:
             raise ValueError('GEPA history exceeds bounded limits')
         for row in ledger:
             if not isinstance(row, dict) or not isinstance(row.get('id'), str) or not re.fullmatch(r'R\d{4}', row['id']):
@@ -145,12 +145,12 @@ def snapshot(service, run_id, rollout='', offset=0, limit=20):
         children = []
         if parent.is_dir():
             for index, child in enumerate(parent.iterdir()):
-                if index >= 400 or len(children) >= 200:
+                if index >= 600 or len(children) >= 300:
                     raise ValueError('Too many rollout directories')
                 if re.fullmatch(r'R\d{4}', child.name):
                     children.append(child.name)
         identities = sorted(set(by_id) | set(children))
-        if len(identities) > 200:
+        if len(identities) > 300:
             raise ValueError('Too many rollouts')
         child_configs = {}
         task_ids = []

@@ -177,6 +177,20 @@ class ChangeHistoryTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 snapshot(service, 'RUN-other')
 
+    def test_three_pass_final_history_reaches_last_page_without_model_dispatch(self):
+        with tempfile.TemporaryDirectory() as root:
+            service=Service(root,task='gepa-evolution')
+            save(service.directory,'gepa-config.json',{'baseline':{'skill':{'body':'Frozen Skill'}}})
+            save(service.directory,'gepa-rollouts.json',[
+                {'id':f'R{i:04d}','stage':'search' if i<=120 else 'baseline',
+                 'taskId':'PY-history','body':'Frozen Skill','score':0} for i in range(1,261)])
+            with patch('subprocess.run',side_effect=AssertionError('Read must not execute')):
+                page=snapshot(service,'RUN-history',offset=240)
+            self.assertEqual(page['totalRollouts'],260)
+            self.assertEqual(len(page['rollouts']),20)
+            self.assertEqual(page['rollouts'][-1]['id'],'R0260')
+            with self.assertRaises(ValueError):snapshot(service,'RUN-history',offset=301)
+
     def test_symlink_directory_file_fifo_and_oversize_source_never_escape_or_block(self):
         with tempfile.TemporaryDirectory() as root:
             service = Service(root)

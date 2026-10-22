@@ -49,6 +49,9 @@ def verify(directory, progress_callback=None):
     if cfg.get('canonicalJob'):
         from gepa_canonical import source_snapshot
         if cfg['canonicalSourceHash']!=source_snapshot(ROOT)[0]:raise ValueError('Canonical source inventory changed')
+    repetitions=cfg.get('finalRepetitions',1)
+    if type(repetitions) is not int or not 1<=repetitions<=3 or (repetitions>1 and not cfg.get('canonicalJob')):
+        raise ValueError('Invalid frozen final repetition count')
     data=data_for(cfg);tasks={t['id']:(split,t) for split,rows in data.items() for t in rows}
     ledger=json.loads((directory/'gepa-rollouts.json').read_text());proposals=json.loads((directory/'gepa-proposals.json').read_text())
     search=json.loads((directory/'gepa-search.json').read_text());selection=json.loads((directory/'gepa-selection.json').read_text())
@@ -73,7 +76,12 @@ def verify(directory, progress_callback=None):
             if split=='heldout' or row['body'] not in [c['skill_body'] for c in search['candidates']]+[p['body'] for p in proposals]:raise ValueError('Search accessed final tasks or unknown Skill')
             search_rows.append(row)
         else:
-            if row['stage'] not in totals or split not in totals[row['stage']] or row['body']!=(seed if row['stage']=='baseline' else selected)['body'] or row['startedAt']<selection['frozenAt']:raise ValueError('Final task evaluated before selection or Skill drift')
+            if (row['stage'] not in totals or split not in totals[row['stage']] or
+                    row['body']!=(seed if row['stage']=='baseline' else selected)['body'] or
+                    row['startedAt']<selection['frozenAt'] or
+                    (repetitions>1 and (type(row.get('repetition')) is not int or
+                                        not 0<=row['repetition']<(repetitions if split=='heldout' else 1)))):
+                raise ValueError('Final task evaluated before selection, repetition identity or Skill drift')
         child=directory/'rollouts'/row['id'];result=verify_repair(child,child_config(cfg,task,row['body']))
         if result!=json.loads((child/'repair-evaluation.json').read_text()) or row['score']!=score(result) or row['evidenceHash']!=result['evidenceHash']:raise ValueError('Rollout score differs from trusted tests')
         if cfg['profile']=='bank' and any(row.get(k)!=result[k] for k in ('taskOutcome','sdkStopReason')):raise ValueError('Task outcome differs from verified SDK evidence')
@@ -96,7 +104,9 @@ def verify(directory, progress_callback=None):
     for label,splits in totals.items():
         final[label]={}
         for split,rows in splits.items():
-            if sorted(r['taskId'] for r in rows)!=sorted(t['id'] for t in data[split]):raise ValueError('Final evaluation is incomplete or duplicated')
+            expected=sorted((t['id'],rep) for t in data[split] for rep in range(repetitions if split=='heldout' else 1))
+            if sorted((r['taskId'],r.get('repetition',0)) for r in rows)!=expected:
+                raise ValueError('Final evaluation is incomplete or duplicated')
             final[label][split]={'passed':sum(r['score'] for r in rows),'total':len(rows)}
     for i,p in enumerate(proposals):
         if p['id']!=f'P{i+1:03d}':raise ValueError('Proposal identity drift')
@@ -129,7 +139,7 @@ def verify(directory, progress_callback=None):
             acc=ToolAccumulator()
             for e in call['streamEvents']:acc.add(e)
             if acc.reply()!=call['response']:raise ValueError('Stream evidence drift')
-    comparison=paired_final(data,ledger) if cfg.get('comparisonPolicy')==COMPARISON_POLICY else None
+    comparison=paired_final(data,ledger,repetitions) if cfg.get('comparisonPolicy')==COMPARISON_POLICY else None
     blockers=release_blockers(cfg.get('comparisonPolicy'),seed,selected,final,comparison)
     eligible=not blockers
     decision(cfg['logRoot'],'M5','gepa.release-gate','eligible' if eligible else 'withheld',identifier=directory.name,

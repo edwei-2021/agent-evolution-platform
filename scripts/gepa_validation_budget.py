@@ -12,7 +12,8 @@ APPROVAL_CASE = FULL_CASES[1]
 MAX_SECONDS = 7200
 SPLIT_MODULES=('gepa_test','challenge_failure_test')
 BANK_MODULES=('challenge_workflow_test','challenge_v2_workflow_test','challenge_v3_workflow_test','paired_workflow_test')
-INTEGRATION_MODULES=(*BANK_MODULES,'challenge_failure_test','exploration_workflow_test','strata_workflow_test')
+INTEGRATION_MODULES=(*BANK_MODULES,'challenge_failure_test','exploration_workflow_test',
+                     'strata_workflow_test','gepa_repeated_workflow_test')
 
 
 def integration_module_budget(name,io_seconds,command,root):
@@ -29,6 +30,10 @@ def integration_module_budget(name,io_seconds,command,root):
             selected=[anchor] if option=='--case' else ids[ids.index(anchor):]
     if not selected:raise ValueError('Empty integration workload')
     passes=3
+    if module=='gepa_repeated_workflow_test':
+        if len(ids)!=1 or len(selected)!=1:
+            raise ValueError('Repeated GEPA fixture manifest changed; audit delegated work')
+        return {**repeated_fixture_budget(io_seconds),'selected':selected}
     if module=='strata_workflow_test':
         if len(ids)!=3:raise ValueError('Strata workflow manifest changed; audit delegated cases')
         from validation_wait import repair_workflow_seconds
@@ -65,6 +70,27 @@ def integration_module_budget(name,io_seconds,command,root):
     return {'policy':'delegated-sdk-workload-v1','selected':selected,'maximumRollouts':rollouts,
             'verificationBatches':passes*rollouts,'postCompletionPasses':extra,'phasesSeconds':phases,
             'normalSeconds':max(60,math.ceil(120+rollouts*(4+12*io_seconds))), 'maximumSeconds':maximum}
+
+
+def repeated_fixture_budget(io_seconds):
+    """One pinned SDK workflow: 10 search + 24 final, plus all trusted replays."""
+    if not math.isfinite(io_seconds) or io_seconds<0:
+        raise ValueError('Invalid repeated GEPA storage calibration')
+    rollouts=10+2*(3+3*3)
+    calls=rollouts*4+1
+    workflow=120+calls*10+rollouts*(24*5+3*5)+30+8*15
+    phases={'workflow':workflow,'sdkAdmission':240,'sourceAdmission':15,
+            'approvalReplay':math.ceil(rollouts*(5+2*io_seconds)),
+            'frontendParser':10,'terminalCollection':30,
+            'setupAndTeardown':90+math.ceil(30*io_seconds)}
+    maximum=sum(phases.values())+30
+    if maximum>MAX_SECONDS:
+        raise ValueError('Repeated GEPA fixture exceeds 7200s; inspect calibration before dispatch')
+    return {'policy':'canonical-repeated-gepa-fixture-v1','maximumRollouts':rollouts,
+            'modelRequests':calls,'verificationBatches':3*rollouts,'approvalBatches':rollouts,
+            'workflowSeconds':workflow,'phasesSeconds':phases,'caseCleanupSeconds':30,
+            'normalSeconds':math.ceil(240+rollouts*(4+12*io_seconds)+phases['approvalReplay']),
+            'maximumSeconds':maximum}
 
 
 def canonical_fixture_budget(io_seconds):

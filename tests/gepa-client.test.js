@@ -37,6 +37,20 @@ test('GEPA submits a frozen body on saved revisions and uncertain dispatch never
  await client.refresh();await assert.rejects(client.startGepa(initialRegistry()));assert.equal(posts.length,1);assert.equal(posts[0].taskCallBudget,8);assert.equal(posts[0].maxSeconds,1800);assert.equal(posts[0].callTimeoutSeconds,120);assert.equal(posts[0].providerRevision,7);assert.equal(posts[0].expectedRevision,1);
  client.gepaMetrics=80;fail=false;await client.startGepa(initialRegistry());assert.deepEqual(posts[1],posts[0]);assert.equal(client.pendingGepaSubmission,null);
 });
+test('canonical GUI presents and freezes three repeated final measurements before dispatch',async()=>{
+ const posts=[],capabilities={...caps,canonicalMode:true};
+ const client=new RuntimeClient({fetcher:async(path,options)=>{
+  if(path.endsWith('/capabilities'))return response(capabilities);
+  if(path==='/api/v1/llm/ollama')return response({revision:7});
+  if(options?.method==='POST'){posts.push(JSON.parse(options.body));return response({});}
+  return response(snapshot());
+ }});
+ await client.refresh();client.gepaFinalRepetitions=3;
+ assert.match(gepaView(client.snapshot()),/最終測試重複次數/);
+ assert.match(gepaView(client.snapshot()),/基準／候選最後評測 28 次/);
+ await client.startGepa(initialRegistry());
+ assert.equal(posts.length,1);assert.equal(posts[0].finalRepetitions,3);
+});
 test('GEPA version actions use their own revisions and definitive rejection permits corrected submission',async()=>{
  const calls=[];let reject=true;
  const client=new RuntimeClient({fetcher:async(path,options)=>{

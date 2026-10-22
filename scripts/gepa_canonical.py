@@ -132,7 +132,7 @@ def save_rollout(directory,config,row,evaluation,task):
         output={'candidate_source':source,'canonical_job_id':meta['id'],'rollout_id':row['id'],'stage':row['stage'],'sdk_stop_reason':evaluation.get('sdkStopReason','completed')},
         usage=Usage(tool_calls=evaluation['toolCalls'],wall_time_ms=1000*(row['finishedAt']-row['startedAt']))).model_dump()
     execution_ref=artifacts.put(execution);result_ref=artifacts.put(evaluation)
-    value=Evaluation(id=identifier,run_id=identifier,task_id=task['id'],repetition=0,
+    value=Evaluation(id=identifier,run_id=identifier,task_id=task['id'],repetition=row.get('repetition',0),
         label='baseline' if row['body']==config['baseline']['skill']['body'] else 'candidate',split=split,
         verdict='pass' if row['score'] else 'fail',score=row['score'],
         evaluator_hash=digest(config['provenance']['repair']),dataset_hash=config['provenance']['datasetHash'],
@@ -140,5 +140,6 @@ def save_rollout(directory,config,row,evaluation,task):
         failure_category='none' if row['score'] else 'timeout' if evaluation.get('taskOutcome')=='call-limit' else 'assertion').model_dump()
     store.evaluation(value)
     store.event(meta['id'],'rollout.committed',{'run_id':config['runId'],'rollout_id':row['id'],
-        'task_id':task['id'],'stage':row['stage'],'score':row['score'],'execution_hash':execution_ref,
+        'task_id':task['id'],'stage':row['stage'],'repetition':row.get('repetition',0),
+        'score':row['score'],'execution_hash':execution_ref,
         'evidence_hash':evaluation['evidenceHash'],'tool_count':evaluation['toolCalls'],'model_calls':evaluation['calls']})

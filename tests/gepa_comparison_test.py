@@ -82,6 +82,30 @@ class GepaComparisonTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 release_blockers(policy,a,b,final,comparison)
 
+    def test_three_independent_final_repetitions_reject_one_regression_and_identity_tampering(self):
+        data, original = evidence()
+        validation=[r for r in original if r['taskId'].startswith('validation')]
+        heldout=[r for r in original if r['taskId'].startswith('heldout')]
+        rows=copy.deepcopy(validation)
+        for rep in range(3):
+            for row in heldout:
+                rows.append({**row,'id':f'R{len(rows)+1:04d}','repetition':rep,
+                             'score':1 if row['stage']=='selected' else int(rep!=2)})
+        report=paired_final(data,rows,3)
+        self.assertEqual(report['repetitions'],3)
+        self.assertEqual(report['splits']['heldout']['regressed'],0)
+        self.assertEqual(report['uncertainty']['allRepetitionsPassed'],{'baseline':0,'selected':4})
+        self.assertEqual(len(report['tasks']),16)
+        for altered in (rows[:-1],rows+[rows[-1]],
+                        [{**r,'repetition':True} if i==len(rows)-1 else r for i,r in enumerate(rows)],
+                        [{**r,'repetition':3} if i==len(rows)-1 else r for i,r in enumerate(rows)]):
+            with self.assertRaises(ValueError):paired_final(data,altered,3)
+        # A single same-repetition baseline pass and selected failure blocks release.
+        rows[-1]['score']=0
+        rows[-5]['score']=1
+        report=paired_final(data,rows,3)
+        self.assertGreaterEqual(report['splits']['heldout']['regressed'],1)
+
 
 if __name__ == '__main__':
     unittest.main()

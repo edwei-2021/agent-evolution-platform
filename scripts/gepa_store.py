@@ -11,6 +11,7 @@ from repair_runtime import sdk_status
 from gepa_runtime import gepa_status
 from gepa_engine import ENGINE, provenance, verify
 from gepa_comparison import POLICY as COMPARISON_POLICY
+from branch_diagnostics import record as decision
 
 class GepaStore:
     def __init__(self,service):
@@ -35,9 +36,14 @@ class GepaStore:
         fields={'profile','maxSeconds','callTimeoutSeconds','taskCallBudget','metricBudget','proposalBudget','providerRevision','expectedRevision'}
         if isinstance(options,dict) and options.get('profile')=='bank':fields.add('bankRevision')
         if isinstance(options,dict) and 'searchMode' in options:fields.add('searchMode')
+        if isinstance(options,dict) and 'finalRepetitions' in options:
+            if getattr(self.service,'canonical',None) is None:raise ValueError('Repeated final runs require canonical ledger mode')
+            fields.add('finalRepetitions')
         if not isinstance(options,dict) or set(options)!=fields:raise ValueError('Unexpected GEPA options')
         mode=options.get('searchMode','standard')
         if mode not in ('standard','explore'):raise ValueError('Unknown GEPA search mode')
+        repetitions=options.get('finalRepetitions',1)
+        if type(repetitions) is not int or not 1<=repetitions<=3:raise ValueError('finalRepetitions must be 1..3')
         frozen=self.service.challenges.freeze(options['bankRevision']) if options['profile']=='bank' else None
         data=frozen['data'] if frozen else dataset(options['profile']);mini=2 if frozen else 1 if options['profile']=='smoke' else 3
         for key,low,high in [('maxSeconds',60,7200),('callTimeoutSeconds',10,3600),('taskCallBudget',2,12),('metricBudget',len(data['validation'])+2*mini+len(data['validation']),120 if mode=='explore' else 80),('proposalBudget',1,16 if mode=='explore' else 8)]:
@@ -57,7 +63,12 @@ class GepaStore:
         if getattr(self.service,'canonical',None) is not None:
             from gepa_canonical import source_snapshot, ROOT
             canonical_hash=source_snapshot(ROOT)[0]
-        budget=(options['metricBudget']+2*(len(data['validation'])+len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
+        budget=(options['metricBudget']+2*(len(data['validation'])+repetitions*len(data['heldout'])))*options['taskCallBudget']+options['proposalBudget']
+        decision(self.service.root,'M5','gepa.final-budget','frozen',repetitions=repetitions,
+                 validation=len(data['validation']),heldout=len(data['heldout']),
+                 finalRollouts=2*(len(data['validation'])+repetitions*len(data['heldout'])),
+                 maxRollouts=options['metricBudget']+2*(len(data['validation'])+repetitions*len(data['heldout'])),
+                 modelCalls=budget,workflowSeconds=options['maxSeconds'])
         return {'schemaVersion':1,'engine':ENGINE,**options,'comparisonPolicy':COMPARISON_POLICY,**({'canonicalSourceHash':canonical_hash} if canonical_hash else {}),'baseline':snap['active'],'sdk':snap['sdk'],'optimizer':snap['optimizer'],
           'provider':{**provider,'endpoint':provider['endpoint']},'callTimeoutSeconds':min(options['callTimeoutSeconds'],provider['config']['inferenceTimeout']),
           'callBudget':budget,'maxOutputTokens':budget*provider['config']['maxTokens'],'deadlineEpoch':time.time()+options['maxSeconds'],

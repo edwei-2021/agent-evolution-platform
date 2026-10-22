@@ -52,3 +52,25 @@ test('unchanged Skill and task names remain truthful and escaped',()=>{
  run.gepaResult.comparison.tasks[0].topic='<img src=x onerror=alert(1)>';
  const html=gepaResultsView(runtime(run));assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img/);
 });
+test('canonical three-pass final evidence keeps repetition identity, uncertainty and conservative gate',()=>{
+ const run=fixture(),c=run.gepaConfig,r=run.gepaResult;
+ c.finalRepetitions=3;c.canonicalJob={id:'MRUN-fixture'};
+ const validation=r.comparison.tasks.filter(t=>t.split==='validation').map(t=>({...t,repetition:0}));
+ const source=r.comparison.tasks.filter(t=>t.split==='heldout');
+ const heldout=Array.from({length:3},(_,rep)=>source.map((t,i)=>({...t,repetition:rep,
+  baselineRolloutId:`R${String(13+rep*6+i).padStart(4,'0')}`,
+  selectedRolloutId:`R${String(16+rep*6+i).padStart(4,'0')}`}))).flat();
+ r.comparison.tasks=[...validation,...heldout];r.comparison.repetitions=3;
+ r.comparison.splits.heldout={improved:6,regressed:3,'retained-pass':0,'retained-fail':0};
+ r.final.baseline.heldout={passed:3,total:9};r.final.selected.heldout={passed:6,total:9};r.rollouts=34;
+ const wilson=(p,n)=>{const z=1.96,d=1+z*z/n,mid=(p+z*z/(2*n))/d,rad=z*Math.sqrt((p*(1-p)+z*z/(4*n))/n)/d;return [Math.max(0,mid-rad),Math.min(1,mid+rad)];};
+ r.comparison.uncertainty={allRepetitionsPassed:{baseline:1,selected:2},taskWilson95:{baseline:wilson(1/3,3),selected:wilson(2/3,3)},note:'Grouped tasks limit interpretation.'};
+ validateGepaRun(run);
+ const html=gepaResultsView(runtime(run));assert.match(html,/第 3 次/);assert.match(html,/95% Wilson/);
+ for(const edit of [x=>x.gepaResult.comparison.tasks.pop(),x=>x.gepaResult.comparison.tasks.at(-1).repetition=1,
+  x=>x.gepaResult.comparison.uncertainty.allRepetitionsPassed.baseline=2,
+  x=>x.gepaResult.comparison.uncertainty.taskWilson95.selected=[0,1],
+  x=>x.gepaConfig.finalRepetitions=4]){
+  const changed=structuredClone(run);edit(changed);assert.throws(()=>validateGepaRun(changed));
+ }
+});
