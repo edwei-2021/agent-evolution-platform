@@ -18,9 +18,18 @@ def create_app(root, token, role='operator', legacy_port=None):
     root = Path(root).resolve()
     store = Store(root/'.local/m/control.sqlite3')
     artifacts = Artifacts(root/'.local/m/artifacts')
-    releases = Releases(store, artifacts, signing_key_path(root))
+    releases = Releases(store, artifacts, signing_key_path(root),
+                        git_root=root if (root/'.git').exists() else None)
     app = FastAPI(title='Agent Evolution Platform M', version='0.8.0')
     app.state.store, app.state.artifacts, app.state.releases = store, artifacts, releases
+
+    @app.on_event('startup')
+    def reconcile_release_startup():
+        if releases.git is not None:
+            try:
+                releases.reconcile_git()
+            except (RuntimeError, ValueError) as exc:
+                record(root, 'M6', 'release.git-startup', 'failed', error=exc)
 
     @app.middleware('http')
     async def boundary(request: Request, call_next):
@@ -174,6 +183,19 @@ def create_app(root, token, role='operator', legacy_port=None):
     @app.get('/api/m/releases/active')
     def active():
         return releases.active()
+
+    @app.get('/api/m/releases/git')
+    def release_git_status():
+        return releases.git_status()
+
+    @app.post('/api/m/releases/reconcile')
+    async def reconcile_release(request: Request):
+        if role != 'approver':
+            raise PermissionError('Only approver may reconcile a release')
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) != {'expected_revision'} or type(body['expected_revision']) is not int:
+            raise ValueError('Expected active revision required')
+        return releases.reconcile_git(expected={**releases.active(), 'revision': body['expected_revision']})
 
     @app.post('/api/m/releases/{identifier}/approve')
     async def approve(identifier: str, request: Request):

@@ -1,5 +1,5 @@
 """Evidence-derived immutable manifests, Ed25519 approval and transactional pointers."""
-from scripts.branch_diagnostics import diagnosed
+from scripts.branch_diagnostics import diagnosed, record
 import base64
 import hashlib
 import json
@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from .contracts import Release
 from .dataset import compare
 from .evidence import canonical
+from .release_git import ReleaseGit
 
 def signing_key_path(root):
     """Return a private-key path on Linux state storage by default.
@@ -30,9 +31,10 @@ def signing_key_path(root):
     return state_home/'agent-evolution-platform'/project_id/'signing.key'
 
 class Releases:
-    def __init__(self, store, artifacts, key_path, allow_test_evidence=False):
+    def __init__(self, store, artifacts, key_path, allow_test_evidence=False, git_root=None):
         self.store, self.artifacts, self.key_path = store, artifacts, Path(key_path)
         self.allow_test_evidence = allow_test_evidence
+        self.git = ReleaseGit(git_root) if git_root is not None else None
     def init_key(self):
         self.key_path.parent.mkdir(parents=True, exist_ok=True)
         key = Ed25519PrivateKey.generate().private_bytes(serialization.Encoding.Raw,
@@ -176,10 +178,74 @@ class Releases:
     def active(self):
         with self.store.db() as db:
             return dict(db.execute('SELECT hash,revision FROM active').fetchone())
+
+    def git_status(self):
+        active = self.active()
+        if self.git is None:
+            return {**active, 'git_enabled': False, 'git_hash': None, 'synchronized': None}
+        observed = self.git.observed()
+        return {**active, 'git_enabled': True, 'git_hash': observed['hash'],
+                'synchronized': observed['hash'] == active['hash']}
+
+    @diagnosed('M6','release.git-reconcile')
+    def reconcile_git(self, expected=None):
+        if self.git is None:
+            return self.git_status()
+        with self.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            active = dict(db.execute('SELECT hash,revision FROM active').fetchone())
+            if expected is not None and active != expected:
+                record(self.store.path.parents[2], 'M6', 'release.git-revision', 'withheld',
+                       revision=active['revision'], expectedRevision=expected['revision'])
+                raise RuntimeError('Active release changed during Git publication')
+            observed = self.git.observed()
+            record(self.store.path.parents[2], 'M6', 'release.git-observed',
+                   'matched' if observed['hash'] == active['hash'] else 'pending',
+                   identifier=active['hash'], revision=active['revision'],
+                   gitPresent=observed['hash'] is not None)
+            if observed['hash'] == active['hash']:
+                if active['hash'] is not None:
+                    pending = db.execute("SELECT payload FROM events WHERE aggregate_id=? AND type='release.git.pending' "
+                        "AND CAST(json_extract(payload,'$.revision') AS INTEGER)=? ORDER BY seq DESC LIMIT 1",
+                        (active['hash'], active['revision'])).fetchone()
+                    published = db.execute("SELECT 1 FROM events WHERE aggregate_id=? AND type='release.git.published' "
+                        "AND CAST(json_extract(payload,'$.revision') AS INTEGER)=? LIMIT 1",
+                        (active['hash'], active['revision'])).fetchone()
+                    if pending and not published:
+                        self.verify(active['hash'], db)
+                        self.store._event(db, active['hash'], 'release.git.published',
+                            {'revision': active['revision'], 'previous': json.loads(pending['payload'])['previous'],
+                             'recovered': True})
+                        record(self.store.path.parents[2], 'M6', 'release.git-event-recovered', 'completed',
+                               revision=active['revision'])
+                return {**active, 'git_enabled': True, 'git_hash': observed['hash'], 'synchronized': True}
+            if observed['hash'] is not None:
+                historical = db.execute("SELECT 1 FROM events WHERE aggregate_id=? AND type IN ('activated','rollback') "
+                    "AND CAST(json_extract(payload,'$.revision') AS INTEGER)<=? LIMIT 1",
+                    (observed['hash'], active['revision'])).fetchone()
+                if not historical:
+                    record(self.store.path.parents[2], 'M6', 'release.git-ancestor', 'withheld',
+                           revision=active['revision'])
+                    raise ValueError('Release Git ref is not a committed activation ancestor')
+                self.verify(observed['hash'], db)
+                record(self.store.path.parents[2], 'M6', 'release.git-ancestor', 'completed',
+                       revision=active['revision'])
+            if active['hash'] is None:
+                raise ValueError('Release Git ref exists without an active database release')
+            manifest = self.verify(active['hash'], db)
+            self.git.publish(active['hash'], manifest, observed)
+            self.store._event(db, active['hash'], 'release.git.published',
+                              {'revision': active['revision'], 'previous': observed['hash']})
+        record(self.store.path.parents[2], 'M6', 'release.git-published', 'completed',
+               identifier=active['hash'], revision=active['revision'])
+        return {**active, 'git_enabled': True, 'git_hash': active['hash'], 'synchronized': True}
+
     @diagnosed('M6','release.activate')
     def activate(self, identifier, expected_revision, actor, role, rollback=False):
         if role != 'approver' or not actor:
             raise PermissionError('Only approver may activate')
+        if self.git is not None:
+            self.reconcile_git()
         with self.store.db() as db:
             db.execute('BEGIN IMMEDIATE')
             active = db.execute('SELECT * FROM active').fetchone()
@@ -194,4 +260,13 @@ class Releases:
             db.execute('UPDATE active SET hash=?,revision=revision+1 WHERE singleton=1', (identifier,))
             self.store._event(db, identifier, 'rollback' if rollback else 'activated',
                               {'actor': actor, 'previous': active['hash'], 'revision': expected_revision+1})
-        return self.active()
+            if self.git is not None:
+                self.store._event(db, identifier, 'release.git.pending',
+                                  {'revision': expected_revision+1, 'previous': active['hash']})
+        result = {'hash': identifier, 'revision': expected_revision+1}
+        record(self.store.path.parents[2], 'M6', 'release.db-activated', 'completed',
+               identifier=identifier, revision=result['revision'], rollback=rollback,
+               gitPending=self.git is not None)
+        if self.git is not None:
+            self.reconcile_git(expected=result)
+        return result

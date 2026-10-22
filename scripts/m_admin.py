@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=['init-key','dataset','backup-db','register','approve','activate','rollback','active'])
+    parser.add_argument('action',choices=['init-key','dataset','backup-db','register','approve','activate','rollback','active','git-status','reconcile'])
     parser.add_argument('--manifest',type=Path)
     parser.add_argument('--hash')
     parser.add_argument('--expected-revision',type=int)
@@ -23,7 +23,7 @@ if __name__=='__main__':
     args=parser.parse_args()
     store=Store(ROOT/'.local/m/control.sqlite3')
     artifacts=Artifacts(ROOT/'.local/m/artifacts')
-    releases=Releases(store,artifacts,signing_key_path(ROOT))
+    releases=Releases(store,artifacts,signing_key_path(ROOT),git_root=ROOT if (ROOT/'.git').exists() else None)
     try:
         if args.action=='init-key':
             releases.init_key()
@@ -48,6 +48,12 @@ if __name__=='__main__':
             if not args.hash or args.expected_revision is None:
                 raise ValueError('Manifest hash and expected revision required')
             value=releases.activate(args.hash,args.expected_revision,'local-owner','approver',args.action=='rollback')
+        elif args.action=='git-status':
+            value=releases.git_status()
+        elif args.action=='reconcile':
+            if args.expected_revision is None:
+                raise ValueError('Expected revision required for reconciliation')
+            value=releases.reconcile_git(expected={**releases.active(), 'revision':args.expected_revision})
         else:
             value=releases.active()
         print(json.dumps(value,indent=2))

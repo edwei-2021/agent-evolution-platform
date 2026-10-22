@@ -402,6 +402,6 @@ def plans(root, python):
                     'scripts/check_start_selection.py','scripts/gepa_validation_budget.py','scripts/run_m_repair.py',
                     'scripts/branch_diagnostics.py','scripts/repair_feedback.py','scripts/gepa_engine.py','scripts/gepa_sdk.py',
                     'scripts/gepa_canonical.py','scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py',
-                    'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py'],
+                    'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py','scripts/m_admin.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]
