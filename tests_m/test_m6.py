@@ -175,6 +175,18 @@ def test_git_reconciliation_recovers_published_event_after_ref_update(posix_tmp_
     assert len(recovered)==1 and recovered[0]['payload']=={'revision':2,'previous':first,'recovered':True}
 
 
+def test_matching_git_ref_still_verifies_signed_manifest(posix_tmp_path):
+    root=posix_tmp_path
+    subprocess.run(['git','init',str(root)],check=True,capture_output=True)
+    service,first,_=approved_release(root/'.local/m')
+    service.git=ReleaseGit(root)
+    service.activate(first,0,'owner','approver')
+    service.artifacts.path(first).write_bytes(b'{}')
+    with pytest.raises(ValueError,match='Artifact integrity failure'):
+        service.reconcile_git()
+    assert service.active()=={'hash':first,'revision':1}
+
+
 def test_release_reconcile_endpoint_requires_approver_and_token(posix_tmp_path):
     root=posix_tmp_path
     subprocess.run(['git','init',str(root)],check=True,capture_output=True)
@@ -185,3 +197,15 @@ def test_release_reconcile_endpoint_requires_approver_and_token(posix_tmp_path):
                            json={'expected_revision':0}).status_code==403
         assert client.get('/api/m/releases/git',headers={'Authorization':'Bearer release-unit'}).json()=={
             'hash':None,'revision':0,'git_enabled':True,'git_hash':None,'synchronized':True}
+
+
+def test_startup_git_timeout_keeps_health_and_records_failure(posix_tmp_path):
+    root=posix_tmp_path
+    subprocess.run(['git','init',str(root)],check=True,capture_output=True)
+    with patch.object(ReleaseGit,'observed',side_effect=subprocess.TimeoutExpired('git',10)):
+        with TestClient(create_app(root,'release-unit')) as client:
+            assert client.get('/api/m/health').status_code==200
+    lines=(root/'.local/diagnostics/workflows.jsonl').read_text().splitlines()
+    decisions=[json.loads(line)['details'] for line in lines]
+    assert any(d.get('branch')=='release.git-startup' and d.get('exceptionType')=='TimeoutExpired'
+               for d in decisions)

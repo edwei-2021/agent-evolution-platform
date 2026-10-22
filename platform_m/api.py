@@ -28,7 +28,7 @@ def create_app(root, token, role='operator', legacy_port=None):
         if releases.git is not None:
             try:
                 releases.reconcile_git()
-            except (RuntimeError, ValueError) as exc:
+            except Exception as exc:
                 record(root, 'M6', 'release.git-startup', 'failed', error=exc)
 
     @app.middleware('http')

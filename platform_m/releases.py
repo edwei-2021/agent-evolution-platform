@@ -205,6 +205,9 @@ class Releases:
                    gitPresent=observed['hash'] is not None)
             if observed['hash'] == active['hash']:
                 if active['hash'] is not None:
+                    self.verify(active['hash'], db)
+                    record(self.store.path.parents[2], 'M6', 'release.git-verified', 'completed',
+                           revision=active['revision'])
                     pending = db.execute("SELECT payload FROM events WHERE aggregate_id=? AND type='release.git.pending' "
                         "AND CAST(json_extract(payload,'$.revision') AS INTEGER)=? ORDER BY seq DESC LIMIT 1",
                         (active['hash'], active['revision'])).fetchone()
@@ -212,7 +215,6 @@ class Releases:
                         "AND CAST(json_extract(payload,'$.revision') AS INTEGER)=? LIMIT 1",
                         (active['hash'], active['revision'])).fetchone()
                     if pending and not published:
-                        self.verify(active['hash'], db)
                         self.store._event(db, active['hash'], 'release.git.published',
                             {'revision': active['revision'], 'previous': json.loads(pending['payload'])['previous'],
                              'recovered': True})
