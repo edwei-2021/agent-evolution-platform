@@ -18,6 +18,7 @@ import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from gepa_exploration import (CoverageSampler, NovelNonRegression, proposal_context, STRATEGIES,
                               POLICY, duplicate_of, reflection_temperature)
+from repair_feedback import training_feedback
 from gepa_store import GepaStore
 from export_diagnostics import build_bundle
 from skill_archive import snapshot
@@ -49,7 +50,7 @@ class ExplorationTests(unittest.TestCase):
     def test_failure_memory_survives_perfect_batch_and_duplicate_temperature_changes_only_reflection(self):
         cfg={'searchMode':'explore','explorationPolicy':POLICY,'baseline':{'skill':{'body':'baseline'}}}
         failed={'taskId':'TRAIN-failed','rolloutId':'R0001','score':0,'taskOutcome':'call-limit',
-                'tools':[{'error':'Unavailable call: isspace'}],
+                'tools':[{'error':'disallowed-call: use only the listed builtins and data methods'}],
                 'feedback':{'visible':{'passed':1,'total':3,'cases':'PRIVATE_ANSWERS'}}}
         proposals=[{'id':'P001','body':'new workflow','training':[failed]},
                    {'id':'P002','body':'new  workflow','training':[]},
@@ -58,11 +59,44 @@ class ExplorationTests(unittest.TestCase):
         e=context['exploration']
         self.assertEqual(e['consecutiveDuplicates'],2);self.assertEqual(e['temperature'],1)
         self.assertEqual(e['failureLessons'][0]['taskId'],'TRAIN-failed')
-        self.assertEqual(e['failureLessons'][0]['toolRejections'],['Unavailable call: isspace'])
+        self.assertEqual(e['failureLessons'][0]['toolRejections'],['disallowed-call: use only the listed builtins and data methods'])
         self.assertNotIn('PRIVATE_ANSWERS',json.dumps(e))
         self.assertEqual(duplicate_of('new\nworkflow',proposals,'baseline'),'P001')
         self.assertEqual(duplicate_of(' baseline ',proposals,'baseline'),'baseline')
         self.assertEqual(reflection_temperature({},proposals),0)
+
+    def test_realistic_rejected_writes_reach_reflection_after_recovery_without_raw_errors(self):
+        evaluation={'candidate':{'visible':{'passed':2,'total':2},'hidden':{'passed':4,'total':4}}}
+        tools=[{'name':'write_solution','status':'failed',
+                'error':'Unavailable call: isinstance at line 4. secret-source-private'},
+               {'name':'write_solution','status':'failed',
+                'error':'Only the reverse keyword is available; secret-source-private'},
+               {'name':'write_solution','status':'completed'},
+               {'name':'run_tests','status':'completed','result':'{"passed":2,"total":2,"records":["secret-answer-private"]}'}]
+        feedback,safe=training_feedback(evaluation,tools)
+        self.assertEqual([t['error'] for t in safe[:2]],
+                         ['disallowed-isinstance: use the declared input shape and explicit conditions',
+                          'disallowed-keyword: use only reverse= or explicit loops'])
+        trace={'taskId':'TRAIN-only','rolloutId':'R0001','score':1,'tools':safe,'feedback':feedback}
+        cfg={'searchMode':'explore','explorationPolicy':POLICY,'baseline':{'skill':{'body':'baseline'}}}
+        context=proposal_context({'skill_body':'baseline'},[trace],[],cfg)
+        lesson=context['exploration']['failureLessons'][0]
+        self.assertEqual(lesson['score'],1)
+        self.assertEqual(lesson['toolRejections'],[safe[0]['error'],safe[1]['error']])
+        self.assertNotIn('secret-',json.dumps(context))
+        self.assertNotIn('records',json.dumps(context))
+        # A repeated successful attempt cannot erase a previous rejected-write lesson.
+        later={**trace,'rolloutId':'R0002','tools':[]}
+        self.assertEqual(proposal_context({},[later],[{'body':'new','training':[trace]}],cfg)
+                         ['exploration']['failureLessons'][0]['toolRejections'],lesson['toolRejections'])
+
+    def test_unknown_tool_errors_are_redacted_not_reflected(self):
+        evaluation={'candidate':{'visible':{'passed':1,'total':2},'hidden':{'passed':1,'total':2}}}
+        tools=[{'name':'write_solution','status':'failed','error':'Unavailable call: secret-function at line 1'},
+               {'name':'run_tests','status':'failed','error':'secret-provider-message'}]
+        _,safe=training_feedback(evaluation,tools)
+        self.assertEqual(safe[0]['error'],'disallowed-call: use only the listed builtins and data methods')
+        self.assertEqual(safe[1]['error'],'tool-policy-or-validation-rejection')
 
     def test_smoke_and_full_can_freeze_explicit_exploration_while_omitted_mode_stays_standard(self):
         from gepa_dataset import skill

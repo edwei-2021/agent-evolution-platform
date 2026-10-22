@@ -121,6 +121,12 @@ class Adapter:
         training=list(reflective_dataset['skill_body'])
         if any(t['taskId'] not in train_ids for t in training):raise ValueError('Final/validation data cannot enter reflection')
         identifier=f'P{len(session.proposals)+1:03d}';child=session.directory/'reflections'/identifier;child.mkdir(parents=True)
+        rejected=sum(t.get('status')=='failed' for trace in training for t in trace.get('tools', []))
+        decision(session.cfg['logRoot'],'M5','proposal.training-feedback','classified',identifier=session.directory.name,
+                 attempt=len(session.proposals)+1,trainingTasks=len(training),
+                 failedTasks=sum(t.get('score',1)<1 for t in training),
+                 recoveredTasks=sum(t.get('score',0)>=1 and any(tool.get('status')=='failed' for tool in t.get('tools',[])) for t in training),
+                 rejectedTools=rejected)
         temperature=reflection_temperature(session.cfg,session.proposals)
         cfg={**session.cfg,'callBudget':1,'reflectionOnly':True,'reflectionTemperature':temperature};runner=GlobalRunner(child,cfg,session,{'proposalId':identifier,'stage':'reflection'})
         content=json.dumps(proposal_context(candidate,training,session.proposals,session.cfg),ensure_ascii=False)

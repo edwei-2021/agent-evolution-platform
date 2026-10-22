@@ -44,15 +44,17 @@ def reflection_temperature(config, proposals):
 
 
 def failure_lessons(training, proposals):
-    """Compact memory from training only, never from validation or final data."""
+    """Retain failed tasks and recovered write rejections from training only."""
     failures = {}
     for trace in [t for p in proposals for t in p.get('training', [])] + training:
-        if trace.get('score', 1) >= 1:
-            continue
         errors = list(dict.fromkeys(t['error'][:1600] for t in trace.get('tools', []) if t.get('error')))
+        if trace.get('score', 1) >= 1 and not errors:
+            continue
         feedback = trace.get('feedback', {})
+        previous = failures.get(trace['taskId'], {})
         failures[trace['taskId']] = {'taskId': trace['taskId'], 'rolloutId': trace['rolloutId'],
-            'score': trace['score'], 'taskOutcome': trace.get('taskOutcome'), 'toolRejections': errors[-3:],
+            'score': trace['score'], 'taskOutcome': trace.get('taskOutcome'),
+            'toolRejections': list(dict.fromkeys(previous.get('toolRejections', []) + errors))[-3:],
             'tests': {s: {k: feedback[s].get(k) for k in ('passed', 'total')}
                       for s in ('visible', 'hidden') if isinstance(feedback.get(s), dict)}}
     return list(failures.values())[-4:]
@@ -99,6 +101,7 @@ def proposal_context(candidate, training, proposals, config):
                 recentInstructions=prior[-3:], failureLessons=failure_lessons(training, proposals),
                 diversity='Write a different operational workflow, not a paraphrase, extra reminders, or a copy of prior instructions. '
                           'Use the requested mutation operation. Remove irrelevant legacy examples. '
+                          'Use the fixed tool rejection categories even when a task recovered and passed. '
                           'State what observation triggers an action, what to change after rejection, and when to stop. '
                           'Use only training evidence; do not include solution code, task IDs, test answers or claims of improvement.')
     return value
