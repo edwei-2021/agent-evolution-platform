@@ -206,10 +206,10 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
                     elif flow == 'components':
                         # The component-only M4 Docker case is intentionally skipped;
                         # real isolation is required and checked by acceptance.
-                        skipped = re.search(r'\b(\d+) skipped\b', text)
-                        attempt['componentDockerSkip'] = int(skipped[1]) if skipped else 0
-                        if (not re.search(r'\b\d+ passed\b', text) or ' failed' in text
-                                or attempt['componentDockerSkip'] > 1):
+                        summaries = re.findall(
+                            r'(?m)^\s*(\d+) passed(?:, (\d+) skipped)?(?:, \d+ warnings)? in [\d.]+s\s*$', text)
+                        attempt['componentDockerSkip'] = int(summaries[-1][1] or 0) if summaries else None
+                        if len(summaries) != 1 or attempt['componentDockerSkip'] > 1:
                             raise ValueError('Component pytest summary is incomplete')
                     attempt['status'] = 'passed'
                 except Exception as exc:

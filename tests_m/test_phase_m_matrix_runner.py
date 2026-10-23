@@ -29,7 +29,7 @@ def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, 
         if flow == 'configurations':
             output = config_log
         elif flow == 'components':
-            output = '123 passed, 1 skipped in 10s\n'
+            output = 'Expected fixture: 1 failed before recovery\n123 passed, 1 skipped in 10.0s\n'
         else:
             report = root/'.local/m/support'/f'MCHECK-{round_number}'/'report.json'
             report.parent.mkdir(parents=True, exist_ok=True)
