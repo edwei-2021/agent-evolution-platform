@@ -18,10 +18,14 @@ jobs:
       - run: uv venv .venv-nanobot && uv pip install --python .venv-nanobot/bin/python -r requirements-nanobot.txt
       - run: npm ci --ignore-scripts
       - run: bash scripts/build-m-images.sh
-      - run: .venv-m/bin/python scripts/check_m.py --profile acceptance --non-interactive
+      - run: .venv-m/bin/python scripts/check_m_matrix.py
+        timeout-minutes: 330
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: intermediate-m-debug-support
-          path: .local/m/support/
+          name: phase-m-matrix-support
+          path: |
+            .local/m/matrix/*/support.zip
+            .local/m/matrix/*/summary.json
+            .local/m/support/
           retention-days: 14

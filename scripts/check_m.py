@@ -28,8 +28,9 @@ def main(argv=None, *, root=None):
     if args.profile == 'components':
         if explicit or args.interactive or args.list_steps or args.dry_run:
             parser.error('Start selection applies to --profile acceptance')
-        code, output = execute([sys.executable,'-m','pytest','-s','tests_m','-q'], root, os.environ,
-                               interactive=not args.non_interactive)
+        code, output, timing = execute([sys.executable,'-m','pytest','-s','tests_m','-q'], root, os.environ,
+                                       interactive=not args.non_interactive)
+        print('M_COMPONENT_TIMING ' + json.dumps(timing, ensure_ascii=False), flush=True)
         print(output)
         print('COMPONENT CHECK ONLY: Docker and actual SDK/production integration are not certified.')
         return code

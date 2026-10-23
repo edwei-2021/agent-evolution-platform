@@ -64,7 +64,7 @@ CHILD_HEARTBEAT_SECONDS = 120
 CHILD_CLEANUP_SECONDS = 60
 FIRST_RUN_SECONDS = {
     'M1': [15, 20], 'M2': [15, 30, 120], 'M3': [30, 180], 'M4': [60, 30],
-    'M5': [60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
+    'M5': [60, 60], 'M6': [30], 'M7': [30, 30, 30, 30, 900, 60, 60],
 }
 
 def prompt_after_seconds(normal):
@@ -388,9 +388,9 @@ def plans(root, python):
         ('M3', [pytest+['tests_m/test_m3.py'],pytest+['tests_m/test_native_queue.py']]),
         ('M4', [[python,'scripts/check_m_environment.py','--docker'],
                 pytest+['tests_m/test_m4.py']]),
-        ('M5', [pytest+['tests_m/test_m5.py']]),
+        ('M5', [pytest+['tests_m/test_m5.py'], pytest+['tests_m/test_phase_m_config_matrix.py']]),
         ('M6', [pytest+['tests_m/test_m6.py']]),
-        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py','tests_m/test_check_selection.py','tests_m/test_heartbeat_contract.py'],
+        ('M7', [pytest+['tests_m/test_m7.py'],pytest+['tests_m/test_gates.py','tests_m/test_check_selection.py','tests_m/test_heartbeat_contract.py','tests_m/test_phase_m_matrix_runner.py'],
                 [python,'scripts/scan_m_source.py'],
                 [python,'scripts/check_m_environment.py','--sdk'],
                 [str(sdk),'scripts/check_steps.py','--profile','release'],
@@ -402,6 +402,7 @@ def plans(root, python):
                     'scripts/check_start_selection.py','scripts/gepa_validation_budget.py','scripts/run_m_repair.py',
                     'scripts/branch_diagnostics.py','scripts/repair_feedback.py','scripts/gepa_engine.py','scripts/gepa_sdk.py',
                     'scripts/gepa_canonical.py','scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py',
-                    'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py','scripts/m_admin.py'],
+                    'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py','scripts/m_admin.py',
+                    'scripts/check_m_matrix.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]
