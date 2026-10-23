@@ -21,6 +21,8 @@ def test_every_new_stage_command_has_a_first_run_budget():
 def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, monkeypatch):
     fake_checkout(monkeypatch)
     monkeypatch.setattr(matrix, 'release_step_names', lambda root: ['python-fixture'])
+    monkeypatch.setattr(matrix, 'WORKFLOW_MODULES', {'fixture-workflow': ('python-fixture',)})
+    monkeypatch.setattr(matrix, 'VARIANT_MODULES', {})
     calls = []
     config_log = ''.join(f'test_gepa_configuration_freezes_complete_major_option_matrix[{name}] PASSED\n'
                          for name in sorted(matrix.CONFIG_IDS)) + '73 passed in 1.0s\n'
@@ -60,6 +62,7 @@ def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, 
     result = json.loads((output/'summary.json').read_text())
     assert result['status'] == 'passed'
     assert result['coverage']['flowPasses'] == {'configurations': 3, 'other-options': 3, 'components': 3, 'acceptance': 3}
+    assert result['coverage']['workflowPasses'] == {'fixture-workflow': 3}
     assert calls == [(name, number) for name in ('configurations', 'other-options', 'components', 'acceptance')
                      for number in (1, 2, 3)]
     assert all(len(a['configurationsPassed']) == 72 for a in result['attempts'] if a['flow']=='configurations')
@@ -134,6 +137,24 @@ def test_release_omission_is_not_certified(tmp_path, monkeypatch):
     assert summary['attempts'][0]['status'] == 'failed'
     assert summary['coverage']['unexecuted'] == [{'flow': 'acceptance', 'round': 2},
                                                   {'flow': 'acceptance', 'round': 3}]
+
+
+def test_each_runtime_workflow_and_provider_bank_variant_requires_nonempty_passed_release_evidence():
+    from runtime_service import WORKFLOW_TASKS
+    assert set(matrix.WORKFLOW_MODULES) == set(WORKFLOW_TASKS)
+    prefixes = {prefix for group in (*matrix.WORKFLOW_MODULES.values(),
+                                    *matrix.VARIANT_MODULES.values()) for prefix in group}
+    available = set(matrix.release_step_names(matrix.ROOT))
+    assert all(any(step == prefix or step.startswith(prefix+'--') for step in available)
+               for prefix in prefixes)
+    rows = [{'step': prefix, 'status': 'completed', 'testCases': [{'status': 'passed'}]}
+            for prefix in prefixes]
+    assert all(matrix.covered_workflows(rows).values())
+    for prefix in prefixes:
+        missing = [row for row in rows if row['step'] != prefix]
+        assert not all(matrix.covered_workflows(missing).values()), prefix
+        empty = [{**row, 'testCases': []} if row['step'] == prefix else row for row in rows]
+        assert not all(matrix.covered_workflows(empty).values()), prefix
 
 
 def test_components_entry_consumes_timing_and_reports_real_exit_code(tmp_path, monkeypatch, capsys):

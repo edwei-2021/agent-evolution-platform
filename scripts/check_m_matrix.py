@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from platform_m.evidence import atomic_write, canonical, redact  # noqa: E402
 from platform_m.gates import source_snapshot  # noqa: E402
+sys.path.insert(0, str(ROOT/'scripts'))
+from runtime_service import WORKFLOW_TASKS  # noqa: E402
 
 ROUNDS = 3
 LOG_LIMIT = 4 * 1024 * 1024
@@ -37,12 +39,36 @@ OTHER_IDS = ({f'llm-{profile}-timeout{timeout}' for profile in ('smoke', 'full')
 CASE_PATTERN = re.compile(r'test_gepa_configuration_freezes_complete_major_option_matrix\[([^]]+)\]\s+PASSED')
 OTHER_PATTERN = re.compile(r'test_other_workflow_option_matrix_(?:llm|skill|repair)\[([^]]+)\]\s+PASSED')
 REPORT_PATTERN = re.compile(r'^Support report: (.+/report\.json)$', re.MULTILINE)
+WORKFLOW_MODULES = {
+    'project-health': ('python-runtime_test',),
+    'skill-evolution': ('python-skill_test',),
+    'llm-evolution': ('python-llm_test',),
+    'nanobot-repair': ('python-repair_test',),
+    'gepa-evolution': ('python-gepa_test',),
+}
+VARIANT_MODULES = {
+    'ollama-strata': ('python-provider_switch_test', 'python-strata_workflow_test'),
+    'challenge-v2': ('python-challenge_v2_workflow_test',),
+    'challenge-v3': ('python-challenge_v3_workflow_test', 'python-challenge_v3_test'),
+}
+if set(WORKFLOW_MODULES) != set(WORKFLOW_TASKS):
+    raise RuntimeError('Matrix catalog does not cover every RuntimeService workflow')
 
 
 def release_step_names(root):
     from scripts.check_start_selection import release_plan
     from scripts.gepa_validation_budget import expand_plan
     return [name for name, _ in expand_plan(release_plan(root, 'python', 'node'), root)]
+
+
+def covered_workflows(steps):
+    """A workflow is covered only by executed, nonempty release test modules."""
+    modules = {row['step'] for row in steps if row.get('status') == 'completed'
+               and row.get('testCases') and all(case.get('status') == 'passed'
+                                                for case in row['testCases'])}
+    required = {**WORKFLOW_MODULES, **VARIANT_MODULES}
+    return {name: all(any(step == prefix or step.startswith(prefix+'--') for step in modules)
+                      for prefix in prefixes) for name, prefixes in required.items()}
 
 
 def matrix_plan(root):
@@ -130,7 +156,11 @@ def read_acceptance(root, output, source_hash):
             or any(row.get('status') != 'completed' or any(
                 case.get('status') != 'passed' for case in row.get('testCases', [])) for row in steps)):
         raise ValueError('Nested release was incomplete, scoped or contained a skipped case')
-    return path, stages, child, expected_steps, sum(len(row.get('testCases', [])) for row in steps)
+    workflow_evidence = covered_workflows(steps)
+    if not all(workflow_evidence.values()):
+        raise ValueError('A declared workflow/provider/bank has no passing release test module: '
+                         + ', '.join(name for name, passed in workflow_evidence.items() if not passed))
+    return path, stages, child, expected_steps, sum(len(row.get('testCases', [])) for row in steps), workflow_evidence
 
 
 def archive_evidence(directory, report_paths, nested_paths):
@@ -228,12 +258,13 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
                             raise ValueError('Other workflow option matrix is missing a passing combination')
                         attempt['otherOptionsPassed'] = sorted(covered)
                     elif flow == 'acceptance':
-                        report, attempt['stages'], nested, steps, cases = read_acceptance(root, text, source_hash)
+                        report, attempt['stages'], nested, steps, cases, workflows = read_acceptance(root, text, source_hash)
                         attempt['supportReport'] = str(report.relative_to(root))
                         attempt['nestedReport'] = str(nested.relative_to(root))
                         attempt['releaseSteps'] = len(steps)
                         attempt['releaseStepIds'] = steps
                         attempt['releaseCases'] = cases
+                        attempt['workflowsPassed'] = workflows
                         reports.append(report)
                         nested_reports.append(nested)
                     elif flow == 'components':
@@ -268,6 +299,9 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
         counts = {flow: sum(a['status']=='passed' for a in summary['attempts'] if a['flow']==flow)
                   for flow, _ in plan}
         summary['coverage'] = {'flowPasses': counts, 'expectedPerFlow': ROUNDS,
+                               'workflowPasses': {name: sum(a.get('workflowsPassed', {}).get(name, False)
+                                                              and a['status'] == 'passed' for a in summary['attempts'])
+                                                  for name in (*WORKFLOW_MODULES, *VARIANT_MODULES)},
                                'releaseStepPasses': {step: sum(step in a.get('releaseStepIds', []) and a['status']=='passed'
                                                               for a in summary['attempts'])
                                                      for step in release_step_names(root)} if not failed or

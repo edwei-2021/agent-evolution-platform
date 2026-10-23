@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ROLES = ('coordinator', 'worker', 'evaluator', 'reflector', 'reviewer')
 TASKS = {'coordinator': 'Inspect assets and record hashes', 'worker': 'Run JavaScript regression tests', 'evaluator': 'Run trusted Python installer tests', 'reflector': 'Analyze actual test evidence', 'reviewer': 'Review evidence and hash artifacts'}
 MODEL_TASKS = ('llm-evolution', 'nanobot-repair', 'gepa-evolution')
+WORKFLOW_TASKS = ('project-health', 'skill-evolution', 'llm-evolution',
+                  'nanobot-repair', 'gepa-evolution')
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
@@ -320,7 +322,7 @@ class RuntimeService:
         agents = validate_bindings(registry)
         if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', request_id):
             raise ValueError('Invalid idempotency request ID')
-        if task not in ('project-health', 'skill-evolution', 'llm-evolution', 'nanobot-repair', 'gepa-evolution') or (task == 'project-health' and options is not None):
+        if task not in WORKFLOW_TASKS or (task == 'project-health' and options is not None):
             raise ValueError('Unsupported fixed workflow')
         submission_hash = hashlib.sha256(json.dumps({'agents': agents, 'task': task, 'options': options}, sort_keys=True).encode()).hexdigest()
         native_plan = None
