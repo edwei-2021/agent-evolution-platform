@@ -25,17 +25,31 @@ LOG_LIMIT = 4 * 1024 * 1024
 ARCHIVE_LIMIT = 48 * 1024 * 1024
 MODES = ('omitted', 'standard', 'explore')
 PROFILES = ('smoke', 'full', 'bank')
-REPETITIONS = (1, 3)
-CONFIG_IDS = {f'{profile}-{mode}-final{repeats}' for profile in PROFILES
+REPETITIONS = ('default', 1, 2, 3)
+CONFIG_IDS = {f'{canonical}-{profile}-{mode}-final{repeats}'
+              for canonical in ('canonical', 'legacy') for profile in PROFILES
               for mode in MODES for repeats in REPETITIONS}
+OTHER_IDS = ({f'llm-{profile}-timeout{timeout}' for profile in ('smoke', 'full')
+              for timeout in ('default', 10, 3600)} |
+             {f'skill-candidates{candidates}' for candidates in range(1, 5)} |
+             {f'repair-seconds{seconds}-timeout{timeout}-calls{budget}'
+              for seconds in (60, 7200) for timeout in (10, 3600) for budget in (2, 12)})
 CASE_PATTERN = re.compile(r'test_gepa_configuration_freezes_complete_major_option_matrix\[([^]]+)\]\s+PASSED')
+OTHER_PATTERN = re.compile(r'test_other_workflow_option_matrix_(?:llm|skill|repair)\[([^]]+)\]\s+PASSED')
 REPORT_PATTERN = re.compile(r'^Support report: (.+/report\.json)$', re.MULTILINE)
+
+
+def release_step_names(root):
+    from scripts.check_start_selection import release_plan
+    from scripts.gepa_validation_budget import expand_plan
+    return [name for name, _ in expand_plan(release_plan(root, 'python', 'node'), root)]
 
 
 def matrix_plan(root):
     python = str(root/'.venv-m/bin/python')
     return [
         ('configurations', [python, '-m', 'pytest', '-s', '-vv', 'tests_m/test_phase_m_config_matrix.py']),
+        ('other-options', [python, '-m', 'pytest', '-s', '-vv', 'tests_m/test_phase_m_other_options.py']),
         ('components', [python, 'scripts/check_m.py', '--profile', 'components', '--non-interactive']),
         ('acceptance', [python, 'scripts/check_m.py', '--profile', 'acceptance', '--non-interactive']),
     ]
@@ -110,12 +124,13 @@ def read_acceptance(root, output, source_hash):
         raise ValueError('Nested release evidence escaped the test directory')
     nested = json.loads(child.read_text())
     steps = nested.get('steps', [])
+    expected_steps = release_step_names(root)
     if (nested.get('profile') != 'release' or nested.get('status') != 'completed'
-            or nested.get('scope') or not steps
+            or nested.get('scope') or [row.get('step') for row in steps] != expected_steps
             or any(row.get('status') != 'completed' or any(
                 case.get('status') != 'passed' for case in row.get('testCases', [])) for row in steps)):
         raise ValueError('Nested release was incomplete, scoped or contained a skipped case')
-    return path, stages, child, len(steps), sum(len(row.get('testCases', [])) for row in steps)
+    return path, stages, child, expected_steps, sum(len(row.get('testCases', [])) for row in steps)
 
 
 def archive_evidence(directory, report_paths, nested_paths):
@@ -156,7 +171,7 @@ def archive_evidence(directory, report_paths, nested_paths):
     return target
 
 
-def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
+def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_docker=False):
     root = Path(root).resolve()
     output = Path(output or root/'.local/m/matrix'/('MATRIX-'+uuid.uuid4().hex)).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -167,16 +182,28 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
                           capture_output=True, text=True, check=True).stdout.strip()
     summary = {'schema': 'phase-m-matrix-v1', 'sourceCommit': head, 'sourceHash': source_hash,
                'startedAt': timestamp(), 'roundsRequired': ROUNDS,
-               'configurationsRequired': sorted(CONFIG_IDS),
+               'configurationsRequired': sorted(CONFIG_IDS), 'otherOptionsRequired': sorted(OTHER_IDS),
                'fullPlan': [name for name, _ in plan] == [name for name, _ in matrix_plan(root)],
                'plan': [{'flow': name, 'command': command, 'rounds': ROUNDS} for name, command in plan],
+               'dockerPreparationRequested': prepare_docker,
                'attempts': [], 'status': 'running', 'limits': ['Scripted loopback provider; no real Windows GPU qualification']}
     atomic_write(output/'summary.json', canonical(summary))
     append_event(events, 'matrix.started', sourceCommit=head, sourceHash=source_hash)
     reports, nested_reports = [], []
     failed = False
     try:
+        if prepare_docker:
+            prep = output/'prepare-docker.log'
+            command = ['timeout', '1800', 'bash', 'scripts/build-m-images.sh']
+            code, _ = run_command(root, command, prep, events, 'prepare-docker', 0)
+            summary['dockerPreparation'] = {'command': command, 'exitCode': code,
+                                            'status': 'passed' if code == 0 else 'failed', 'log': prep.name}
+            atomic_write(output/'summary.json', canonical(summary))
+            if code:
+                failed = True
         for flow, command in plan:
+            if failed:
+                break
             for round_number in range(1, ROUNDS+1):
                 if source_snapshot(root)[0] != source_hash or subprocess.run(
                     ['git','-C',str(root),'rev-parse','HEAD'],capture_output=True,text=True,check=True
@@ -192,14 +219,20 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
                         raise RuntimeError(f'{flow} round {round_number} exited {code}')
                     if flow == 'configurations':
                         covered = set(CASE_PATTERN.findall(text))
-                        if covered != CONFIG_IDS or '19 passed' not in text or 'skipped' in text:
+                        if covered != CONFIG_IDS or '73 passed' not in text or 'skipped' in text:
                             raise ValueError('Configuration matrix is missing a passing combination')
                         attempt['configurationsPassed'] = sorted(covered)
+                    elif flow == 'other-options':
+                        covered = set(OTHER_PATTERN.findall(text))
+                        if covered != OTHER_IDS or '18 passed' not in text or 'skipped' in text:
+                            raise ValueError('Other workflow option matrix is missing a passing combination')
+                        attempt['otherOptionsPassed'] = sorted(covered)
                     elif flow == 'acceptance':
                         report, attempt['stages'], nested, steps, cases = read_acceptance(root, text, source_hash)
                         attempt['supportReport'] = str(report.relative_to(root))
                         attempt['nestedReport'] = str(nested.relative_to(root))
-                        attempt['releaseSteps'] = steps
+                        attempt['releaseSteps'] = len(steps)
+                        attempt['releaseStepIds'] = steps
                         attempt['releaseCases'] = cases
                         reports.append(report)
                         nested_reports.append(nested)
@@ -235,6 +268,10 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
         counts = {flow: sum(a['status']=='passed' for a in summary['attempts'] if a['flow']==flow)
                   for flow, _ in plan}
         summary['coverage'] = {'flowPasses': counts, 'expectedPerFlow': ROUNDS,
+                               'releaseStepPasses': {step: sum(step in a.get('releaseStepIds', []) and a['status']=='passed'
+                                                              for a in summary['attempts'])
+                                                     for step in release_step_names(root)} if not failed or
+                                                     any(a['flow']=='acceptance' for a in summary['attempts']) else {},
                                'unexecuted': [{'flow': flow, 'round': number}
                                               for flow, _ in plan for number in range(1, ROUNDS+1)
                                               if not any(a['flow']==flow and a['round']==number for a in summary['attempts'])]}
@@ -255,10 +292,11 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, help='New evidence directory; must not exist')
-    parser.add_argument('--list-plan', action='store_true', help='Show 18 options and three runs per flow without dispatch')
+    parser.add_argument('--list-plan', action='store_true', help='Show 72 option paths and three runs per flow without dispatch')
+    parser.add_argument('--prepare-docker', action='store_true', help='Build the pinned Docker evaluator image before the matrix')
     args = parser.parse_args()
     if args.list_plan:
-        print(json.dumps({'combinations': sorted(CONFIG_IDS), 'rounds': ROUNDS,
+        print(json.dumps({'combinations': sorted(CONFIG_IDS), 'otherOptions': sorted(OTHER_IDS), 'rounds': ROUNDS,
                           'plan': matrix_plan(ROOT)}, ensure_ascii=False, indent=2))
     else:
-        raise SystemExit(run_matrix(output=args.output))
+        raise SystemExit(run_matrix(output=args.output, prepare_docker=args.prepare_docker))

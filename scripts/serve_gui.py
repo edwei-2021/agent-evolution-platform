@@ -143,6 +143,23 @@ class GuiHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(payload)
                 except (BrokenPipeError,ConnectionResetError):
                     self.close_connection = True
+            elif path == '/api/v1/tests/matrix':
+                self.json_response(200, runtime.matrix.list())
+            elif match := re.fullmatch(r'/api/v1/tests/matrix/(MAT-[a-f0-9]{32})', path):
+                self.json_response(200, runtime.matrix.snapshot(match[1]))
+            elif match := re.fullmatch(r'/api/v1/tests/matrix/(MAT-[a-f0-9]{32})/support', path):
+                import shutil
+                target = runtime.matrix.archive(match[1])
+                try:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/zip')
+                    self.send_header('Content-Disposition', f'attachment; filename="{match[1]}-support.zip"')
+                    self.send_header('Content-Length', str(target.stat().st_size))
+                    self.end_headers()
+                    with target.open('rb') as stream:
+                        shutil.copyfileobj(stream, self.wfile, length=65536)
+                except (BrokenPipeError, ConnectionResetError):
+                    self.close_connection = True
             elif path == '/api/v1/debug/skills':
                 from skill_archive import index
                 values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
@@ -212,6 +229,14 @@ class GuiHandler(SimpleHTTPRequestHandler):
             self._api_step=Step(runtime.logs,'api','http.mutation',match[0] if match else None,route=path[:180])
             if path == '/api/v1/runtime/runs':
                 self.json_response(202, runtime.start(body.get('registry'), body.get('requestId')))
+            elif path == '/api/v1/tests/matrix':
+                if body:
+                    raise ValueError('The full matrix accepts no selectable or partial scope')
+                self.json_response(202, runtime.matrix.start())
+            elif match := re.fullmatch(r'/api/v1/tests/matrix/(MAT-[a-f0-9]{32})/cancel', path):
+                if body:
+                    raise ValueError('Cancel accepts an empty body')
+                self.json_response(200, runtime.matrix.cancel(match[1]))
             elif path == '/api/v1/debug/skills':
                 from skill_archive import index
                 values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
@@ -369,6 +394,8 @@ def main(argv=None):
         from runtime_service import RuntimeService
         try:
             runtime = RuntimeService(DIST.parent,canonical=args.canonical)
+            from matrix_service import MatrixService
+            runtime.matrix = MatrixService(runtime.root)
             server.runtime = runtime
         except (RuntimeError, OSError) as exc:
             diagnostics.write('startup','runtime.start_failed',level='ERROR',**exception_details(exc))
@@ -385,6 +412,7 @@ def main(argv=None):
             pass
         finally:
             if runtime:
+                runtime.matrix.close()
                 runtime.close()
             diagnostics.write('startup','service.stopped',serviceId=runtime.service_id if runtime else None)
     return 0

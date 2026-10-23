@@ -68,7 +68,7 @@ Use only the new checkout after success; keep the old one until acceptance passe
 
 ## 3. Checks and expected results (驗收及預期結果)
 
-The unattended [three-round Phase M matrix](phase-m-matrix.md) runs automatically in GitHub Actions on push and PR. It covers all 18 supported GEPA configuration combinations and three complete M1–M7 acceptance rounds, with per-attempt process logs and a downloadable support archive. A skipped or failed round is recorded as incomplete rather than promoted to acceptance.
+The unattended [three-round Phase M matrix](phase-m-matrix.md) runs automatically in GitHub Actions on push and PR, and can be started from the local Web UI's **完整自動測試** page. It covers 72 GEPA and 18 other discrete workflow option paths, then three complete M1–M7 acceptance rounds, with per-attempt process logs and a downloadable support archive. A skipped or failed round is recorded as incomplete rather than promoted to acceptance.
 
 ```bash
 cd /mnt/d/agent-evolution-platform

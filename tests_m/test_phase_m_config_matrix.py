@@ -15,15 +15,17 @@ from gepa_dataset import skill  # noqa: E402
 from gepa_store import GepaStore  # noqa: E402
 
 
-COMBINATIONS = list(product(('smoke', 'full', 'bank'), ('omitted', 'standard', 'explore'), (1, 3)))
+COMBINATIONS = list(product((True, False), ('smoke', 'full', 'bank'),
+                            ('omitted', 'standard', 'explore'), (None, 1, 2, 3)))
 
 
-@pytest.mark.parametrize('profile,mode,repetitions', COMBINATIONS,
-    ids=[f'{profile}-{mode}-final{repetitions}' for profile, mode, repetitions in COMBINATIONS])
-def test_gepa_configuration_freezes_complete_major_option_matrix(tmp_path, profile, mode, repetitions):
+@pytest.mark.parametrize('canonical,profile,mode,repetitions', COMBINATIONS,
+    ids=[f'{"canonical" if canonical else "legacy"}-{profile}-{mode}-final{repetitions if repetitions is not None else "default"}'
+         for canonical, profile, mode, repetitions in COMBINATIONS])
+def test_gepa_configuration_freezes_complete_major_option_matrix(tmp_path, canonical, profile, mode, repetitions):
     service = Service(tmp_path)
     service.closed = False
-    service.canonical = object()
+    service.canonical = object() if canonical else None
     provider = {'revision': 1, 'endpoint': 'http://127.0.0.1:1',
                 'config': {'model': 'fixture', 'maxTokens': 1024, 'inferenceTimeout': 120}}
     service.ollama = SimpleNamespace(lock=threading.RLock(), frozen=lambda: provider)
@@ -37,21 +39,28 @@ def test_gepa_configuration_freezes_complete_major_option_matrix(tmp_path, profi
                'taskCallBudget': 8, 'metricBudget': 120 if mode == 'explore' else 80,
                'proposalBudget': 16 if mode == 'explore' else 8,
                'providerRevision': 1, 'expectedRevision': 1,
-               'finalRepetitions': repetitions}
+               }
+    if repetitions is not None:
+        options['finalRepetitions'] = repetitions
     if profile == 'bank':
         options['bankRevision'] = 1
     if mode != 'omitted':
         options['searchMode'] = mode
+    if not canonical and repetitions is not None:
+        with pytest.raises(ValueError, match='canonical ledger'):
+            store.freeze(options)
+        store.snapshot.assert_not_called()
+        return
     frozen = store.freeze(options)
     assert frozen.get('searchMode', 'standard') == ('standard' if mode == 'omitted' else mode)
-    assert frozen['finalRepetitions'] == repetitions
+    assert frozen.get('finalRepetitions', 1) == (repetitions or 1)
     assert bool(frozen.get('explorationPolicy')) == (mode == 'explore')
     assert bool(frozen.get('searchSeed') is not None) == (mode == 'explore')
     assert frozen['comparisonPolicy'] == frozen['provenance']['comparisonPolicy']
     assert frozen['counts'] == ({'train': 20, 'validation': 10, 'heldout': 20} if profile == 'full'
                                 else {'train': 4, 'validation': 2, 'heldout': 4} if profile == 'smoke'
                                 else {key: len(rows) for key, rows in frozen['datasetSnapshot']['data'].items()})
-    expected_final = 2 * (frozen['counts']['validation'] + repetitions * frozen['counts']['heldout'])
+    expected_final = 2 * (frozen['counts']['validation'] + (repetitions or 1) * frozen['counts']['heldout'])
     assert frozen['callBudget'] == (options['metricBudget'] + expected_final) * options['taskCallBudget'] + options['proposalBudget']
 
 
