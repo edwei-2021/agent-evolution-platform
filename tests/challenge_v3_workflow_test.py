@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import patch
 import challenge_workflow_test as fixture
 from challenge_v3_test import SEEDS
+from challenge_bank import catalog_batch
+from matrix_scenarios import matrix_round, round_parameters
 
 
 class ChallengeV3WorkflowTests(unittest.TestCase):
@@ -12,21 +14,34 @@ class ChallengeV3WorkflowTests(unittest.TestCase):
     tearDown=fixture.ChallengeWorkflowTests.tearDown
 
     def test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval(self):
-        self.service.challenges.install_v3(1,0)
+        self.prove_batch(round_parameters(matrix_round())['batches'][0])
+
+    def test_v3_second_distinct_batch_in_matrix_round(self):
+        self.prove_batch(round_parameters(matrix_round())['batches'][1])
+
+    def prove_batch(self, batch):
+        round_number = matrix_round()
+        parameters = round_parameters(round_number)
+        task_ids = catalog_batch(SEEDS, batch)
+        self.service.challenges.install_v3(1,batch)
         registry={'agents':[{'id':'AG-'+str(i),'name':role,'role':role,'enabled':True} for i,role in enumerate(fixture.ROLES)]}
         # 22 rollouts, 133 request slots at 10s, <=24 test tools/task,
         # three independent 5s batches/task + 120s startup + 30s cleanup.
         # Workflow=4450; terminal collection=4480; approval extra <=110s.
+        seconds = parameters['maxSeconds']
+        task_call_budget = parameters['taskCallBudget']
         with patch.dict(fixture.BY_ID,{q['id']:q for q in SEEDS}):
             run=self.service.start(registry,'v3-proof','gepa-evolution',{
                 'profile':'bank','bankRevision':2,'metricBudget':10,'proposalBudget':1,
-                'taskCallBudget':6,'callTimeoutSeconds':10,'maxSeconds':4450,
+                'taskCallBudget':task_call_budget,'callTimeoutSeconds':10,'maxSeconds':seconds,
                 'providerRevision':1,'expectedRevision':1})
             frozen=run['gepaConfig']['datasetSnapshot']
             self.assertEqual(frozen['version'],'python-challenges-v3')
-            q=dict(SEEDS[0]);q['title']='Edited after freezing V3'
+            self.assertEqual({q['id'] for rows in frozen['data'].values() for q in rows},task_ids)
+            self.assertEqual(run['gepaConfig']['taskCallBudget'],task_call_budget)
+            q=dict(next(q for q in SEEDS if q['id'] in task_ids));q['title']='Edited after freezing V3'
             self.service.challenges.mutate(2,q,q['id'])
-            self.assertTrue(self.service.completion_event.wait(4480),'No persisted terminal result')
+            self.assertTrue(self.service.completion_event.wait(seconds+30),'No persisted terminal result')
         done=self.service.get_run(run['id'])
         self.assertEqual(done['status'],'completed',done.get('error') or str(done['agents']))
         result=done['gepaResult'];self.assertTrue(result['eligible'])
@@ -58,5 +73,8 @@ validateGepaRun(JSON.parse(fs.readFileSync(0,'utf8')));"""
         self.assertEqual(approved['revision'],2)
         after=self.service.logs.list(run_id=run['id'],query='STEP_COMPLETED trusted-tests.batch',limit=500)
         self.assertEqual(after['matched'],4*result['rollouts'])
+        print('M_MATRIX_V3 '+json.dumps({'round':round_number,'batch':batch,
+              'taskIds':sorted(task_ids),'taskCallBudget':task_call_budget,
+              'maxSeconds':seconds,'datasetHash':frozen['hash']}),flush=True)
         print('V3_WORKLOAD_RESULT',json.dumps({'rollouts':result['rollouts'],'requests':result['calls'],
               'threePassBatches':batches['matched'],'approvalBatches':after['matched']}),flush=True)

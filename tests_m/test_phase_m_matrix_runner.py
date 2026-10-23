@@ -6,6 +6,7 @@ import zipfile
 from scripts import check_m_matrix as matrix
 from scripts import check_m
 from platform_m.gates import FIRST_RUN_SECONDS, plans
+from matrix_scenarios import ROUND_BATCHES
 
 
 def fake_checkout(monkeypatch):
@@ -23,6 +24,12 @@ def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, 
     monkeypatch.setattr(matrix, 'release_step_names', lambda root: ['python-fixture'])
     monkeypatch.setattr(matrix, 'WORKFLOW_MODULES', {'fixture-workflow': ('python-fixture',)})
     monkeypatch.setattr(matrix, 'VARIANT_MODULES', {})
+    monkeypatch.setattr(matrix, 'covered_flow_paths', lambda steps: dict.fromkeys(matrix.FLOW_PATHS, True))
+    catalog = matrix.catalog_v3()
+    monkeypatch.setattr(matrix, 'read_round_variant', lambda root, child, steps, number: [
+        {'batch': batch, 'taskIds': sorted(matrix.catalog_batch(catalog, batch)),
+         'round': number, 'taskCallBudget': 5+number, 'maxSeconds': 4450+(number-1)*130}
+        for batch in ROUND_BATCHES[number-1]])
     calls = []
     config_log = ''.join(f'test_gepa_configuration_freezes_complete_major_option_matrix[{name}] PASSED\n'
                          for name in sorted(matrix.CONFIG_IDS)) + '73 passed in 1.0s\n'
@@ -63,6 +70,10 @@ def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, 
     assert result['status'] == 'passed'
     assert result['coverage']['flowPasses'] == {'configurations': 3, 'other-options': 3, 'components': 3, 'acceptance': 3}
     assert result['coverage']['workflowPasses'] == {'fixture-workflow': 3}
+    assert result['coverage']['ratePercent'] == 100
+    assert result['coverage']['minimumRatePercent'] == 60
+    assert result['coverage']['modelQuestionRatePercent'] == 100
+    assert result['coverage']['distinctV3Batches'] == [0, 1, 2, 3, 4]
     assert calls == [(name, number) for name in ('configurations', 'other-options', 'components', 'acceptance')
                      for number in (1, 2, 3)]
     assert all(len(a['configurationsPassed']) == 72 for a in result['attempts'] if a['flow']=='configurations')
@@ -155,6 +166,55 @@ def test_each_runtime_workflow_and_provider_bank_variant_requires_nonempty_passe
         assert not all(matrix.covered_workflows(missing).values()), prefix
         empty = [{**row, 'testCases': []} if row['step'] == prefix else row for row in rows]
         assert not all(matrix.covered_workflows(empty).values()), prefix
+
+
+def test_round_workloads_have_distinct_batches_and_nonrepeated_parameters(tmp_path):
+    from matrix_scenarios import round_parameters
+    from scripts.check_m_matrix import read_round_variant
+    combinations = [round_parameters(n) for n in (1, 2, 3)]
+    assert len({row['taskCallBudget'] for row in combinations}) == 3
+    assert len({row['maxSeconds'] for row in combinations}) == 3
+    assert set.union(*(set(row['batches']) for row in combinations)) == set(range(5))
+    catalog = matrix.catalog_v3()
+    report = tmp_path/'report.json'
+    log = tmp_path/'python-challenge_v3_workflow_test.log'
+    steps = [{'step': 'python-challenge_v3_workflow_test', 'log': log.name, 'testCases': [
+        {'test': 'challenge_v3_workflow_test.ChallengeV3WorkflowTests.'+name, 'status': 'passed'}
+        for name in ('test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
+                     'test_v3_second_distinct_batch_in_matrix_round')]}]
+    for row in combinations:
+        entries = [{'round': row['round'], 'batch': batch, 'taskCallBudget': row['taskCallBudget'],
+                    'maxSeconds': row['maxSeconds'], 'taskIds': sorted(matrix.catalog_batch(catalog, batch)),
+                    'datasetHash': 'a'*64} for batch in row['batches']]
+        log.write_text(''.join('M_MATRIX_V3 '+json.dumps(entry)+'\n' for entry in entries))
+        assert read_round_variant(tmp_path, report, steps, row['round']) == sorted(entries, key=lambda value: value['batch'])
+        entries[1]['taskIds'].pop()
+        log.write_text(''.join('M_MATRIX_V3 '+json.dumps(entry)+'\n' for entry in entries))
+        import pytest
+        with pytest.raises(ValueError, match='questions'):
+            read_round_variant(tmp_path, report, steps, row['round'])
+
+
+def test_finite_path_coverage_reports_denominator_missing_paths_and_partial_rate():
+    catalog = matrix.catalog_v3()
+    empty = matrix.coverage_report([], [], catalog)
+    assert (empty['coveredPaths'], empty['totalPaths'], empty['ratePercent']) == (0, 103, 0)
+    assert empty['minimumRatePercent'] == 60
+    partial = matrix.coverage_report([{'status': 'passed', 'configurationsPassed': sorted(matrix.CONFIG_IDS)}], [], catalog)
+    assert (partial['coveredPaths'], partial['totalPaths']) == (72, 103)
+    assert partial['ratePercent'] > 60
+    assert partial['modelQuestionRatePercent'] == 0
+    assert len(partial['missingPaths']) == 31
+
+
+def test_strata_provider_paths_require_three_individual_passed_workflows():
+    rows = [{'step': 'python-strata_workflow_test', 'status': 'completed', 'testCases': [
+        {'test': 'strata_workflow_test.StrataWorkflows.test_llm_reflection_review_approval_and_rollback',
+         'status': 'passed'}]}]
+    paths = matrix.covered_flow_paths(rows)
+    assert paths['llm-evolution:strata']
+    assert not paths['nanobot-repair:strata']
+    assert not paths['gepa-evolution:strata']
 
 
 def test_components_entry_consumes_timing_and_reports_real_exit_code(tmp_path, monkeypatch, capsys):

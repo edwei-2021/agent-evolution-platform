@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT/'tests'))
 from challenge_bank_test import Service  # noqa: E402
 from gepa_dataset import skill  # noqa: E402
 from gepa_store import GepaStore  # noqa: E402
+from matrix_scenarios import matrix_round  # noqa: E402
 
 
 COMBINATIONS = list(product((True, False), ('smoke', 'full', 'bank'),
@@ -36,10 +37,12 @@ def test_gepa_configuration_freezes_complete_major_option_matrix(tmp_path, canon
         'sdk': {'available': True, 'version': '0.3.5'},
         'optimizer': {'available': True, 'version': '0.1.4'}})
     options = {'profile': profile, 'maxSeconds': 7200, 'callTimeoutSeconds': 120,
-               'taskCallBudget': 8, 'metricBudget': 120 if mode == 'explore' else 80,
+               'taskCallBudget': 9-matrix_round(), 'metricBudget': 120 if mode == 'explore' else 80,
                'proposalBudget': 16 if mode == 'explore' else 8,
                'providerRevision': 1, 'expectedRevision': 1,
                }
+    options['maxSeconds'] = 7200 - (matrix_round()-1)*300
+    options['callTimeoutSeconds'] = 120 - (matrix_round()-1)*30
     if repetitions is not None:
         options['finalRepetitions'] = repetitions
     if profile == 'bank':
@@ -52,6 +55,8 @@ def test_gepa_configuration_freezes_complete_major_option_matrix(tmp_path, canon
         store.snapshot.assert_not_called()
         return
     frozen = store.freeze(options)
+    assert (frozen['maxSeconds'], frozen['callTimeoutSeconds'], frozen['taskCallBudget']) == (
+        options['maxSeconds'], options['callTimeoutSeconds'], options['taskCallBudget'])
     assert frozen.get('searchMode', 'standard') == ('standard' if mode == 'omitted' else mode)
     assert frozen.get('finalRepetitions', 1) == (repetitions or 1)
     assert bool(frozen.get('explorationPolicy')) == (mode == 'explore')

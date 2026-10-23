@@ -21,8 +21,11 @@ from platform_m.evidence import atomic_write, canonical, redact  # noqa: E402
 from platform_m.gates import source_snapshot  # noqa: E402
 sys.path.insert(0, str(ROOT/'scripts'))
 from runtime_service import WORKFLOW_TASKS  # noqa: E402
+from matrix_scenarios import round_parameters  # noqa: E402
+from challenge_bank import catalog_batch, catalog_v3  # noqa: E402
 
 ROUNDS = 3
+MIN_COVERAGE_PERCENT = 60
 LOG_LIMIT = 4 * 1024 * 1024
 ARCHIVE_LIMIT = 48 * 1024 * 1024
 MODES = ('omitted', 'standard', 'explore')
@@ -51,8 +54,20 @@ VARIANT_MODULES = {
     'challenge-v2': ('python-challenge_v2_workflow_test',),
     'challenge-v3': ('python-challenge_v3_workflow_test', 'python-challenge_v3_test'),
 }
+FLOW_PATHS = {
+    'project-health': ('python-runtime_test', None),
+    'skill-evolution': ('python-skill_test', None),
+    'llm-evolution:ollama': ('python-llm_test', None),
+    'llm-evolution:strata': ('python-strata_workflow_test', 'test_llm_reflection_review_approval_and_rollback'),
+    'nanobot-repair:ollama': ('python-repair_test', None),
+    'nanobot-repair:strata': ('python-strata_workflow_test', 'test_real_nanobot_streamed_tools_and_independent_reviewer'),
+    'gepa-evolution:ollama': ('python-gepa_test', None),
+    'gepa-evolution:strata': ('python-strata_workflow_test', 'test_real_gepa_search_final_review_approval_rollback_and_tamper_gate'),
+}
 if set(WORKFLOW_MODULES) != set(WORKFLOW_TASKS):
     raise RuntimeError('Matrix catalog does not cover every RuntimeService workflow')
+if {name.split(':')[0] for name in FLOW_PATHS} != set(WORKFLOW_TASKS):
+    raise RuntimeError('Runtime/provider path catalog omits a supported workflow')
 
 
 def release_step_names(root):
@@ -69,6 +84,72 @@ def covered_workflows(steps):
     required = {**WORKFLOW_MODULES, **VARIANT_MODULES}
     return {name: all(any(step == prefix or step.startswith(prefix+'--') for step in modules)
                       for prefix in prefixes) for name, prefixes in required.items()}
+
+
+def covered_flow_paths(steps):
+    """Only passed cases from the release report count as runtime/provider paths."""
+    passed = [(row['step'], [case['test'] for case in row.get('testCases', [])
+                            if case.get('status') == 'passed']) for row in steps
+              if row.get('status') == 'completed']
+    return {name: any((step == prefix or step.startswith(prefix+'--')) and
+                      (any(case.endswith('.'+method) for case in cases) if method else bool(cases))
+                      for step, cases in passed) for name, (prefix, method) in FLOW_PATHS.items()}
+
+
+def read_round_variant(root, child, steps, round_number):
+    """Validate recorded real-SDK V3 question IDs and parameters, not just a round label."""
+    expected = round_parameters(round_number)
+    matching = [row for row in steps if row['step'] == 'python-challenge_v3_workflow_test']
+    if len(matching) != 1 or matching[0].get('log') != 'python-challenge_v3_workflow_test.log':
+        raise ValueError('V3 workflow release log is missing')
+    cases = {case.get('test', '').rsplit('.', 1)[-1] for case in matching[0].get('testCases', [])
+             if case.get('status') == 'passed'}
+    if cases != {'test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
+                 'test_v3_second_distinct_batch_in_matrix_round'}:
+        raise ValueError('Both V3 real-SDK workflow cases must pass in each round')
+    path = child.parent/matching[0]['log']
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > 8 * 1024 * 1024:
+        raise ValueError('V3 workflow evidence is missing or exceeds the evidence bound')
+    rows = [json.loads(line.removeprefix('M_MATRIX_V3 ')) for line in path.read_text().splitlines()
+            if line.startswith('M_MATRIX_V3 ')]
+    if len(rows) != 2 or {row.get('batch') for row in rows} != set(expected['batches']):
+        raise ValueError('This round did not run its two distinct V3 batches')
+    catalog = catalog_v3()
+    for row in rows:
+        if (row.get('round') != round_number or row.get('taskCallBudget') != expected['taskCallBudget']
+                or row.get('maxSeconds') != expected['maxSeconds']
+                or row.get('taskIds') != sorted(catalog_batch(catalog, row['batch']))
+                or not isinstance(row.get('datasetHash'), str)
+                or re.fullmatch(r'[a-f0-9]{64}', row['datasetHash']) is None):
+            raise ValueError('V3 batch questions, parameters or frozen dataset evidence differ from the plan')
+    return sorted(rows, key=lambda row: row['batch'])
+
+
+def coverage_report(attempts, release_steps, catalog):
+    """Coverage of the finite, source-owned workflow paths; arbitrary numeric inputs are excluded."""
+    successful = [row for row in attempts if row['status'] == 'passed']
+    config = set().union(*(row.get('configurationsPassed', []) for row in successful))
+    other = set().union(*(row.get('otherOptionsPassed', []) for row in successful))
+    paths = {name for row in successful for name, passed in row.get('flowPathsPassed', {}).items() if passed}
+    batches = {row['batch'] for attempt in successful for row in attempt.get('v3Variants', [])}
+    questions = {identifier for attempt in successful for row in attempt.get('v3Variants', [])
+                 for identifier in row['taskIds']}
+    required = ({'gepa:'+name for name in CONFIG_IDS} |
+                {'other:'+name for name in OTHER_IDS} |
+                {'workflow:'+name for name in FLOW_PATHS} |
+                {'v3-batch:'+str(index) for index in range(5)})
+    covered = ({'gepa:'+name for name in config} | {'other:'+name for name in other} |
+               {'workflow:'+name for name in paths} | {'v3-batch:'+str(index) for index in batches}) & required
+    catalog_ids = {row['id'] for row in catalog}
+    return {'minimumRatePercent': MIN_COVERAGE_PERCENT,
+            'ratePercent': round(100*len(covered)/len(required), 2),
+            'coveredPaths': len(covered), 'totalPaths': len(required),
+            'missingPaths': sorted(required-covered),
+            'modelQuestionRatePercent': round(100*len(questions & catalog_ids)/len(catalog_ids), 2),
+            'modelQuestionsCovered': len(questions & catalog_ids), 'modelQuestionsTotal': len(catalog_ids),
+            'missingModelQuestions': sorted(catalog_ids-questions),
+            'distinctV3Batches': sorted(batches),
+            'releaseStepsExpectedPerRound': len(release_steps)}
 
 
 def matrix_plan(root):
@@ -92,7 +173,8 @@ def append_event(path, kind, **facts):
 
 
 def run_command(root, command, log_path, events, flow, round_number):
-    process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    environment = {**os.environ, **({'M_MATRIX_ROUND': str(round_number)} if round_number else {})}
+    process = subprocess.Popen(command, cwd=root, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, errors='replace', bufsize=1, start_new_session=True,
                                stdin=subprocess.DEVNULL)
     tail, tail_bytes = deque(), 0
@@ -127,7 +209,7 @@ def run_command(root, command, log_path, events, flow, round_number):
     return code, log_path.read_text(errors='replace')
 
 
-def read_acceptance(root, output, source_hash):
+def read_acceptance(root, output, source_hash, round_number):
     expected = (root/'.local/m/support').resolve()
     matches = [path for value in REPORT_PATTERN.findall(output)
                if (path := Path(value).resolve()).name == 'report.json'
@@ -160,7 +242,13 @@ def read_acceptance(root, output, source_hash):
     if not all(workflow_evidence.values()):
         raise ValueError('A declared workflow/provider/bank has no passing release test module: '
                          + ', '.join(name for name, passed in workflow_evidence.items() if not passed))
-    return path, stages, child, expected_steps, sum(len(row.get('testCases', [])) for row in steps), workflow_evidence
+    path_evidence = covered_flow_paths(steps)
+    if not all(path_evidence.values()):
+        raise ValueError('A supported workflow/provider path has no passed release case: '
+                         + ', '.join(name for name, passed in path_evidence.items() if not passed))
+    variants = read_round_variant(root, child, steps, round_number)
+    return (path, stages, child, expected_steps, sum(len(row.get('testCases', [])) for row in steps),
+            workflow_evidence, path_evidence, variants)
 
 
 def archive_evidence(directory, report_paths, nested_paths):
@@ -196,6 +284,19 @@ def archive_evidence(directory, report_paths, nested_paths):
             archive.writestr(name, raw)
             total += len(raw)
             included.append({'name': name, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+            variant_log = path.parent/'python-challenge_v3_workflow_test.log'
+            if variant_log.is_file() and not variant_log.is_symlink() and variant_log.stat().st_size <= LOG_LIMIT:
+                variant = redact(variant_log.read_text(errors='replace')).encode()
+                if total + len(variant) <= ARCHIVE_LIMIT:
+                    variant_name = f'acceptance/round{index}/v3-workflow.log'
+                    archive.writestr(variant_name, variant)
+                    total += len(variant)
+                    included.append({'name': variant_name, 'bytes': len(variant),
+                                     'sha256': hashlib.sha256(variant).hexdigest()})
+                else:
+                    omitted.append({'name': f'v3-workflow-round{index}', 'reason': 'size-limit'})
+            else:
+                omitted.append({'name': f'v3-workflow-round{index}', 'reason': 'missing-or-size-limit'})
         archive.writestr('archive-manifest.json', canonical({'included': included, 'omitted': omitted,
                                                               'totalInputBytes': total}))
     return target
@@ -212,6 +313,7 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
                           capture_output=True, text=True, check=True).stdout.strip()
     summary = {'schema': 'phase-m-matrix-v1', 'sourceCommit': head, 'sourceHash': source_hash,
                'startedAt': timestamp(), 'roundsRequired': ROUNDS,
+               'roundScenarios': [round_parameters(number) for number in range(1, ROUNDS+1)],
                'configurationsRequired': sorted(CONFIG_IDS), 'otherOptionsRequired': sorted(OTHER_IDS),
                'fullPlan': [name for name, _ in plan] == [name for name, _ in matrix_plan(root)],
                'plan': [{'flow': name, 'command': command, 'rounds': ROUNDS} for name, command in plan],
@@ -241,7 +343,8 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
                     raise RuntimeError('Source changed during the frozen matrix')
                 log = output/f'{flow}-round{round_number}.log'
                 attempt = {'flow': flow, 'round': round_number, 'startedAt': timestamp(),
-                           'command': command, 'sourceHash': source_hash, 'log': log.name}
+                           'command': command, 'scenario': round_parameters(round_number),
+                           'sourceHash': source_hash, 'log': log.name}
                 try:
                     code, text = run_command(root, command, log, events, flow, round_number)
                     attempt['exitCode'] = code
@@ -258,13 +361,16 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
                             raise ValueError('Other workflow option matrix is missing a passing combination')
                         attempt['otherOptionsPassed'] = sorted(covered)
                     elif flow == 'acceptance':
-                        report, attempt['stages'], nested, steps, cases, workflows = read_acceptance(root, text, source_hash)
+                        (report, attempt['stages'], nested, steps, cases, workflows, paths, variants) = read_acceptance(
+                            root, text, source_hash, round_number)
                         attempt['supportReport'] = str(report.relative_to(root))
                         attempt['nestedReport'] = str(nested.relative_to(root))
                         attempt['releaseSteps'] = len(steps)
                         attempt['releaseStepIds'] = steps
                         attempt['releaseCases'] = cases
                         attempt['workflowsPassed'] = workflows
+                        attempt['flowPathsPassed'] = paths
+                        attempt['v3Variants'] = variants
                         reports.append(report)
                         nested_reports.append(nested)
                     elif flow == 'components':
@@ -309,8 +415,13 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None, prepare_d
                                'unexecuted': [{'flow': flow, 'round': number}
                                               for flow, _ in plan for number in range(1, ROUNDS+1)
                                               if not any(a['flow']==flow and a['round']==number for a in summary['attempts'])]}
-        summary['status'] = ('passed' if summary['fullPlan'] else 'scoped_passed') if not failed and all(
-            value == ROUNDS for value in counts.values()) else 'incomplete'
+        summary['coverage'].update(coverage_report(summary['attempts'], release_step_names(root), catalog_v3()))
+        complete = not failed and all(value == ROUNDS for value in counts.values())
+        if summary['fullPlan']:
+            complete = (complete and summary['coverage']['ratePercent'] >= MIN_COVERAGE_PERCENT
+                        and summary['coverage']['modelQuestionRatePercent'] == 100
+                        and summary['coverage']['distinctV3Batches'] == list(range(5)))
+        summary['status'] = ('passed' if summary['fullPlan'] else 'scoped_passed') if complete else 'incomplete'
         atomic_write(output/'summary.json', canonical(summary))
         append_event(events, 'matrix.finished', status=summary['status'], flowPasses=counts)
         archive = archive_evidence(output, reports, nested_reports)
@@ -330,7 +441,9 @@ if __name__ == '__main__':
     parser.add_argument('--prepare-docker', action='store_true', help='Build the pinned Docker evaluator image before the matrix')
     args = parser.parse_args()
     if args.list_plan:
-        print(json.dumps({'combinations': sorted(CONFIG_IDS), 'otherOptions': sorted(OTHER_IDS), 'rounds': ROUNDS,
+        print(json.dumps({'combinations': sorted(CONFIG_IDS), 'otherOptions': sorted(OTHER_IDS),
+                          'roundScenarios': [round_parameters(number) for number in range(1, ROUNDS+1)],
+                          'minimumCoveragePercent': MIN_COVERAGE_PERCENT, 'rounds': ROUNDS,
                           'plan': matrix_plan(ROOT)}, ensure_ascii=False, indent=2))
     else:
         raise SystemExit(run_matrix(output=args.output, prepare_docker=args.prepare_docker))

@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT/'scripts'))
 from llm_store import LlmStore  # noqa: E402
 from repair_store import RepairStore  # noqa: E402
 from skill_store import SkillStore  # noqa: E402
+from matrix_scenarios import matrix_round  # noqa: E402
 
 
 def service(root):
@@ -33,11 +34,13 @@ def test_other_workflow_option_matrix_llm(tmp_path, profile, timeout):
     store = object.__new__(LlmStore)
     store.service = service(tmp_path)
     store.snapshot = Mock(return_value={'revision': 1, 'active': {'id': 'LSV-baseline'}})
-    options = {'profile': profile, 'maxSeconds': 900, 'expectedRevision': 1, 'providerRevision': 1}
+    options = {'profile': profile, 'maxSeconds': 900 + 300*(matrix_round()-1),
+               'expectedRevision': 1, 'providerRevision': 1}
     if timeout is not None:
         options['callTimeoutSeconds'] = timeout
     frozen = store.freeze(options)
     assert frozen['profile'] == profile
+    assert frozen['maxSeconds'] == options['maxSeconds']
     assert frozen['callTimeoutSeconds'] == (timeout or 120)
     assert frozen['callBudget'] > 0
 
@@ -46,9 +49,10 @@ def test_other_workflow_option_matrix_llm(tmp_path, profile, timeout):
 def test_other_workflow_option_matrix_skill(tmp_path, candidates):
     store = object.__new__(SkillStore)
     store.service = service(tmp_path)
-    store.snapshot = Mock(return_value={'revision': 1, 'active': {'id': 'SKV-baseline'}})
+    store.snapshot = Mock(return_value={'revision': 1, 'active': {'id': f'SKV-baseline-{matrix_round()}'}})
     frozen = store.freeze({'maxCandidates': candidates, 'expectedRevision': 1})
     assert frozen['maxCandidates'] == candidates
+    assert frozen['baseline']['id'] == f'SKV-baseline-{matrix_round()}'
     store.service.logs.append.assert_called_once()
 
 

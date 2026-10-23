@@ -403,6 +403,6 @@ def plans(root, python):
                     'scripts/branch_diagnostics.py','scripts/repair_feedback.py','scripts/gepa_engine.py','scripts/gepa_sdk.py',
                     'scripts/gepa_canonical.py','scripts/gepa_store.py','scripts/runtime_service.py','scripts/m_nanobot_worker.py',
                     'scripts/serve_gui.py','scripts/gepa_agents.py','scripts/repair_engine.py','scripts/m_admin.py',
-                    'scripts/check_m_matrix.py','scripts/matrix_service.py'],
+                    'scripts/check_m_matrix.py','scripts/matrix_scenarios.py','scripts/matrix_service.py'],
                 [node,'node_modules/typescript/bin/tsc','--noEmit','--strict','--lib','es2020,dom',
                     'packages/contracts/contracts.ts']])]
