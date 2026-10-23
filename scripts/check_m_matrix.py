@@ -110,7 +110,7 @@ def read_acceptance(root, output, source_hash):
         raise ValueError('Nested release evidence escaped the test directory')
     nested = json.loads(child.read_text())
     steps = nested.get('steps', [])
-    if (nested.get('profile') != 'release' or nested.get('status') != 'passed'
+    if (nested.get('profile') != 'release' or nested.get('status') != 'completed'
             or nested.get('scope') or not steps
             or any(row.get('status') != 'completed' or any(
                 case.get('status') != 'passed' for case in row.get('testCases', [])) for row in steps)):
@@ -209,7 +209,9 @@ def run_matrix(root=ROOT, *, plan=None, source_hash=None, output=None):
                         summaries = re.findall(
                             r'(?m)^\s*(\d+) passed(?:, (\d+) skipped)?(?:, \d+ warnings)? in [\d.]+s\s*$', text)
                         attempt['componentDockerSkip'] = int(summaries[-1][1] or 0) if summaries else None
-                        if len(summaries) != 1 or attempt['componentDockerSkip'] > 1:
+                        # check_m streams pytest and then prints its captured output;
+                        # both copies include the same terminal summary.
+                        if not summaries or attempt['componentDockerSkip'] > 1:
                             raise ValueError('Component pytest summary is incomplete')
                     attempt['status'] = 'passed'
                 except Exception as exc:

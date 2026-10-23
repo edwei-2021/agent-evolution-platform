@@ -29,13 +29,14 @@ def test_three_rounds_require_all_configurations_and_all_seven_stages(tmp_path, 
         if flow == 'configurations':
             output = config_log
         elif flow == 'components':
-            output = 'Expected fixture: 1 failed before recovery\n123 passed, 1 skipped in 10.0s\n'
+            output = ('Expected fixture: 1 failed before recovery\n'
+                      '123 passed, 1 skipped in 10.0s\n123 passed, 1 skipped in 10.0s\n')
         else:
             report = root/'.local/m/support'/f'MCHECK-{round_number}'/'report.json'
             report.parent.mkdir(parents=True, exist_ok=True)
             child = root/'.local/test-reports'/f'CHECK-{round_number}'/'report.json'
             child.parent.mkdir(parents=True, exist_ok=True)
-            child.write_text(json.dumps({'profile': 'release', 'status': 'passed',
+            child.write_text(json.dumps({'profile': 'release', 'status': 'completed',
                                          'steps': [{'step': 'python-fixture', 'status': 'completed',
                                                     'testCases': [{'status': 'passed'}]}]}))
             (report.parent/'M7.json').write_text(json.dumps({'logs': [{'child_report': str(child)}]}))
