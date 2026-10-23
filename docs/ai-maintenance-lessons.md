@@ -1,5 +1,11 @@
 # AI Maintenance Lessons: M7 Failure Recovery
 
+## V3 two-batch integration manifest (2026-10-23)
+
+GitHub Actions run `39914559202` on `c6ba8f1` passed all three rounds of the configuration, other-option and component flows. Acceptance round 1 passed M1–M6 and M7's first four checks, then the release preflight stopped before model dispatch: `Integration manifest changed; audit every added workflow`. The V3 workflow module gained a second real-SDK case, while `integration_module_budget` still required exactly one case. The measured matrix path rate was 90/103 (87.38%), with zero accepted release paths or model questions; that partial rate cannot certify Phase M.
+
+Each V3 case is now a separate release step with its own parent deadline, and both cases have an explicit pre-dispatch manifest. The bound reserves the largest round-specific workflow deadline, SDK admission, terminal collection, setup/teardown and post-completion replay for **each** step. The release step count and the scoped runner's two independently supervised child rows are executable contracts. When a workflow module gains a case, update its leaf manifest, per-case resource budget, release report reader and support-archive log paths together; never admit two serial multi-hour workflows under a single 7,200-second parent.
+
 Audience: AI maintainers and human reviewers. Updated: 2026-10-14.
 
 This document records mistakes in the M7 repair process, including the repeated GEPA reviewer timeout and the later missing-heartbeat interruption, and the concrete rules needed to avoid repeating them. It is a working handoff, not a claim that every target environment has passed. Read it before changing runtime discovery, timing, or release supervision.

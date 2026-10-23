@@ -42,6 +42,9 @@ OTHER_IDS = ({f'llm-{profile}-timeout{timeout}' for profile in ('smoke', 'full')
 CASE_PATTERN = re.compile(r'test_gepa_configuration_freezes_complete_major_option_matrix\[([^]]+)\]\s+PASSED')
 OTHER_PATTERN = re.compile(r'test_other_workflow_option_matrix_(?:llm|skill|repair)\[([^]]+)\]\s+PASSED')
 REPORT_PATTERN = re.compile(r'^Support report: (.+/report\.json)$', re.MULTILINE)
+V3_METHODS = ('test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
+              'test_v3_second_distinct_batch_in_matrix_round')
+V3_STEP_PREFIX = 'python-challenge_v3_workflow_test--challenge_v3_workflow_test.ChallengeV3WorkflowTests.'
 WORKFLOW_MODULES = {
     'project-health': ('python-runtime_test',),
     'skill-evolution': ('python-skill_test',),
@@ -99,19 +102,20 @@ def covered_flow_paths(steps):
 def read_round_variant(root, child, steps, round_number):
     """Validate recorded real-SDK V3 question IDs and parameters, not just a round label."""
     expected = round_parameters(round_number)
-    matching = [row for row in steps if row['step'] == 'python-challenge_v3_workflow_test']
-    if len(matching) != 1 or matching[0].get('log') != 'python-challenge_v3_workflow_test.log':
-        raise ValueError('V3 workflow release log is missing')
-    cases = {case.get('test', '').rsplit('.', 1)[-1] for case in matching[0].get('testCases', [])
-             if case.get('status') == 'passed'}
-    if cases != {'test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
-                 'test_v3_second_distinct_batch_in_matrix_round'}:
-        raise ValueError('Both V3 real-SDK workflow cases must pass in each round')
-    path = child.parent/matching[0]['log']
-    if not path.is_file() or path.is_symlink() or path.stat().st_size > 8 * 1024 * 1024:
-        raise ValueError('V3 workflow evidence is missing or exceeds the evidence bound')
-    rows = [json.loads(line.removeprefix('M_MATRIX_V3 ')) for line in path.read_text().splitlines()
-            if line.startswith('M_MATRIX_V3 ')]
+    matching = [row for row in steps if row['step'].startswith(V3_STEP_PREFIX)]
+    if {row['step'] for row in matching} != {V3_STEP_PREFIX+name for name in V3_METHODS}:
+        raise ValueError('Both independently supervised V3 workflow steps are required')
+    rows = []
+    for step in matching:
+        cases = step.get('testCases', [])
+        if (len(cases) != 1 or cases[0].get('test') != step['step'].removeprefix('python-challenge_v3_workflow_test--')
+                or cases[0].get('status') != 'passed' or step.get('log') != step['step']+'.log'):
+            raise ValueError('V3 workflow case or log does not match its supervised step')
+        path = child.parent/step['log']
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError('V3 workflow evidence is missing or exceeds the evidence bound')
+        rows.extend(json.loads(line.removeprefix('M_MATRIX_V3 ')) for line in path.read_text().splitlines()
+                    if line.startswith('M_MATRIX_V3 '))
     if len(rows) != 2 or {row.get('batch') for row in rows} != set(expected['batches']):
         raise ValueError('This round did not run its two distinct V3 batches')
     catalog = catalog_v3()
@@ -284,19 +288,21 @@ def archive_evidence(directory, report_paths, nested_paths):
             archive.writestr(name, raw)
             total += len(raw)
             included.append({'name': name, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
-            variant_log = path.parent/'python-challenge_v3_workflow_test.log'
-            if variant_log.is_file() and not variant_log.is_symlink() and variant_log.stat().st_size <= LOG_LIMIT:
-                variant = redact(variant_log.read_text(errors='replace')).encode()
-                if total + len(variant) <= ARCHIVE_LIMIT:
-                    variant_name = f'acceptance/round{index}/v3-workflow.log'
-                    archive.writestr(variant_name, variant)
-                    total += len(variant)
-                    included.append({'name': variant_name, 'bytes': len(variant),
-                                     'sha256': hashlib.sha256(variant).hexdigest()})
+            for case_index, method in enumerate(V3_METHODS, 1):
+                variant_log = path.parent/(V3_STEP_PREFIX+method+'.log')
+                label = f'v3-workflow-round{index}-case{case_index}'
+                if variant_log.is_file() and not variant_log.is_symlink() and variant_log.stat().st_size <= LOG_LIMIT:
+                    variant = redact(variant_log.read_text(errors='replace')).encode()
+                    if total + len(variant) <= ARCHIVE_LIMIT:
+                        variant_name = f'acceptance/round{index}/v3-workflow-case{case_index}.log'
+                        archive.writestr(variant_name, variant)
+                        total += len(variant)
+                        included.append({'name': variant_name, 'bytes': len(variant),
+                                         'sha256': hashlib.sha256(variant).hexdigest()})
+                    else:
+                        omitted.append({'name': label, 'reason': 'size-limit'})
                 else:
-                    omitted.append({'name': f'v3-workflow-round{index}', 'reason': 'size-limit'})
-            else:
-                omitted.append({'name': f'v3-workflow-round{index}', 'reason': 'missing-or-size-limit'})
+                    omitted.append({'name': label, 'reason': 'missing-or-size-limit'})
         archive.writestr('archive-manifest.json', canonical({'included': included, 'omitted': omitted,
                                                               'totalInputBytes': total}))
     return target

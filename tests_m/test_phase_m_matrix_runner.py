@@ -177,19 +177,18 @@ def test_round_workloads_have_distinct_batches_and_nonrepeated_parameters(tmp_pa
     assert set.union(*(set(row['batches']) for row in combinations)) == set(range(5))
     catalog = matrix.catalog_v3()
     report = tmp_path/'report.json'
-    log = tmp_path/'python-challenge_v3_workflow_test.log'
-    steps = [{'step': 'python-challenge_v3_workflow_test', 'log': log.name, 'testCases': [
-        {'test': 'challenge_v3_workflow_test.ChallengeV3WorkflowTests.'+name, 'status': 'passed'}
-        for name in ('test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
-                     'test_v3_second_distinct_batch_in_matrix_round')]}]
+    steps = [{'step': matrix.V3_STEP_PREFIX+name, 'log': matrix.V3_STEP_PREFIX+name+'.log',
+              'testCases': [{'test': 'challenge_v3_workflow_test.ChallengeV3WorkflowTests.'+name,
+                             'status': 'passed'}]} for name in matrix.V3_METHODS]
     for row in combinations:
         entries = [{'round': row['round'], 'batch': batch, 'taskCallBudget': row['taskCallBudget'],
                     'maxSeconds': row['maxSeconds'], 'taskIds': sorted(matrix.catalog_batch(catalog, batch)),
                     'datasetHash': 'a'*64} for batch in row['batches']]
-        log.write_text(''.join('M_MATRIX_V3 '+json.dumps(entry)+'\n' for entry in entries))
+        for step, entry in zip(steps, entries):
+            (tmp_path/step['log']).write_text('M_MATRIX_V3 '+json.dumps(entry)+'\n')
         assert read_round_variant(tmp_path, report, steps, row['round']) == sorted(entries, key=lambda value: value['batch'])
         entries[1]['taskIds'].pop()
-        log.write_text(''.join('M_MATRIX_V3 '+json.dumps(entry)+'\n' for entry in entries))
+        (tmp_path/steps[1]['log']).write_text('M_MATRIX_V3 '+json.dumps(entries[1])+'\n')
         import pytest
         with pytest.raises(ValueError, match='questions'):
             read_round_variant(tmp_path, report, steps, row['round'])

@@ -21,6 +21,9 @@ class GepaBudgetTests(unittest.TestCase):
     def test_delegated_bank_and_strata_parents_contain_real_workflows_and_post_completion_replays(self):
         for module in INTEGRATION_MODULES:
             expanded=expand_plan([('python-'+module,['python','runner',module+'.py'])],ROOT)
+            if module=='challenge_v3_workflow_test':
+                self.assertEqual(len(expanded),2)
+                self.assertTrue(all('--case' in command for _,command in expanded))
             for name,command in expanded:
                 budget=integration_module_budget(name,2,command,ROOT)
                 self.assertLessEqual(budget['maximumSeconds'],7200)
@@ -29,6 +32,8 @@ class GepaBudgetTests(unittest.TestCase):
                     self.assertEqual(budget['maximumRollouts'],22)
                     self.assertEqual(budget['verificationBatches'],66)
                     self.assertGreaterEqual(budget['maximumSeconds'],4450+240+30+22*5)
+                    if module=='challenge_v3_workflow_test':
+                        self.assertGreaterEqual(budget['phasesSeconds']['workflow'],4710)
                 if module=='strata_workflow_test':
                     self.assertGreaterEqual(budget['maximumSeconds'],case_budget(APPROVAL,2)['maximumSeconds']+480+120)
         with self.assertRaisesRegex(ValueError,'split'):
@@ -56,6 +61,23 @@ class GepaBudgetTests(unittest.TestCase):
             row=json.loads(next((root/'.local/test-reports').glob('CHECK-*/report.json')).read_text())['steps'][0]
             self.assertEqual(row['gepaCaseBudget']['policy'],'delegated-sdk-workload-v1')
             self.assertGreater(row['maximumSeconds'],row['gepaCaseBudget']['phasesSeconds']['gepaWithApproval'])
+
+    def test_v3_two_workflows_are_independently_supervised_before_dispatch(self):
+        import check_steps
+        from adaptive_validation import calculate
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'tests').mkdir()
+            (root/'tests/challenge_v3_workflow_test.py').write_bytes(
+                (ROOT/'tests/challenge_v3_workflow_test.py').read_bytes())
+            plan=[('python-challenge_v3_workflow_test',
+                   [sys.executable,'-c','print("split V3 budget probe")'])]
+            with patch('check_steps.ROOT',root),patch('adaptive_validation.current',return_value=calculate([.25])),redirect_stdout(io.StringIO()):
+                self.assertEqual(check_steps.run('release',plan=plan,interactive=False),0)
+            report=json.loads(next((root/'.local/test-reports').glob('CHECK-*/report.json')).read_text())
+            self.assertEqual(len(report['steps']),2)
+            self.assertTrue(all(step['maximumSeconds']>=4710+240+30 and
+                                step['gepaCaseBudget']['selected']==[step['step'].split('--',1)[1]]
+                                for step in report['steps']))
 
     def test_canonical_parent_contains_all_three_cases_and_replays(self):
         import check_steps
@@ -184,7 +206,7 @@ class GepaBudgetTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT))
         from platform_m.gates import release_step_count
         modules = [('python-' + path.stem, []) for path in sorted((ROOT/'tests').glob('*_test.py'))]
-        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 13 + 4)
+        self.assertEqual(release_step_count(ROOT), 2 + len(modules) + 13 + 4 + 1)
         self.assertEqual(release_step_count(ROOT), 2 + len(expand_plan(modules, ROOT)))
 
     def test_invalid_or_excessive_calibration_and_unknown_case_fail_before_dispatch(self):

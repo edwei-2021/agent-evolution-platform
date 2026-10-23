@@ -13,7 +13,7 @@
 
 The runner compares its workflow catalog with the five task types accepted by `RuntimeService.start`: project health, rule Skill evolution, LLM Skill evolution, nanobot repair and GEPA evolution. Each acceptance round must contain a nonempty passing release test module for each. Separate evidence requirements cover the Ollama/Strata provider paths and V2/V3 challenge workflows. `summary.json` records `coverage.workflowPasses` for these eight named categories (three required each), and the Web UI displays their counts. Adding a runtime task without updating this catalog fails immediately; an omitted or empty release test module prevents certification.
 
-Each round receives `M_MATRIX_ROUND` from the supervisor. The V3 real-SDK/loopback GEPA workflows use two separate service fixtures per round, distinct balanced batches and different frozen call budgets and deadlines. Their logs record actual frozen question IDs, dataset hashes, batch and limits. The runner validates those records against the published catalog before counting a round:
+Each round receives `M_MATRIX_ROUND` from the supervisor. The V3 real-SDK/loopback GEPA workflows use two independently supervised release steps and separate service fixtures per round, distinct balanced batches and different frozen call budgets and deadlines. Their logs record actual frozen question IDs, dataset hashes, batch and limits. The runner validates both release cases and their records against the published catalog before counting a round:
 
 | Round | V3 batches (zero based) | Distinct model questions | Task call budget | Workflow deadline (seconds) |
 | --- | --- | ---: | ---: | ---: |

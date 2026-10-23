@@ -10,7 +10,7 @@ FULL_CASES = ('test_actual_js_client_to_python_api_dispatch_and_result_validatio
               'test_heldout_regression_blocks_release_even_with_validation_improvement')
 APPROVAL_CASE = FULL_CASES[1]
 MAX_SECONDS = 7200
-SPLIT_MODULES=('gepa_test','challenge_failure_test')
+SPLIT_MODULES=('gepa_test','challenge_failure_test','challenge_v3_workflow_test')
 BANK_MODULES=('challenge_workflow_test','challenge_v2_workflow_test','challenge_v3_workflow_test','paired_workflow_test')
 INTEGRATION_MODULES=(*BANK_MODULES,'challenge_failure_test','exploration_workflow_test',
                      'strata_workflow_test','gepa_repeated_workflow_test')
@@ -34,6 +34,24 @@ def integration_module_budget(name,io_seconds,command,root):
         if len(ids)!=1 or len(selected)!=1:
             raise ValueError('Repeated GEPA fixture manifest changed; audit delegated work')
         return {**repeated_fixture_budget(io_seconds),'selected':selected}
+    if module=='challenge_v3_workflow_test':
+        expected={
+            'test_v3_frozen_dataset_all_three_verifiers_frontend_and_approval',
+            'test_v3_second_distinct_batch_in_matrix_round',
+        }
+        if ({identifier.rsplit('.',1)[-1] for identifier in ids} != expected or
+                len(ids)!=2 or len(selected)!=1):
+            raise ValueError('V3 manifest changed or combined workflows exceed the parent deadline')
+        rollouts=22;extra=1
+        phases={'workflow':4710,'sdkAdmission':240,'terminalCollection':30,
+                'setupAndTeardown':60+math.ceil(60*io_seconds),
+                'postCompletionReplay':math.ceil(rollouts*(5+2*io_seconds))}
+        maximum=sum(phases.values())+30
+        if maximum>MAX_SECONDS:raise ValueError('V3 workflow exceeds 7200s; inspect calibration')
+        return {'policy':'delegated-sdk-workload-v1','selected':selected,'maximumRollouts':rollouts,
+                'verificationBatches':passes*rollouts,'postCompletionPasses':extra,'phasesSeconds':phases,
+                'normalSeconds':max(60,math.ceil(120+rollouts*(4+12*io_seconds))),
+                'maximumSeconds':maximum}
     if module=='strata_workflow_test':
         if len(ids)!=3:raise ValueError('Strata workflow manifest changed; audit delegated cases')
         from validation_wait import repair_workflow_seconds
