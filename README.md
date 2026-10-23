@@ -2,6 +2,10 @@
 
 Evolution platform for bounded nanobot/GEPA Skill experiments, with a roadmap toward declarative workflow evolution and multiple runtimes (代理人演化平台).
 
+## Archived development snapshot
+
+Development was paused on 2026-10-23. Start with the [project archive and restart snapshot](PROJECT-ARCHIVE-2026-10-23.md) for exact source identity, CI evidence, Phase M gaps, preserved data boundaries and the restart procedure. Phase M completion and real-model evolution gains have not been established by the archived evidence.
+
 ## Intermediate Phase M delivery
 
 New service components, Ubuntu migration, strict M1–M7 checks and debug support bundles are available. Read [the M operator guide](docs/intermediate-m.md) before moving an existing checkout or running acceptance. Component checks do not certify full phase completion; Docker/production closure remains explicit. The legacy GUI stays v0.7.1.
